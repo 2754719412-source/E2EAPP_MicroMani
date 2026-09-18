@@ -1,0 +1,29 @@
+{
+  "blockedRequests": [
+    "http://127.0.0.1:18082/api/settings",
+    "http://127.0.0.1:18082/api/settings/snapshots",
+    "http://127.0.0.1:18082/api/hardware/status",
+    "http://127.0.0.1:18082/api/cameras/global/stream?t=0",
+    "http://127.0.0.1:18082/api/cameras/wrist_left/stream?t=0",
+    "http://127.0.0.1:18082/api/cameras/global/stream?t=0",
+    "http://127.0.0.1:18082/api/cameras/wrist_right/stream?t=0",
+    "http://127.0.0.1:18082/api/motion/emergency_stop",
+    "http://127.0.0.1:18082/api/settings",
+    "http://127.0.0.1:18082/api/settings/snapshots",
+    "http://127.0.0.1:18082/api/hardware/status",
+    "http://127.0.0.1:18082/api/motion/origin",
+    "http://127.0.0.1:18082/api/settings/log_command",
+    "http://127.0.0.1:18082/api/runtime/release_handles",
+    "http://127.0.0.1:18082/api/settings",
+    "http://127.0.0.1:18082/api/settings/snapshots",
+    "http://127.0.0.1:18082/api/hardware/status",
+    "http://127.0.0.1:18082/api/motion/origin",
+    "http://127.0.0.1:18082/api/settings/log_command"
+  ],
+  "pageErrors": [],
+  "failureVisible": true,
+  "emergencyAvailableAfterRouteFailure": true,
+  "disableAvailableOffline": true,
+  "reloadPreservesEmergencyIntent": true,
+  "emergencyFitsNarrowViewport": true
+}

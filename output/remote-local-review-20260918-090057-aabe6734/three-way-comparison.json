@@ -1,0 +1,459 @@
+{
+  "base": "6d898c9",
+  "remote": "aabe6734b2ad39945641fe8a53e107c8d3409b76",
+  "remote_changed_files": 64,
+  "classifications": {
+    "remote_added": 10,
+    "text_conflict": 19,
+    "text_merge_clean": 35
+  },
+  "conflicting_files": [
+    {
+      "path": "AGENTS.md",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "backend/app.py",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "backend/services/command_service.py",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "backend/tests/test_dataset_recorder.py",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "backend/tests/test_hardware_defaults.py",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "frontend/src/App.test.tsx",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "frontend/src/components/GlobalEmergencyStopButton.tsx",
+      "classification": "text_conflict",
+      "conflict_regions": 3
+    },
+    {
+      "path": "frontend/src/components/record/EpisodeControlPanel.tsx",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "frontend/src/components/record/PreCheckModal.tsx",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "frontend/src/stores/telemetry.test.ts",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "frontend/src/stores/telemetry.ts",
+      "classification": "text_conflict",
+      "conflict_regions": 3
+    },
+    {
+      "path": "frontend/src/views/SettingsView.tsx",
+      "classification": "text_conflict",
+      "conflict_regions": 5
+    },
+    {
+      "path": "hal/include/ForceControlRuntime.h",
+      "classification": "text_conflict",
+      "conflict_regions": 2
+    },
+    {
+      "path": "hal/include/HkvlForceDriver.h",
+      "classification": "text_conflict",
+      "conflict_regions": 2
+    },
+    {
+      "path": "hal/src/ForceControlRuntime.cpp",
+      "classification": "text_conflict",
+      "conflict_regions": 5
+    },
+    {
+      "path": "hal/src/HalCommandDispatcher.cpp",
+      "classification": "text_conflict",
+      "conflict_regions": 3
+    },
+    {
+      "path": "hal/src/HkvlForceDriver.cpp",
+      "classification": "text_conflict",
+      "conflict_regions": 10
+    },
+    {
+      "path": "hal/tests/ForceCoreTests.cpp",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "scripts/run-act-deploy.ps1",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    }
+  ],
+  "local_only_source_files": [
+    "backend/core/motion_safety.py",
+    "backend/hal_client/bounded_lane.py",
+    "backend/services/control_watchdog.py",
+    "frontend/src/components/ControlLeaseStatus.tsx",
+    "frontend/src/components/ModuleErrorBoundary.tsx",
+    "frontend/src/components/RouteErrorBoundary.tsx",
+    "frontend/src/components/ui.tsx",
+    "frontend/src/gripperDisplay.ts",
+    "frontend/src/hooks/useGripperDisplay.ts",
+    "frontend/src/hooks/useMotionEnable.ts",
+    "frontend/src/recordDisplay.ts",
+    "frontend/src/stores/controlLease.ts",
+    "frontend/src/stores/frameSelectors.ts",
+    "frontend/src/stores/motionCommands.ts",
+    "frontend/src/stores/telemetryIngress.ts",
+    "frontend/src/utils/controlFaults.ts",
+    "frontend/src/utils/controlSafety.ts",
+    "frontend/src/views/settings/CameraCard.tsx",
+    "frontend/src/views/settings/ForceSensorCard.tsx",
+    "frontend/src/views/settings/GripperCards.tsx",
+    "frontend/src/views/settings/HalCard.tsx",
+    "frontend/src/views/settings/ManualControlPanel.tsx",
+    "frontend/src/views/settings/MotionCards.tsx",
+    "frontend/src/views/settings/ParameterSnapshotMenu.tsx",
+    "frontend/src/views/settings/PicoVisionCard.tsx",
+    "frontend/src/views/settings/SafetyCard.tsx",
+    "frontend/src/views/settings/StorageCard.tsx",
+    "frontend/src/views/settings/TeleopHandCard.tsx",
+    "frontend/src/views/settings/motionHelpers.ts",
+    "frontend/src/views/settings/shared.tsx",
+    "hal/include/CommandDeadline.h",
+    "hal/include/ControlLeaseGuardian.h",
+    "hal/include/ControlLeaseState.h",
+    "hal/include/EmergencyStopState.h",
+    "hal/include/HttpConnectionWorkers.h",
+    "hal/include/WorkerExceptionBoundary.h",
+    "scripts/start-ui.ps1"
+  ],
+  "rows": [
+    {
+      "path": ".github/pull_request_template.md",
+      "classification": "remote_added"
+    },
+    {
+      "path": "AGENTS.md",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "backend/app.py",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "backend/core/config.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/core/data_contract.py",
+      "classification": "remote_added"
+    },
+    {
+      "path": "backend/core/defaults.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/core/force_config.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/core/units.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/drivers/camera_opencv.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/hal_client/client.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/hal_client/dds_client.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/services/command_service.py",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "backend/services/dataset_recorder.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/services/hardware_service.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/services/policy_bridge.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/services/stability_monitor.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/services/telemetry_hub.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/tests/test_app.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/tests/test_camera_fixed_fps.py",
+      "classification": "remote_added"
+    },
+    {
+      "path": "backend/tests/test_camera_identification.py",
+      "classification": "remote_added"
+    },
+    {
+      "path": "backend/tests/test_command_diagnostic_logging.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/tests/test_data_contract.py",
+      "classification": "remote_added"
+    },
+    {
+      "path": "backend/tests/test_dataset_recorder.py",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "backend/tests/test_diagnostic_logging.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/tests/test_hal_source_contracts.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/tests/test_hardware_defaults.py",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "backend/tests/test_normalize_origin.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/tests/test_policy_bridge.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/tests/test_stack_scripts.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "backend/tests/test_teleop_mapping.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "docs/data-contract-and-deployment.md",
+      "classification": "remote_added"
+    },
+    {
+      "path": "docs/github-upload-contract.md",
+      "classification": "remote_added"
+    },
+    {
+      "path": "frontend/src/App.test.tsx",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "frontend/src/api/index.ts",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "frontend/src/components/GlobalEmergencyStopButton.tsx",
+      "classification": "text_conflict",
+      "conflict_regions": 3
+    },
+    {
+      "path": "frontend/src/components/WristCameraIdentification.test.tsx",
+      "classification": "remote_added"
+    },
+    {
+      "path": "frontend/src/components/WristCameraIdentification.tsx",
+      "classification": "remote_added"
+    },
+    {
+      "path": "frontend/src/components/record/EpisodeControlPanel.tsx",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "frontend/src/components/record/PreCheckModal.test.tsx",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "frontend/src/components/record/PreCheckModal.tsx",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "frontend/src/data.test.ts",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "frontend/src/data.ts",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "frontend/src/stores/telemetry.test.ts",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "frontend/src/stores/telemetry.ts",
+      "classification": "text_conflict",
+      "conflict_regions": 3
+    },
+    {
+      "path": "frontend/src/types.ts",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "frontend/src/views/RecordPage.tsx",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "frontend/src/views/SettingsView.tsx",
+      "classification": "text_conflict",
+      "conflict_regions": 5
+    },
+    {
+      "path": "hal/CMakeLists.txt",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "hal/include/ForceControlRuntime.h",
+      "classification": "text_conflict",
+      "conflict_regions": 2
+    },
+    {
+      "path": "hal/include/HalCommandDispatcher.h",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "hal/include/HalVersion.h",
+      "classification": "remote_added"
+    },
+    {
+      "path": "hal/include/HkvlForceDriver.h",
+      "classification": "text_conflict",
+      "conflict_regions": 2
+    },
+    {
+      "path": "hal/include/HkvlForceProtocol.h",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "hal/src/ForceControlRuntime.cpp",
+      "classification": "text_conflict",
+      "conflict_regions": 5
+    },
+    {
+      "path": "hal/src/HalCommandDispatcher.cpp",
+      "classification": "text_conflict",
+      "conflict_regions": 3
+    },
+    {
+      "path": "hal/src/HalJson.cpp",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "hal/src/HkvlForceDriver.cpp",
+      "classification": "text_conflict",
+      "conflict_regions": 10
+    },
+    {
+      "path": "hal/src/HkvlForceProtocol.cpp",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "hal/src/LTDMCDriver.cpp",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "hal/tests/ForceCoreTests.cpp",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "scripts/normalize_origin.py",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "scripts/run-act-deploy.ps1",
+      "classification": "text_conflict",
+      "conflict_regions": 1
+    },
+    {
+      "path": "scripts/run-act-jepa-deploy.ps1",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    },
+    {
+      "path": "scripts/start-hal.ps1",
+      "classification": "text_merge_clean",
+      "conflict_regions": 0
+    }
+  ],
+  "note": "Only per-file text merge simulations on copies; no working-tree/index/branch merge performed. Clean text merge does not establish behavioral compatibility."
+}

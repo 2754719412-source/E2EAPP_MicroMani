@@ -1,0 +1,34 @@
+{
+  "blockedRequests": [
+    "http://127.0.0.1:18082/api/settings",
+    "http://127.0.0.1:18082/api/settings/snapshots",
+    "http://127.0.0.1:18082/api/hardware/status",
+    "http://127.0.0.1:18082/api/cameras/global/stream?t=0",
+    "http://127.0.0.1:18082/api/cameras/wrist_left/stream?t=0",
+    "http://127.0.0.1:18082/api/cameras/wrist_right/stream?t=0",
+    "http://127.0.0.1:18082/api/motion/emergency_stop",
+    "http://127.0.0.1:18082/api/cameras/global/stream?t=0",
+    "http://127.0.0.1:18082/api/cameras/wrist_left/stream?t=0",
+    "http://127.0.0.1:18082/api/cameras/wrist_right/stream?t=0",
+    "http://127.0.0.1:18082/api/settings",
+    "http://127.0.0.1:18082/api/settings/snapshots",
+    "http://127.0.0.1:18082/api/hardware/status",
+    "http://127.0.0.1:18082/api/runtime/release_handles",
+    "http://127.0.0.1:18082/api/settings",
+    "http://127.0.0.1:18082/api/settings/snapshots",
+    "http://127.0.0.1:18082/api/hardware/status",
+    "http://127.0.0.1:18082/api/models"
+  ],
+  "errors": [
+    "Failed to fetch",
+    "Failed to fetch"
+  ],
+  "afterFailure": {
+    "rootChildren": 1,
+    "emergencyButtons": 1,
+    "navigationVisible": true
+  },
+  "emergencyDispatchBlocked": true,
+  "navigationRecovered": true,
+  "reloadRecovered": true
+}

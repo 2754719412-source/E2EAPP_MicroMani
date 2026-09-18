@@ -1,0 +1,51 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\ForceComplianceController.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\ForceControlRuntime.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\ForceSafetyLatch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\HkvlForceDriver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\HkvlForceProtocol.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\JodellGripperDriver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\LTDMCDriver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\MotionControlThread.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\NativeTeleopController.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\Omega7Driver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="D:\E2EAPP_MicroMani\hal\include\HalVersion.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\E2EAPP_MicroMani\hal\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{AC56E76F-E4A6-320F-942E-C21A59EA5191}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{FD555EDC-CF2C-3F92-B4A8-0E2C73605119}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,563 @@
+{
+  "records": [
+    {
+      "width": 2560,
+      "path": "/model",
+      "initialError": "模型列表读取失败：TypeError: Failed to fetch重试",
+      "retryError": "模型操作失败：TypeError: Failed to fetch重试",
+      "actionError": "模型操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 2560,
+      "path": "/fine-tune",
+      "initialError": "微调任务读取失败：TypeError: Failed to fetch重试",
+      "retryError": "微调操作失败：TypeError: Failed to fetch重试",
+      "actionError": "微调操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 1920,
+      "path": "/model",
+      "initialError": "模型列表读取失败：TypeError: Failed to fetch重试",
+      "retryError": "模型操作失败：TypeError: Failed to fetch重试",
+      "actionError": "模型操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 1920,
+      "path": "/fine-tune",
+      "initialError": "微调任务读取失败：TypeError: Failed to fetch重试",
+      "retryError": "微调操作失败：TypeError: Failed to fetch重试",
+      "actionError": "微调操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 1440,
+      "path": "/model",
+      "initialError": "模型列表读取失败：TypeError: Failed to fetch重试",
+      "retryError": "模型操作失败：TypeError: Failed to fetch重试",
+      "actionError": "模型操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 1440,
+      "path": "/fine-tune",
+      "initialError": "微调任务读取失败：TypeError: Failed to fetch重试",
+      "retryError": "微调操作失败：TypeError: Failed to fetch重试",
+      "actionError": "微调操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 1201,
+      "path": "/model",
+      "initialError": "模型列表读取失败：TypeError: Failed to fetch重试",
+      "retryError": "模型操作失败：TypeError: Failed to fetch重试",
+      "actionError": "模型操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 1201,
+      "path": "/fine-tune",
+      "initialError": "微调任务读取失败：TypeError: Failed to fetch重试",
+      "retryError": "微调操作失败：TypeError: Failed to fetch重试",
+      "actionError": "微调操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 1024,
+      "path": "/model",
+      "initialError": "模型列表读取失败：TypeError: Failed to fetch重试",
+      "retryError": "模型操作失败：TypeError: Failed to fetch重试",
+      "actionError": "模型操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 1024,
+      "path": "/fine-tune",
+      "initialError": "微调任务读取失败：TypeError: Failed to fetch重试",
+      "retryError": "微调操作失败：TypeError: Failed to fetch重试",
+      "actionError": "微调操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 800,
+      "path": "/model",
+      "initialError": "模型列表读取失败：TypeError: Failed to fetch重试",
+      "retryError": "模型操作失败：TypeError: Failed to fetch重试",
+      "actionError": "模型操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 800,
+      "path": "/fine-tune",
+      "initialError": "微调任务读取失败：TypeError: Failed to fetch重试",
+      "retryError": "微调操作失败：TypeError: Failed to fetch重试",
+      "actionError": "微调操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 390,
+      "path": "/model",
+      "initialError": "模型列表读取失败：TypeError: Failed to fetch重试",
+      "retryError": "模型操作失败：TypeError: Failed to fetch重试",
+      "actionError": "模型操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    },
+    {
+      "width": 390,
+      "path": "/fine-tune",
+      "initialError": "微调任务读取失败：TypeError: Failed to fetch重试",
+      "retryError": "微调操作失败：TypeError: Failed to fetch重试",
+      "actionError": "微调操作失败：TypeError: Failed to fetch重试",
+      "emergencyVisible": true
+    }
+  ],
+  "pageErrors": [],
+  "blockedRequests": [
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/models/import"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/models/import"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/models/import"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/models/import"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/models/import"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/models/import"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/models"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/models/import"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/runtime/release_handles"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "pathname": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "GET",
+      "pathname": "/api/fine_tune/jobs"
+    },
+    {
+      "method": "POST",
+      "pathname": "/api/fine_tune/jobs"
+    }
+  ]
+}

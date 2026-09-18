@@ -1,0 +1,62 @@
+{
+  "audit_dir": "D:\\E2EAPP_MicroMani\\output\\remote-local-review-20260918-090057-aabe6734",
+  "snapshot": "D:\\E2EAPP_MicroMani\\output\\remote-local-review-20260918-090057-aabe6734\\source",
+  "head": "6d898c9df4a3b13b415e3dabd75591ed2aabc2ac",
+  "remote_revision": "aabe6734b2ad39945641fe8a53e107c8d3409b76",
+  "runtime_source": "hkvl_serial",
+  "cameras": {
+    "global": "IMX335 / index 1",
+    "globalIdentity": "USB\\VID_0ABD&PID_8050&MI_00\\7&1396F44D&0&0000",
+    "wristLeft": "IMX335 / index 0",
+    "wristLeftIdentity": "USB\\VID_0ABD&PID_8050&MI_00\\7&398F0A3&0&0000",
+    "wristRight": "IMX335 / index 2",
+    "wristRightIdentity": "USB\\VID_0ABD&PID_8050&MI_00\\8&3724732E&0&0000",
+    "previewResolution": "640x480",
+    "fps": 30
+  },
+  "storage": {
+    "datasetRoot": "~/.appstation/datasets",
+    "recordFps": 30,
+    "videoCrf": 23,
+    "pushToHub": false
+  },
+  "binaries": [
+    {
+      "path": "hal/build/HalServer.exe",
+      "exists": false
+    },
+    {
+      "path": "hal/build/HalServer.next.exe",
+      "exists": false
+    },
+    {
+      "path": "hal/build/JodellGripperWorker.exe",
+      "exists": false
+    },
+    {
+      "path": "hal/build/JodellGripperWorker.next.exe",
+      "exists": false
+    },
+    {
+      "path": "backend/native/build/appstation_fastdds_transport.dll",
+      "exists": false
+    },
+    {
+      "path": "frontend/dist/index.html",
+      "exists": true,
+      "bytes": 888,
+      "modified": "2026-09-17T09:48:37.257855",
+      "sha256": "cdedfc3c7e36661d9c409806d680bc693588f562ae67f98fa395bab82ee30c70"
+    }
+  ],
+  "python_dependencies": {
+    "fastapi": "0.141.1",
+    "pydantic": "2.13.5",
+    "opencv-python": "5.0.0.93",
+    "nidaqmx": "1.6.0",
+    "pyserial": "3.5",
+    "lerobot": null,
+    "pyarrow": null,
+    "pytest": "9.1.1"
+  }
+}

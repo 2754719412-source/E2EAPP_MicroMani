@@ -1,0 +1,22 @@
+[
+  {
+    "Path": "D:\\E2EAPP_MicroMani\\output\\remote-integration-20260918-092932\\hal-capabilities-before\\hal\\CMakeLists.txt",
+    "Hash": "9ABF8BA40D58CB42A37AB93A1473E156662667C3BBBE7B8182F0931F706A7CB1"
+  },
+  {
+    "Path": "D:\\E2EAPP_MicroMani\\output\\remote-integration-20260918-092932\\hal-capabilities-before\\hal\\src\\HalJson.cpp",
+    "Hash": "17D9FE08BC7F546CC487EBEBAB7F1920C9EFC0CE6A21CA9A7EB6AD1B99DB136E"
+  },
+  {
+    "Path": "D:\\E2EAPP_MicroMani\\output\\remote-integration-20260918-092932\\hal-capabilities-before\\hal\\src\\LTDMCDriver.cpp",
+    "Hash": "F55CDFE48DCC7C6D90E2CF99C5F06FE2B6B25D5F301D355BCD102AB25839204D"
+  },
+  {
+    "Path": "D:\\E2EAPP_MicroMani\\output\\remote-integration-20260918-092932\\hal-capabilities-before\\backend\\hal_client\\client.py",
+    "Hash": "14A5F13928859392873D56EA9DD1C9DBEFA8C8FF836A2F23ADB4064DFF9774F7"
+  },
+  {
+    "Path": "D:\\E2EAPP_MicroMani\\output\\remote-integration-20260918-092932\\hal-capabilities-before\\backend\\hal_client\\dds_client.py",
+    "Hash": "E03A608164077D6E7180DE7ABB68B7A342AA8EE59719488FE81ACF4177C64969"
+  }
+]

@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="D:\E2EAPP_MicroMani\output\remote-integration-20260918-092932\hal-skeleton-build\CMakeFiles\2bd16efacd3b341e64d7e2ad3d9b053a\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{281C79E0-F917-344D-950B-DE1065C5ECDC}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

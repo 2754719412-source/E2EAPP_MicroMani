@@ -1,0 +1,603 @@
+{
+  "startedAt": "2026-09-11T07:21:36.920Z",
+  "fixtures": [
+    "/api/datasets",
+    "/api/datasets/layout_fixture/episodes/episode_000001"
+  ],
+  "blockedRequests": [
+    "http://127.0.0.1:18082/api/settings",
+    "http://127.0.0.1:18082/api/settings/snapshots",
+    "http://127.0.0.1:18082/api/hardware/status",
+    "http://127.0.0.1:4544/favicon.svg",
+    "http://127.0.0.1:18082/api/cameras/global/stream?t=0",
+    "http://127.0.0.1:18082/api/cameras/wrist_left/stream?t=0",
+    "http://127.0.0.1:18082/api/cameras/wrist_right/stream?t=0",
+    "http://127.0.0.1:18082/api/settings",
+    "http://127.0.0.1:18082/api/settings/snapshots",
+    "http://127.0.0.1:18082/api/hardware/status"
+  ],
+  "blockedWebSockets": [
+    "ws://127.0.0.1:18082/ws",
+    "ws://127.0.0.1:18082/ws"
+  ],
+  "pageErrors": [],
+  "cases": [
+    {
+      "phase": "current",
+      "width": 800,
+      "main": {
+        "x": 64,
+        "right": 800,
+        "y": 44,
+        "bottom": 933,
+        "width": 736,
+        "height": 889,
+        "clientWidth": 736,
+        "scrollWidth": 777
+      },
+      "panel": {
+        "x": 76,
+        "right": 788,
+        "y": 119.5,
+        "bottom": 858.25,
+        "width": 712,
+        "height": 738.75,
+        "clientWidth": 710,
+        "scrollWidth": 764
+      },
+      "grid": {
+        "x": 87,
+        "right": 841,
+        "y": 160.5,
+        "bottom": 351.25,
+        "width": 754,
+        "height": 190.75,
+        "clientWidth": 754,
+        "scrollWidth": 754
+      },
+      "columns": "300px 220px 220px",
+      "videos": [
+        {
+          "x": 87,
+          "right": 387,
+          "y": 160.5,
+          "bottom": 351.25,
+          "width": 300,
+          "height": 190.75,
+          "clientWidth": 300,
+          "scrollWidth": 300
+        },
+        {
+          "x": 394,
+          "right": 614,
+          "y": 160.5,
+          "bottom": 351.25,
+          "width": 220,
+          "height": 190.75,
+          "clientWidth": 220,
+          "scrollWidth": 220
+        },
+        {
+          "x": 621,
+          "right": 841,
+          "y": 160.5,
+          "bottom": 351.25,
+          "width": 220,
+          "height": 190.75,
+          "clientWidth": 220,
+          "scrollWidth": 220
+        }
+      ],
+      "gridOverflowPanel": 53,
+      "clippedWidthByMain": 41,
+      "mainHorizontalOverflow": 41,
+      "videoOverflow": 0,
+      "bodyOverflow": 0
+    },
+    {
+      "phase": "current",
+      "width": 900,
+      "main": {
+        "x": 64,
+        "right": 900,
+        "y": 44,
+        "bottom": 933,
+        "width": 836,
+        "height": 889,
+        "clientWidth": 836,
+        "scrollWidth": 836
+      },
+      "panel": {
+        "x": 76,
+        "right": 888,
+        "y": 194.5,
+        "bottom": 933.25,
+        "width": 812,
+        "height": 738.75,
+        "clientWidth": 810,
+        "scrollWidth": 810
+      },
+      "grid": {
+        "x": 87,
+        "right": 877,
+        "y": 235.5,
+        "bottom": 426.25,
+        "width": 790,
+        "height": 190.75,
+        "clientWidth": 790,
+        "scrollWidth": 790
+      },
+      "columns": "300px 238px 238px",
+      "videos": [
+        {
+          "x": 87,
+          "right": 387,
+          "y": 235.5,
+          "bottom": 426.25,
+          "width": 300,
+          "height": 190.75,
+          "clientWidth": 300,
+          "scrollWidth": 300
+        },
+        {
+          "x": 394,
+          "right": 632,
+          "y": 235.5,
+          "bottom": 426.25,
+          "width": 238,
+          "height": 190.75,
+          "clientWidth": 238,
+          "scrollWidth": 238
+        },
+        {
+          "x": 639,
+          "right": 877,
+          "y": 235.5,
+          "bottom": 426.25,
+          "width": 238,
+          "height": 190.75,
+          "clientWidth": 238,
+          "scrollWidth": 238
+        }
+      ],
+      "gridOverflowPanel": 0,
+      "clippedWidthByMain": 0,
+      "mainHorizontalOverflow": 0,
+      "videoOverflow": 0,
+      "bodyOverflow": 0
+    },
+    {
+      "phase": "current",
+      "width": 1024,
+      "main": {
+        "x": 64,
+        "right": 1024,
+        "y": 44,
+        "bottom": 933,
+        "width": 960,
+        "height": 889,
+        "clientWidth": 960,
+        "scrollWidth": 960
+      },
+      "panel": {
+        "x": 76,
+        "right": 1012,
+        "y": 168.5,
+        "bottom": 933.203125,
+        "width": 936,
+        "height": 764.703125,
+        "clientWidth": 934,
+        "scrollWidth": 934
+      },
+      "grid": {
+        "x": 87,
+        "right": 1001,
+        "y": 209.5,
+        "bottom": 426.203125,
+        "width": 914,
+        "height": 216.703125,
+        "clientWidth": 914,
+        "scrollWidth": 914
+      },
+      "columns": "346.141px 276.922px 276.938px",
+      "videos": [
+        {
+          "x": 87,
+          "right": 433.140625,
+          "y": 209.5,
+          "bottom": 426.203125,
+          "width": 346.140625,
+          "height": 216.703125,
+          "clientWidth": 346,
+          "scrollWidth": 346
+        },
+        {
+          "x": 440.140625,
+          "right": 717.0625,
+          "y": 209.5,
+          "bottom": 426.203125,
+          "width": 276.921875,
+          "height": 216.703125,
+          "clientWidth": 277,
+          "scrollWidth": 277
+        },
+        {
+          "x": 724.0625,
+          "right": 1001,
+          "y": 209.5,
+          "bottom": 426.203125,
+          "width": 276.9375,
+          "height": 216.703125,
+          "clientWidth": 277,
+          "scrollWidth": 277
+        }
+      ],
+      "gridOverflowPanel": 0,
+      "clippedWidthByMain": 0,
+      "mainHorizontalOverflow": 0,
+      "videoOverflow": 0,
+      "bodyOverflow": 0
+    },
+    {
+      "phase": "current",
+      "width": 760,
+      "main": {
+        "x": 0,
+        "right": 760,
+        "y": -3390,
+        "bottom": 2066.125,
+        "width": 760,
+        "height": 5456.125,
+        "clientWidth": 760,
+        "scrollWidth": 760
+      },
+      "panel": {
+        "x": 10,
+        "right": 750,
+        "y": -897.5,
+        "bottom": 1898.125,
+        "width": 740,
+        "height": 2795.625,
+        "clientWidth": 738,
+        "scrollWidth": 738
+      },
+      "grid": {
+        "x": 21,
+        "right": 739,
+        "y": -856.5,
+        "bottom": 435.125,
+        "width": 718,
+        "height": 1291.625,
+        "clientWidth": 718,
+        "scrollWidth": 718
+      },
+      "columns": "718px",
+      "videos": [
+        {
+          "x": 21,
+          "right": 739,
+          "y": -856.5,
+          "bottom": -430.625,
+          "width": 718,
+          "height": 425.875,
+          "clientWidth": 718,
+          "scrollWidth": 718
+        },
+        {
+          "x": 21,
+          "right": 739,
+          "y": -423.625,
+          "bottom": 2.25,
+          "width": 718,
+          "height": 425.875,
+          "clientWidth": 718,
+          "scrollWidth": 718
+        },
+        {
+          "x": 21,
+          "right": 739,
+          "y": 9.25,
+          "bottom": 435.125,
+          "width": 718,
+          "height": 425.875,
+          "clientWidth": 718,
+          "scrollWidth": 718
+        }
+      ],
+      "gridOverflowPanel": 0,
+      "clippedWidthByMain": 0,
+      "mainHorizontalOverflow": 0,
+      "videoOverflow": 0,
+      "bodyOverflow": 0
+    },
+    {
+      "phase": "candidate",
+      "width": 800,
+      "main": {
+        "x": 64,
+        "right": 800,
+        "y": 44,
+        "bottom": 933,
+        "width": 736,
+        "height": 889,
+        "clientWidth": 736,
+        "scrollWidth": 736
+      },
+      "panel": {
+        "x": 76,
+        "right": 788,
+        "y": 122.5,
+        "bottom": 855.453125,
+        "width": 712,
+        "height": 732.953125,
+        "clientWidth": 710,
+        "scrollWidth": 710
+      },
+      "grid": {
+        "x": 87,
+        "right": 777,
+        "y": 163.5,
+        "bottom": 348.453125,
+        "width": 690,
+        "height": 184.953125,
+        "clientWidth": 690,
+        "scrollWidth": 690
+      },
+      "columns": "289.703px 193.141px 193.156px",
+      "videos": [
+        {
+          "x": 87,
+          "right": 376.703125,
+          "y": 163.5,
+          "bottom": 348.453125,
+          "width": 289.703125,
+          "height": 184.953125,
+          "clientWidth": 290,
+          "scrollWidth": 290
+        },
+        {
+          "x": 383.703125,
+          "right": 576.84375,
+          "y": 163.5,
+          "bottom": 348.453125,
+          "width": 193.140625,
+          "height": 184.953125,
+          "clientWidth": 193,
+          "scrollWidth": 193
+        },
+        {
+          "x": 583.84375,
+          "right": 777,
+          "y": 163.5,
+          "bottom": 348.453125,
+          "width": 193.15625,
+          "height": 184.953125,
+          "clientWidth": 193,
+          "scrollWidth": 193
+        }
+      ],
+      "gridOverflowPanel": 0,
+      "clippedWidthByMain": 0,
+      "mainHorizontalOverflow": 0,
+      "videoOverflow": 0,
+      "bodyOverflow": 0
+    },
+    {
+      "phase": "candidate",
+      "width": 900,
+      "main": {
+        "x": 64,
+        "right": 900,
+        "y": 44,
+        "bottom": 933,
+        "width": 836,
+        "height": 889,
+        "clientWidth": 836,
+        "scrollWidth": 836
+      },
+      "panel": {
+        "x": 76,
+        "right": 888,
+        "y": 175.5,
+        "bottom": 932.5625,
+        "width": 812,
+        "height": 757.0625,
+        "clientWidth": 810,
+        "scrollWidth": 810
+      },
+      "grid": {
+        "x": 87,
+        "right": 877,
+        "y": 216.5,
+        "bottom": 425.5625,
+        "width": 790,
+        "height": 209.0625,
+        "clientWidth": 790,
+        "scrollWidth": 790
+      },
+      "columns": "332.562px 221.719px 221.719px",
+      "videos": [
+        {
+          "x": 87,
+          "right": 419.5625,
+          "y": 216.5,
+          "bottom": 425.5625,
+          "width": 332.5625,
+          "height": 209.0625,
+          "clientWidth": 333,
+          "scrollWidth": 333
+        },
+        {
+          "x": 426.5625,
+          "right": 648.28125,
+          "y": 216.5,
+          "bottom": 425.5625,
+          "width": 221.71875,
+          "height": 209.0625,
+          "clientWidth": 222,
+          "scrollWidth": 222
+        },
+        {
+          "x": 655.28125,
+          "right": 877,
+          "y": 216.5,
+          "bottom": 425.5625,
+          "width": 221.71875,
+          "height": 209.0625,
+          "clientWidth": 222,
+          "scrollWidth": 222
+        }
+      ],
+      "gridOverflowPanel": 0,
+      "clippedWidthByMain": 0,
+      "mainHorizontalOverflow": 0,
+      "videoOverflow": 0,
+      "bodyOverflow": 0
+    },
+    {
+      "phase": "candidate",
+      "width": 1024,
+      "main": {
+        "x": 64,
+        "right": 1024,
+        "y": 44,
+        "bottom": 933,
+        "width": 960,
+        "height": 889,
+        "clientWidth": 960,
+        "scrollWidth": 960
+      },
+      "panel": {
+        "x": 76,
+        "right": 1012,
+        "y": 146.5,
+        "bottom": 933.453125,
+        "width": 936,
+        "height": 786.953125,
+        "clientWidth": 934,
+        "scrollWidth": 934
+      },
+      "grid": {
+        "x": 87,
+        "right": 1001,
+        "y": 187.5,
+        "bottom": 426.453125,
+        "width": 914,
+        "height": 238.953125,
+        "clientWidth": 914,
+        "scrollWidth": 914
+      },
+      "columns": "385.703px 257.141px 257.156px",
+      "videos": [
+        {
+          "x": 87,
+          "right": 472.703125,
+          "y": 187.5,
+          "bottom": 426.453125,
+          "width": 385.703125,
+          "height": 238.953125,
+          "clientWidth": 386,
+          "scrollWidth": 386
+        },
+        {
+          "x": 479.703125,
+          "right": 736.84375,
+          "y": 187.5,
+          "bottom": 426.453125,
+          "width": 257.140625,
+          "height": 238.953125,
+          "clientWidth": 257,
+          "scrollWidth": 257
+        },
+        {
+          "x": 743.84375,
+          "right": 1001,
+          "y": 187.5,
+          "bottom": 426.453125,
+          "width": 257.15625,
+          "height": 238.953125,
+          "clientWidth": 257,
+          "scrollWidth": 257
+        }
+      ],
+      "gridOverflowPanel": 0,
+      "clippedWidthByMain": 0,
+      "mainHorizontalOverflow": 0,
+      "videoOverflow": 0,
+      "bodyOverflow": 0
+    },
+    {
+      "phase": "candidate",
+      "width": 760,
+      "main": {
+        "x": 0,
+        "right": 760,
+        "y": -3390,
+        "bottom": 2066.125,
+        "width": 760,
+        "height": 5456.125,
+        "clientWidth": 760,
+        "scrollWidth": 760
+      },
+      "panel": {
+        "x": 10,
+        "right": 750,
+        "y": -897.5,
+        "bottom": 1898.125,
+        "width": 740,
+        "height": 2795.625,
+        "clientWidth": 738,
+        "scrollWidth": 738
+      },
+      "grid": {
+        "x": 21,
+        "right": 739,
+        "y": -856.5,
+        "bottom": 435.125,
+        "width": 718,
+        "height": 1291.625,
+        "clientWidth": 718,
+        "scrollWidth": 718
+      },
+      "columns": "718px",
+      "videos": [
+        {
+          "x": 21,
+          "right": 739,
+          "y": -856.5,
+          "bottom": -430.625,
+          "width": 718,
+          "height": 425.875,
+          "clientWidth": 718,
+          "scrollWidth": 718
+        },
+        {
+          "x": 21,
+          "right": 739,
+          "y": -423.625,
+          "bottom": 2.25,
+          "width": 718,
+          "height": 425.875,
+          "clientWidth": 718,
+          "scrollWidth": 718
+        },
+        {
+          "x": 21,
+          "right": 739,
+          "y": 9.25,
+          "bottom": 435.125,
+          "width": 718,
+          "height": 425.875,
+          "clientWidth": 718,
+          "scrollWidth": 718
+        }
+      ],
+      "gridOverflowPanel": 0,
+      "clippedWidthByMain": 0,
+      "mainHorizontalOverflow": 0,
+      "videoOverflow": 0,
+      "bodyOverflow": 0
+    }
+  ],
+  "proposedCss": "@media (min-width: 761px) and (max-width: 1200px) { .dataset-video-grid { grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 0.8fr)); } }"
+}

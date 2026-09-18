@@ -26,8 +26,18 @@ frontend/output/playwright/
 __MACOSX/
 
 # Local tool config
-.claude/
-.agents/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/micromani-frontend/
+!.claude/skills/micromani-backend/
+!.claude/skills/micromani-hal/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/micromani-frontend/
+!.agents/skills/micromani-backend/
+!.agents/skills/micromani-hal/
 .agents/skills/speckit-git-*/
 
 # C++ build output

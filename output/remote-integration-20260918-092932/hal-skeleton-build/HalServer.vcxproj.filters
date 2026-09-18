@@ -1,0 +1,75 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\HalCommandDispatcher.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\HalDdsControlServer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\HalHttpServer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\HalJson.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\HalServer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\TeleopFollowerTargetSubscriber.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\TeleopHardwareTargetExecutor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\TeleopLeaderPublisher.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="D:\E2EAPP_MicroMani\hal\src\TeleopMappingNode.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="D:\E2EAPP_MicroMani\hal\include\HalVersion.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\E2EAPP_MicroMani\hal\include\HalCommandDispatcher.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\E2EAPP_MicroMani\hal\include\HalDdsControlServer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\E2EAPP_MicroMani\hal\include\HalHttpServer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\E2EAPP_MicroMani\hal\include\HalJson.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\E2EAPP_MicroMani\hal\include\TeleopDdsTypes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\E2EAPP_MicroMani\hal\include\TeleopFollowerTargetSubscriber.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\E2EAPP_MicroMani\hal\include\TeleopHardwareTargetExecutor.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\E2EAPP_MicroMani\hal\include\TeleopLeaderPublisher.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\E2EAPP_MicroMani\hal\include\TeleopMappingNode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="D:\E2EAPP_MicroMani\hal\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{AC56E76F-E4A6-320F-942E-C21A59EA5191}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{FD555EDC-CF2C-3F92-B4A8-0E2C73605119}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

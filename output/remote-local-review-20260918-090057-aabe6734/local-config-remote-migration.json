@@ -1,0 +1,28 @@
+{
+  "source_module": "D:\\E2EAPP_MicroMani\\output\\remote-local-review-20260918-090057-aabe6734\\source\\backend\\core\\config.py",
+  "camera_binding_changes": {
+    "global": {
+      "before": "IMX335 / index 1",
+      "after": "IMX335 / index 0"
+    },
+    "globalIdentity": {
+      "before": "USB\\VID_0ABD&PID_8050&MI_00\\7&1396F44D&0&0000",
+      "after": "20250606105"
+    },
+    "wristLeft": {
+      "before": "IMX335 / index 0",
+      "after": "IMX335 / index 1"
+    },
+    "wristLeftIdentity": {
+      "before": "USB\\VID_0ABD&PID_8050&MI_00\\7&398F0A3&0&0000",
+      "after": "PCIROOT(0)#PCI(1400)#USBROOT(0)#USB(5)#USB(3)#USB(4)"
+    },
+    "wristRightIdentity": {
+      "before": "USB\\VID_0ABD&PID_8050&MI_00\\8&3724732E&0&0000",
+      "after": "PCIROOT(0)#PCI(1400)#USBROOT(0)#USB(2)#USB(4)#USB(2)"
+    }
+  },
+  "force_source_before": "hkvl_serial",
+  "force_source_after": "hkvl_serial",
+  "local_config_unchanged": true
+}

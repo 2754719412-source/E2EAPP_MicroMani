@@ -1,0 +1,1910 @@
+[
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7bbfb7571a05301af10e1cfb4a6dc1a2be74def7",
+    "path": ".gitignore"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "efbbda974437e49bd3903e28f8d2663bad9f7413",
+    "path": ".specify/extensions.yml"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a222eb30937f589c6cf27db3e318b604069ca122",
+    "path": ".specify/extensions/.registry"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "31ba75c30f23e1af082a405c24260b75305582fe",
+    "path": ".specify/extensions/git/README.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "e606f911df9d85bd6adcb94ec282f4a70940d996",
+    "path": ".specify/extensions/git/commands/speckit.git.commit.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "1a9c5e35da8e14d9bccf73da610e5e4c5b977073",
+    "path": ".specify/extensions/git/commands/speckit.git.feature.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "4451ee6b77cb73331d0696ca55742497c7f7db38",
+    "path": ".specify/extensions/git/commands/speckit.git.initialize.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "712a3e8b8c7853a3360814e6465f58575ac9a28c",
+    "path": ".specify/extensions/git/commands/speckit.git.remote.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "dd84618cb81bc0b1e1d8f7b034855965a4f7228d",
+    "path": ".specify/extensions/git/commands/speckit.git.validate.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "8c414babe65d0045d7afc817582cd142c3e925bc",
+    "path": ".specify/extensions/git/config-template.yml"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "13c1977ea173a6b6dcf0aa4cea649a6ae75508d5",
+    "path": ".specify/extensions/git/extension.yml"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "8c414babe65d0045d7afc817582cd142c3e925bc",
+    "path": ".specify/extensions/git/git-config.yml"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f0b423187b6ec5f46a03faddb08f183c84ec6413",
+    "path": ".specify/extensions/git/scripts/bash/auto-commit.sh"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f7aa31610e35e4a721514970c575cf8a13e8ba3e",
+    "path": ".specify/extensions/git/scripts/bash/create-new-feature.sh"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b78356d1c6914121921325d0f69031193604a817",
+    "path": ".specify/extensions/git/scripts/bash/git-common.sh"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "296e363b94d0732f52ab65f84f7412daa9cf8c12",
+    "path": ".specify/extensions/git/scripts/bash/initialize-repo.sh"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "4a8b0e00cdf05d3658aeaadd3d8b9f73da8fa5cb",
+    "path": ".specify/extensions/git/scripts/powershell/auto-commit.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b579f051608e02cabc45f9bc4b00e3314de2f8bf",
+    "path": ".specify/extensions/git/scripts/powershell/create-new-feature.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "82210000b696db8649607d16f3e18990280c01ad",
+    "path": ".specify/extensions/git/scripts/powershell/git-common.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "324240a3e745357ffb40f1834d31aebf5c5bf182",
+    "path": ".specify/extensions/git/scripts/powershell/initialize-repo.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "d181fd1e088af5b7caef1f46b66aa7aa143bf69c",
+    "path": ".specify/feature.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a30baa3af4e77c606c63ce8149d409f211c9dd9f",
+    "path": ".specify/init-options.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "60509b46dec6d0ef5652e1a223812b372c1e0313",
+    "path": ".specify/integration.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a58dac4315ceb141d24acea3a8df0d1f2f5793e9",
+    "path": ".specify/integrations/codex.manifest.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "9571240c72f70b627dc928f2a604f98e46dd64ca",
+    "path": ".specify/integrations/speckit.manifest.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "8a4d8b984907ef24675aa5605dbb9de6bd8edf5a",
+    "path": ".specify/memory/constitution.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "91667e9ef1da000559671c4c5e268d57b54ccd4b",
+    "path": ".specify/scripts/powershell/check-prerequisites.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ffc6d73b3ca28dcbdaeea8c84280513b5ac45fe9",
+    "path": ".specify/scripts/powershell/common.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2f23283fc48f34aa28fd84a111039a37aab124e8",
+    "path": ".specify/scripts/powershell/create-new-feature.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "15ae5575448dba5584b6d1c1ec83e710e7ce7cb9",
+    "path": ".specify/scripts/powershell/setup-plan.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c4aa1666eaa973bf249d1683fcab49b4717898e0",
+    "path": ".specify/templates/checklist-template.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a4670ff46919b276a4c9663b4ca51830108fcfc0",
+    "path": ".specify/templates/constitution-template.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b2619f35a52ef263cc5db63d5c2b406deba5a49e",
+    "path": ".specify/templates/plan-template.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ede7a62af7018f91d613f4696b83c5892a8280b4",
+    "path": ".specify/templates/spec-template.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "721c01cb9842a52aa92456699ce166044684b786",
+    "path": ".specify/templates/tasks-template.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "bf18451029e514ba10811af9adf3a502c39050a9",
+    "path": ".specify/workflows/speckit/workflow.yml"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2a60c025c6c97222d31b4cd57685524fd55c6ba2",
+    "path": ".specify/workflows/workflow-registry.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "5ea899cd845b9ccb8f2ee7a97680f957e75d08b3",
+    "path": "AGENTS.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7e988cbfd6451af8629d2342f7c66023bc0c8be7",
+    "path": "AppStation_后端开发指南_for_AI_Agent_v1.1.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "065be87a92e8adcc6853b15d86090af23db28684",
+    "path": "CONTROL_TELEOP_REFERENCE_VERIFIED.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2a9d5a0719e4e0b3e0fd1dca260b4fe25ddea67e",
+    "path": "Start-App.cmd"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "66748a71e237ebd81cdd62778cfe7ba3b3b0971d",
+    "path": "Stop-App.cmd"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "65288a488a7a058c10d0a7406d83b96bfb736d95",
+    "path": "app-main-DKFfP-X-.js"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f79cc47c35efa8c706ee367f871221f63d86ded9",
+    "path": "backend/__init__.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "e2510df637c8061d920ec007432fd396e9096632",
+    "path": "backend/app.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "dede34563f626e4c2cbce33be064ce384a68fb31",
+    "path": "backend/app_factory.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "614d0026ae7a4af397ee61f5b5cd052ca5c15443",
+    "path": "backend/core/__init__.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ae81eb4b17f4bf3efa374965cf10a77e23c30ef1",
+    "path": "backend/core/config.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "92ad29a00fa1e5ea2d93a9d05bdba1c801e01d91",
+    "path": "backend/core/defaults.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "1776363c42e913e4b848f89780ede7f4c79874ba",
+    "path": "backend/core/force_config.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f82cd980baed6217173d33f15268906ce141ccfc",
+    "path": "backend/core/gripper_protection.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7518676493e98f7a019da439191f96a2df353bab",
+    "path": "backend/core/logging.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "07b082a0a04abac9de44fcca2d5fa96d45e788e3",
+    "path": "backend/core/motion_limits.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "3b370fb4cc8c1d7ca73d9acecbb6c2954c9a04fb",
+    "path": "backend/core/operator_view.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b02dc858e254a1b5db02aac7dd6f2dfdc2ff783d",
+    "path": "backend/core/schemas.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "58a0ee40408c04762182497aa03a23f607807286",
+    "path": "backend/core/units.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "91f0517f77bf36ca5dea88c1cfbca3ab1a9852d5",
+    "path": "backend/drivers/__init__.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "fdc6df2bf1c82594900988ddd171129a64c63ba2",
+    "path": "backend/drivers/camera_opencv.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "eb1bc791ae936b4d166ca3e328dab097a610837d",
+    "path": "backend/drivers/force_nidaq.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b63319e4316f33cd2cc68417f279a2622596dac8",
+    "path": "backend/drivers/gripper_rs485.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "162cbd717e31d12bcab1cd600ad4f5477c2eba65",
+    "path": "backend/drivers/pico_adb.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "447286310a342252d7367b6d3d9172ecb04280a0",
+    "path": "backend/hal_client/__init__.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "dadebd9701613cfe1e69f938cdae8e49d237daab",
+    "path": "backend/hal_client/client.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "810b2586828b6c687ae9d71782452fd2fabc19b2",
+    "path": "backend/hal_client/dds_client.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6b7befb67239c0e76783626ded2043475508ab74",
+    "path": "backend/hal_client/dds_runtime.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a066ac9469d6a1c1d40978618b962d1c67970f75",
+    "path": "backend/hal_client/dds_types.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "bfdd67efd057c6bd3fa7a640af5afa644136c158",
+    "path": "backend/hal_client/protocol.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "4d1c1bc1b502add2ce8cd82859627f74dae76726",
+    "path": "backend/native/appstation_fastdds_transport.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "8b90c03d6b5d91d80e3aeff7ca2265983eaee9b9",
+    "path": "backend/native/build_fastdds_transport.cmd"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "03a0ad3fb09873b3d1f1d2599d3fdcbaaa85ad18",
+    "path": "backend/pyproject.toml"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ee67ffa0b1259deaf184de8910cf07d2533c1720",
+    "path": "backend/services/__init__.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f2bb5c09a23d5ab5251578cfac7c31a061b131e4",
+    "path": "backend/services/command_service.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ab559fd5db1d3d262dfa0c6fcc5e00a7872d42c8",
+    "path": "backend/services/dataset_recorder.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "58a4e56fd254438a05337721caad80bc0b72984e",
+    "path": "backend/services/gripper_backend.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b96e3384e182507c4339ed15f8035bc7b945cbb3",
+    "path": "backend/services/gripper_router.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "538243b919cd1b6dd41be4243ae1e6098ad54e6a",
+    "path": "backend/services/hardware_service.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "9552bce6288f4fa9ad758e976f6bf715955975d6",
+    "path": "backend/services/pico_network.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "3aea09bdab93e8b811dd8ceaf4105b326c939381",
+    "path": "backend/services/policy_bridge.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "fc3abe112d8f8d320f9897b28a6922e97932726f",
+    "path": "backend/services/policy_service.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "22d99c1741f710e249e98892bfe3901546a2ff99",
+    "path": "backend/services/stability_monitor.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "925bd98e50ba7a8df4ba12db9f96a33c4d42ea23",
+    "path": "backend/services/telemetry_hub.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "605ca86b5f71b0a49d1287e69a1c5e06670501eb",
+    "path": "backend/services/teleop_mapping.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ee944f6f87a914ac7b8ea28e878bdc1cc6d94e44",
+    "path": "backend/tests/HOME_SETTINGS_TEST_PLAN.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ae599d8e4b8ca71148aa8be83ca9444331c7c736",
+    "path": "backend/tests/__init__.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f301420f112de026eafd983ef80a2e86c7c0950f",
+    "path": "backend/tests/test_app.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ece0ca7866d5cec27da4ca14f605c24b33b31684",
+    "path": "backend/tests/test_camera_format.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "aabd0aa8a719f036b8d28ab4a5edb12fbff2cdcc",
+    "path": "backend/tests/test_camera_identification.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "fd602a6d064b0e3e4c733abe95029e43542d84f3",
+    "path": "backend/tests/test_command_diagnostic_logging.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "096aea5e7ff31102547b21376cd491fc8fa29359",
+    "path": "backend/tests/test_dataset_recorder.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c0b5122b2a652d54e2e134157002a30acc36de08",
+    "path": "backend/tests/test_diagnostic_logging.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "cb30da2954fffa0337df607302589ac30ccd2fe2",
+    "path": "backend/tests/test_force_axis_calibration.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "1e4fd913a83f3c955df22005bc2a9f06693718c5",
+    "path": "backend/tests/test_force_config.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "44a288e75c7174972a50d3260169ddb0e600e6ac",
+    "path": "backend/tests/test_force_nidaq_driver.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "9999d1b00166709a75fa3747bbe677accdd7c9ba",
+    "path": "backend/tests/test_gripper_driver.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b5f4bed9ff2fbad1f1ac6bd68af9f055686f2e6e",
+    "path": "backend/tests/test_gripper_router.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "76ba20774d86da5fe6a5b41ba21912d4c4f282ac",
+    "path": "backend/tests/test_hal_dds_client.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "1fe8c4426002cd21488c6d9a134d53db1a179d30",
+    "path": "backend/tests/test_hal_native_acceptance_report.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "986a44982bdb5ed52b33a164a1f85e62541bf436",
+    "path": "backend/tests/test_hal_protocol.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b55d33fca8ab5a6ce12a423a8aee4c2e8a21b0c1",
+    "path": "backend/tests/test_hal_source_contracts.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a9a4ea41637a1e957dd7a68d836f5462eb82a743",
+    "path": "backend/tests/test_hal_transport_selection.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "42171a65ea231ee41c956cd0490d0df89d4effec",
+    "path": "backend/tests/test_hardware_defaults.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b5c84ce805aec6d448541959f6831cea8a868527",
+    "path": "backend/tests/test_import_icf_teleop_config.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "d52e20c467a4ca695752d4ac77d9d2aaa1c13056",
+    "path": "backend/tests/test_normalize_origin.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b80e8136de0b02a8bad71383959838e49a477040",
+    "path": "backend/tests/test_operator_view.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "eeac76fa322bdc056863b1ef01ab11f1f1fc84ae",
+    "path": "backend/tests/test_pico_adb_driver.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6333a882b0088e3e27aedc67bdb10971aaee4da2",
+    "path": "backend/tests/test_pico_network.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "113647d2a6f626a85d7768c5359654d24da203e9",
+    "path": "backend/tests/test_policy_bridge.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "baf425f77e14d299148f957c555dd219cc788f1d",
+    "path": "backend/tests/test_probe_jodell_dual_com.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "84813e5d2b66ecb8629c0b10f3e6ce23298eb6d5",
+    "path": "backend/tests/test_stability_monitor.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f9557e2f48a8126ada20cc69325d68da707a71e0",
+    "path": "backend/tests/test_stack_scripts.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b79a531525a5297befd0d18dfc5b77f68b4220ae",
+    "path": "backend/tests/test_telemetry_hub.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6d0067418d21242acbba114eb4793c56b07d4bca",
+    "path": "backend/tests/test_teleop_mapping.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "305e125e04a1dc20138d4e8d15b760ddc36e3b2c",
+    "path": "backend/tests/test_units.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c93ab9c79fd38a8cc6082a753ca6e3c44385b19f",
+    "path": "backend/vendor/jodell/README.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6c1336257711bb5bd2442b68fbc0014098f15f4d",
+    "path": "backend/workers/__init__.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "32d74f452c378abc0d4e2935681db499babf59d5",
+    "path": "backend/workers/camera_capture_worker.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c11055e52e1746593411e8dd168d99668a379d10",
+    "path": "claude.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "1dc71cd8a0bd6422ab3a6262b9c7f201e71075d6",
+    "path": "docs/act-deploy-usage.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2a2f038557eec6aa8a1e7d5d6d4547716617cb49",
+    "path": "docs/current-teleop-and-gripper-strategy.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "0cdd5b7a42e94d7eb11c5aca6b6e8312c6279c3f",
+    "path": "docs/dds-bridge.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "8281cc130c1eb524a01da82156e2f9dc3be4abff",
+    "path": "docs/superpowers/plans/2026-05-18-frontend-ui-optimization.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "31c0852d20158d841c310ae5f81d0cb82d4ad07b",
+    "path": "docs/superpowers/plans/2026-05-20-micromani-runtime-and-teleop-fixes.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "3afc0e3acacc10d7a3cf11a9f1432c3790b49458",
+    "path": "docs/superpowers/plans/2026-06-15-backend-gripper-decoupling-increment-1.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "3301e6eaec28860ee799fa48803ba939bca967bc",
+    "path": "docs/superpowers/plans/2026-06-16-hal-cpp-direct-dds.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "d0f9596687f406f6782fc30b490939f3b6eba144",
+    "path": "docs/superpowers/plans/2026-06-16-operator-view-side-rename.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "55d670db0526ace68178b518e66f18604f7f9967",
+    "path": "docs/superpowers/plans/2026-07-27-swap-wrist-camera-mapping.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "20ba0d01f5adc884aecd93a5e05543758f2a9f5b",
+    "path": "docs/superpowers/plans/2026-07-28-force-chart-side-mapping.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7c86b35a7c8993798ec79c59965db4f7ae45eef6",
+    "path": "docs/superpowers/plans/2026-07-28-hkvl-hardware-side-port-binding.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "720c8b8387f048b8557967338a60e39fadce1a3b",
+    "path": "docs/superpowers/plans/2026-07-28-hkvl-motion-aligned-force-signs.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "16a77fda33294fd3ce524f2a61208005e9002a0e",
+    "path": "docs/superpowers/plans/2026-07-28-hkvl-official-stop-thresholds.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "9f8c837ce12c5fbaad9ac42e280eabf4b47c2d50",
+    "path": "docs/superpowers/plans/2026-08-04-card0-yaw-motion-permissions.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "eda943d632a8e4038f5a5dd952c12bb71a1b3a8e",
+    "path": "docs/superpowers/plans/2026-08-04-hkvl-reconfigure-tare.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a3219f95532c2581d6a6ee14a372f549864e6bf9",
+    "path": "docs/superpowers/specs/2026-05-18-frontend-ui-optimization-design.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "e29483160d347d85855abbdf75e07fd259876787",
+    "path": "docs/superpowers/specs/2026-07-27-swap-wrist-camera-mapping-design.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "490bafd6f53979a99c37f475cee674e5f49a2b0a",
+    "path": "docs/superpowers/specs/2026-07-28-force-chart-side-mapping-design.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "eec72fcf6c97e513f767a6a696205ba210df001d",
+    "path": "docs/superpowers/specs/2026-07-28-hkvl-hardware-side-port-binding-design.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "5617801784463e45bf8e48779074177b0ee496f4",
+    "path": "docs/superpowers/specs/2026-07-28-hkvl-motion-aligned-force-signs-design.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "682375f0ab8d7df2cd5d989c77ffb25642e34d42",
+    "path": "docs/superpowers/specs/2026-07-28-hkvl-official-stop-thresholds-design.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a42cae984253f91bd94e54a40c90660a5ad738f0",
+    "path": "docs/superpowers/specs/2026-08-04-card0-yaw-motion-permissions-design.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "fc9258ccdf9f30a320c3297099520d7602cb36e5",
+    "path": "docs/superpowers/specs/2026-08-04-hkvl-reconfigure-tare-design.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "4021f9c1866eb965fe66ecc8bf204851dc48f03f",
+    "path": "docs/teleop-routing-audit.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a547bf36d8d11a4f89c59c144f24795749086dd1",
+    "path": "frontend/.gitignore"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7dbf7ebf3b2a3d84ad526bc47810d1d211331b8b",
+    "path": "frontend/README.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6078ee9147abf2ff5ae6500243c56fe1e4c2558c",
+    "path": "frontend/eslint.config.js"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "408cf8839b6651cffa5fa09b88ab02c2b8468feb",
+    "path": "frontend/index.html"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "9e1551e3d56423e697a76f87a6ace3a67715423a",
+    "path": "frontend/output/camera-debug/global-snapshot.jpg"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f4905aaddd094334c58324703b96d87fa0fb8a6b",
+    "path": "frontend/output/camera-debug/global-stream-first.jpg"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c46e7bb1e8e0563dd3504cd639cd228729b3b995",
+    "path": "frontend/output/camera-debug/inspect-record.mjs"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "0beb2419f3ad42f35ec5b50231756b2f3692af8d",
+    "path": "frontend/output/camera-debug/page-record-current.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7afac16cda6e7f1506a5247195166f6108867a7e",
+    "path": "frontend/output/camera-debug/page-record-snapshot-mode.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c2c920722faefb9d5d0bd048bacb15f01028e3db",
+    "path": "frontend/output/camera-debug/wrist_left-snapshot.jpg"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c2c920722faefb9d5d0bd048bacb15f01028e3db",
+    "path": "frontend/output/camera-debug/wrist_left-stream-first.jpg"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "fc75b74ecf973dc0798704c57e6d91c41a7ea917",
+    "path": "frontend/output/camera-debug/wrist_right-snapshot.jpg"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "fc75b74ecf973dc0798704c57e6d91c41a7ea917",
+    "path": "frontend/output/camera-debug/wrist_right-stream-first.jpg"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "84a2c99496795437bb5b2c551f2c5b56a3cde795",
+    "path": "frontend/output/playwright/record-camera-4x3-debug.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6e81b966f48230a7c2bd69c3b3ecf22e6304f90b",
+    "path": "frontend/output/playwright/record-camera-debug.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c168e5e0e81fa5e5dee70cfef02bb09032a58644",
+    "path": "frontend/output/playwright/record-camera-final-debug.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "8830944d933d90c5abac6e7eb14ab336cd13074d",
+    "path": "frontend/output/ui-audit-current/auto-1440x900.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "e7b5fc8b75510c3d4cf566e89abad911e7992edb",
+    "path": "frontend/output/ui-audit-current/auto-390x844.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7f3600bbd2e7b1fc5955473bcafe2552110650d1",
+    "path": "frontend/output/ui-audit-current/button-audit.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "12d40e656c40ae938c9b3467add226e4b502667b",
+    "path": "frontend/output/ui-audit-current/camera-layout-desktop-1920.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6989933b9df944c3b49a9b80c4a620a038bafefe",
+    "path": "frontend/output/ui-audit-current/camera-layout-narrow-760.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "1fc90e4094ce455ccb4d9ec36bbd5db51f72845f",
+    "path": "frontend/output/ui-audit-current/camera-settings-after.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "9533119e7a2e24f808e6c26c89be6f4149b0c0ad",
+    "path": "frontend/output/ui-audit-current/camera-settings-controls-after.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "5a05473029d3f6be531b6f2da1c557df45c0ad1b",
+    "path": "frontend/output/ui-audit-current/dashboard-1440x900.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "74e6145ca791d7cd8126de162ae7d446b3eb413f",
+    "path": "frontend/output/ui-audit-current/dashboard-390x844.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7d7d1ebd77efd05090f347378f731c9db58e0ff6",
+    "path": "frontend/output/ui-audit-current/dataset-1440x900.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a099f3140dbd16d81145bc4c407251c7a810fb5c",
+    "path": "frontend/output/ui-audit-current/dataset-390x844.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "bfc30d4f2e430c1ff6dfea460efc8d3f7180797e",
+    "path": "frontend/output/ui-audit-current/fine-tune-1440x900.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "047ce6375af2bfb7e25fe7b2337faa2b91491d92",
+    "path": "frontend/output/ui-audit-current/fine-tune-390x844.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "35789e550259816f8c5a735a8c72d45b7ffe1642",
+    "path": "frontend/output/ui-audit-current/model-1440x900.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f9b52284e9578f50db3865f01971a4cb454df23a",
+    "path": "frontend/output/ui-audit-current/model-390x844.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "b5ff27d503a4c1f3bb5adff1ac5e3bbefbd16a00",
+    "path": "frontend/output/ui-audit-current/record-1440x900.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "730cd6072edb5642a9f304531256c8e22501bf9c",
+    "path": "frontend/output/ui-audit-current/record-390x844.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "96eaf1a75cc9a68e41ac7ea4c4147347a1e53451",
+    "path": "frontend/output/ui-audit-current/settings-1440x900.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "54e76bc36ae1eff8e0c4000e70805b8667a0ef25",
+    "path": "frontend/output/ui-audit-current/settings-390x844.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "495371d945cf78030639598963dabf0d8731ab10",
+    "path": "frontend/output/ui-audit-current/settings-manual-1440x900.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "31099c9ea336fb5931a841311248f7e98d0be820",
+    "path": "frontend/output/ui-audit-current/settings-manual-390x844.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "70e7cd63c16ed17257f186c0e8a45d8eab337330",
+    "path": "frontend/output/ui-audit-current/settings-teleop-color-check-enlarged.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2dab3b632a968de8a1529325abaeb75376b88927",
+    "path": "frontend/output/ui-audit-current/settings-teleop-color-check-final.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "beb1539b31c6a05789346512901d94d38b8bcf95",
+    "path": "frontend/output/ui-audit-current/settings-teleop-color-check-muted.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "646a0166f73efe4b7e9cf1840ac8d13c5142ebbd",
+    "path": "frontend/output/ui-audit-current/settings-teleop-color-check-strong.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "69cfa2ff9a93c5e9dae56b6ff22111513b8b95e3",
+    "path": "frontend/output/ui-audit-current/settings-teleop-color-check.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "cff6c823d8bc19624624f5861106e3a386bb4397",
+    "path": "frontend/package-lock.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "d4b5cea5bac227d17865cf61343762d4340aaecb",
+    "path": "frontend/package.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6893eb13237060adc0c968a690149a49faa2d7d3",
+    "path": "frontend/public/favicon.svg"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "e9522193d9f796a9748e9ad8c952a5df73c87db9",
+    "path": "frontend/public/icons.svg"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2c88c027a4adb1a45aa404aa3dadf7202cb58163",
+    "path": "frontend/scripts/serve-dist.mjs"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6a869f10bf075e7f07bd9810fb36093dd65da7a7",
+    "path": "frontend/scripts/visual-check.mjs"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "31879a88c60488dad2a9ecfd74fdc43b8a91719d",
+    "path": "frontend/src/App.test.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "91f9645321f2468eaf4cded0a6873a6bda312132",
+    "path": "frontend/src/App.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "693f7a29a7bee984deb7b6f2882cdc5a54a5ae0a",
+    "path": "frontend/src/DatasetView.lazy.test.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "03145b63ad9c2ff5ed60959d654511dad53e21a6",
+    "path": "frontend/src/api.lifecycle.test.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "16e1e4f798825b2e8cfde3a7a545475d27b5388d",
+    "path": "frontend/src/api/index.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "02251f4b956c55af2d76fd0788124d7eee2b45eb",
+    "path": "frontend/src/assets/hero.png"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6c87de9bb3358469122cc991d5cf578927246184",
+    "path": "frontend/src/assets/react.svg"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "5101b674df391399da71c767aa5c976426c9dc7a",
+    "path": "frontend/src/assets/vite.svg"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "12f317c4ee9ed456204a65c72abf87cd2f3ed50c",
+    "path": "frontend/src/components/ActionCompareModal.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "77b5fb174acba1eb8229cd13f36f1286654c336f",
+    "path": "frontend/src/components/AppLayout.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "1466b542d511cd0a301e1aab7a76157bc434c21d",
+    "path": "frontend/src/components/CameraPreview.test.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "637a68634935137d4a7391f1c079ae5cf6c98448",
+    "path": "frontend/src/components/CameraPreview.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "12bb58a6669936c43f5313d24f009a9deb8d237d",
+    "path": "frontend/src/components/Charts.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "3a47e07136017311ef4181865960f21dd71686c3",
+    "path": "frontend/src/components/GlobalEmergencyStopButton.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "e890f0e4eda1a8c4eae3abbaf9d6329b3f70603c",
+    "path": "frontend/src/components/LogPanel.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "feaa31a431707d13b9b0a29cc0afff974980cc50",
+    "path": "frontend/src/components/MetricPill.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "e80a73301187d577bde471359450cba573daee9c",
+    "path": "frontend/src/components/SafetyOverlay.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "9499d7a96c119ad582cc79ef87c26478165136cd",
+    "path": "frontend/src/components/StatusBar.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "24e01c492ad111b314c80a5af4ce5c7c344f40a9",
+    "path": "frontend/src/components/WristCameraIdentification.test.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "63a0e606638af59338d3da14f9b42afd5e35e8e3",
+    "path": "frontend/src/components/WristCameraIdentification.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "eef59c42f9de64248c65b45142ed735a08de3137",
+    "path": "frontend/src/components/dashboard/ArmOverviewPanel.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ac62d56857e0c1876cdb23f4fdf1ecbdebdc1d86",
+    "path": "frontend/src/components/dashboard/ModuleStatusGrid.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a301b90202f5eb82d15f0e81945b4c0eb119409f",
+    "path": "frontend/src/components/dashboard/PlatformOverview.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "011dcf879a5772f96fc0f7194459b73b22278f20",
+    "path": "frontend/src/components/dashboard/ReadinessSummary.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "d1dd093ef3f3a28ac8b85a2c1532c47e8c8dbc75",
+    "path": "frontend/src/components/record/CameraPanel.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "75a0bd96785ee0f31863e7151f92db6e32d71f2b",
+    "path": "frontend/src/components/record/EpisodeControlPanel.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "8680dc83648ce911de63467a15c43eec0b72334a",
+    "path": "frontend/src/components/record/EpisodeHistoryCard.test.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "868741bf20b77cd9e6c98c2f51e55a4e09bec401",
+    "path": "frontend/src/components/record/EpisodeHistoryCard.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "01b46b6243e11ca056ee9a625598fce483ddee8d",
+    "path": "frontend/src/components/record/HardwareStatusCard.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "0d11250c3214c7478088da2265704db579c020ee",
+    "path": "frontend/src/components/record/KalmanFilterCard.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "609f5b1d86b758210ee0d5e110d409e8146bacc6",
+    "path": "frontend/src/components/record/PreCheckModal.test.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2f504e80b1e7e41130174999b89ca20db490d0b4",
+    "path": "frontend/src/components/record/PreCheckModal.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2e1f7c71629f58c447feca496423f7bec9f48612",
+    "path": "frontend/src/components/record/QualityReportModal.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f6e57c1d5aee4f1000f897e6f6a429f4da89640f",
+    "path": "frontend/src/components/record/RecordTelemetryPanel.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "16c5bb3488351e3bc374a674eb165bffd71f61ab",
+    "path": "frontend/src/components/record/SafetyMonitorCard.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "0a145f95791dd3206f143a0267da6501f9315897",
+    "path": "frontend/src/data.test.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "069ef8a23c4c163b344ba4ddb45d7c9b142b8c8a",
+    "path": "frontend/src/data.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "716171d63e3d612e844ced757e6e8812ff53677e",
+    "path": "frontend/src/hardwareStatus.test.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2adf73e1f7078828ccb90eb3f08433c4e40168a8",
+    "path": "frontend/src/hardwareStatus.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "09063fdd782210f8585afe753c96023750a74c45",
+    "path": "frontend/src/hooks/useLiveCameraSnapshot.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a467d95e6f0079ca14dd731c5798916c5006c013",
+    "path": "frontend/src/index.css"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "3035774bb7277652a3216656ed649879546e7132",
+    "path": "frontend/src/main.test.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c6f5ca650ef7448185b90979afc788a056b63b0f",
+    "path": "frontend/src/main.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "0abb2321e4bdf2a6816b046b687b613362ce22c2",
+    "path": "frontend/src/manualMotionLimits.test.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "188494ec2721e8673eb71d312442c29246cbece5",
+    "path": "frontend/src/manualMotionLimits.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c03f243522ac48941ec3e90336963b1db2fc50cf",
+    "path": "frontend/src/manualSpeed.test.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "8963e40a5444a87156c0cedd347eb844914a56fd",
+    "path": "frontend/src/manualSpeed.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "5a946798b1d48279a6b4f951b0e97596dc41fb0f",
+    "path": "frontend/src/motionReturnReady.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a777c87671414746128b49f5cd6fb6156387fcfd",
+    "path": "frontend/src/stores/telemetry.test.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ac91a1e413ee9a6f7d1a396639db93530c5ce7fb",
+    "path": "frontend/src/stores/telemetry.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "23f07408e0ef2270aefe8f52990bba9eab3011af",
+    "path": "frontend/src/teleopStatus.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "65a195389211007cc0e652e3ef251975d2218313",
+    "path": "frontend/src/test/setup.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "0b4faf50e5e38e06727fb853e0ac5a2096c00ddf",
+    "path": "frontend/src/types.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2e4693a78777efefc1531f1d466d005a014d9982",
+    "path": "frontend/src/views/AutoView.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "5967b904d96c38aaa9a854b78c87436e3aa8dcc7",
+    "path": "frontend/src/views/DashboardView.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f01ea2ee0af84b317e3947a3c9e238680a9c8f2e",
+    "path": "frontend/src/views/DatasetView.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "28d2ef0173fc353217e9f88affb3181000b2ad84",
+    "path": "frontend/src/views/FineTuneView.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "525813b665b09fb3ac06ded849e8b47b1a1c1b85",
+    "path": "frontend/src/views/ModelView.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "65b7c9b912b5bf6b1fb0497a11a05c33e05e3f25",
+    "path": "frontend/src/views/RecordPage.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c47fa2d8bb025ae1cf428ac06d8ec4b808a3cd0e",
+    "path": "frontend/src/views/SettingsView.tsx"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7f42e5f7cd2e79c7b5a25b753e56b1bcf94e1381",
+    "path": "frontend/tsconfig.app.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "1ffef600d959ec9e396d5a260bd3f5b927b2cef8",
+    "path": "frontend/tsconfig.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "d3c52ea64c6cd6bad118474410f5322f48e257a6",
+    "path": "frontend/tsconfig.node.json"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "53825ca85781cc8d2b543d14a82a4ed14d705346",
+    "path": "frontend/vite.config.ts"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "0bbcc0f7a5a6e27b9b4ef4a872dda0400f6924f3",
+    "path": "hal/CMakeLists.txt"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "dd5cfa275a06c4b4cf888ac684d66db69fc5355a",
+    "path": "hal/README.md"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ee6c7ea236d708a75c615d4dbb70099dc8cc0128",
+    "path": "hal/build_hal.cmd"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "9d16ca5aecb3c0964fca2070c97d823cf38eb8bd",
+    "path": "hal/dds/appstation_hal.idl"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "621452533bab9a051628722053f65c0dae75ac11",
+    "path": "hal/include/ForceComplianceController.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "632ecf4a361532e299de2eafe8f1072d086c307d",
+    "path": "hal/include/ForceControlRuntime.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "849ba178579cf0b8c16f4c350f8b1f9d1aa579e1",
+    "path": "hal/include/ForceSafetyLatch.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7832a35bb31ebb8e18588e4798688e7abaea1074",
+    "path": "hal/include/HalCommandDispatcher.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "21032ce14e4e605d3b6da21c1028b7ed4b047234",
+    "path": "hal/include/HalDdsControlServer.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "c9fd2be3794ecfecfbfe5b32415fac3c852b6da7",
+    "path": "hal/include/HalHttpServer.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "5c5402dd5e63c4f8d3c0ae17832e0409872b4c75",
+    "path": "hal/include/HalJson.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7845baf3e5617c50cebfa99c7f19f7aae7e07d0c",
+    "path": "hal/include/HalTypes.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "1450a339e3347175311780ca51bb56b790b58441",
+    "path": "hal/include/HkvlForceDriver.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "394edd5e29e031f56596388e67bc067388d8f753",
+    "path": "hal/include/HkvlForceProtocol.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "fa5eb03a473db09d696ff0fa9256796ae245da42",
+    "path": "hal/include/JodellGripperDriver.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "1a40fc304e9b9f83b924ed0eeb1268671f87f560",
+    "path": "hal/include/LTDMCDriver.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f94aeffe5301a565b3a316027027457a89f95ab2",
+    "path": "hal/include/MotionControlThread.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ea69a34b3cdc9122f57fcc256d3c37ec918a4aca",
+    "path": "hal/include/NativeTeleopController.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "4cce4da4e5ac4930d49b2722885b63523672c8d7",
+    "path": "hal/include/Omega7Driver.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "535347015c83cf05c9fd08887e6df81e247270fb",
+    "path": "hal/include/TeleopDdsTypes.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "da24c6c7ed6a23cd1310bfad8a05b2c8d8b4e69a",
+    "path": "hal/include/TeleopFollowerTargetSubscriber.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "19e7bbf9fac2078f034ca55b4fd2ba8eeaec4ba9",
+    "path": "hal/include/TeleopHardwareTargetExecutor.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "5433985b01b7b620ae0edc4b4d904cf7e0ecfe7c",
+    "path": "hal/include/TeleopLeaderPublisher.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "37e20d236d65e27c92b5c568d0883b2b40467e51",
+    "path": "hal/include/TeleopMappingNode.h"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "1b043a1b412b4e10333e422957703220dcbdc436",
+    "path": "hal/src/ForceComplianceController.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ad272ee813161641f1f1cace925219f58f8f6b61",
+    "path": "hal/src/ForceControlRuntime.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "dcb3be5677443583233be4008dcf16a75f9e1e1b",
+    "path": "hal/src/ForceSafetyLatch.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6113549cd5a4f3e5b130f7a8508fae4ad9fa4d6b",
+    "path": "hal/src/HalCommandDispatcher.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "50fc561996072ec3a3ae96ff7fe58d4aa14614ab",
+    "path": "hal/src/HalDdsControlServer.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "940b3c5544836594ea403d7113f2020c5a0f519c",
+    "path": "hal/src/HalHttpServer.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "e4446084221725d6faffd896a48c7a8a0fef2e94",
+    "path": "hal/src/HalJson.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "cf13301c6895dd5c3d97646ea8320b3b07f23452",
+    "path": "hal/src/HalServer.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "454cf319a08ca4416750b95334e18985abb7f4e5",
+    "path": "hal/src/HkvlForceDriver.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a55966c3387306295345d5b4f01735e5395ae19d",
+    "path": "hal/src/HkvlForceProtocol.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "23e1be42d5dd1e76eda7f14e066326e17a44076f",
+    "path": "hal/src/JodellGripperDriver.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ba0a02183a500fdae0340d76f68691bbb33ec35d",
+    "path": "hal/src/JodellGripperWorker.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "6e7ed03fbe18984a8f23c5dd1da86942e8d864af",
+    "path": "hal/src/LTDMCDriver.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "549be40cd3c32f0c122aa5f684ea1dd8b1ceed9e",
+    "path": "hal/src/MotionControlThread.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "36033db4b80c1a2da0b49820c0353127b0830d52",
+    "path": "hal/src/NativeTeleopController.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "60f3b630a1b460a6ad3178a8a35f9d3604edd970",
+    "path": "hal/src/Omega7Driver.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "d86079f79035ca2d89e206bc237f26bb2685710c",
+    "path": "hal/src/TeleopFollowerTargetSubscriber.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f2a11202e2120c05e986bb6325e0a51f9ce8813d",
+    "path": "hal/src/TeleopHardwareTargetExecutor.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2e2ecef18280f3df59dc04460036108374ea3921",
+    "path": "hal/src/TeleopLeaderPublisher.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "362b02bd53e8998d6af54c167ba17c7dded0e5dc",
+    "path": "hal/src/TeleopMappingNode.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "d7d293990d4d7296345d9874d426d89af6f20647",
+    "path": "hal/tests/ForceCoreTests.cpp"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "94d6a952e5b5771e5249beceef94a8d84a6680c7",
+    "path": "hal/tests/fixtures/hkvl_active_v1_frames.hex"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "7c0b30e52fd586ed435a6bd2aface1813d0a7cb1",
+    "path": "mypy.ini"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "77aacf87d09f2160f104cf1f0b80282cea028c66",
+    "path": "scripts/accept-hal-native-teleop.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "8fa6258c00765933023f8e96d4ad4373fcb088e7",
+    "path": "scripts/benchmark_jodell_gripper.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "217938e1f8b597d9ffcc112d763e183a7569edfa",
+    "path": "scripts/capture-hkvl-force.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f95cd106a27583016da5f453a574558e2393aeb8",
+    "path": "scripts/check-hal.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "70c254f19ce85fb1ce32c443320ad13b292a4999",
+    "path": "scripts/diagnose-teleop-latency.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "41491757265a02e7b64440c5a063a3afe2b5eb7a",
+    "path": "scripts/import_icf_teleop_config.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a0f88d5ecac605eff7e72c248da9d6051bc7b337",
+    "path": "scripts/launch-app.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "e2d2e9e5e781d48c9298e41c4aba036632362c43",
+    "path": "scripts/normalize_origin.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "da2cc31ab394abcf9734053f08f5e1afc816712f",
+    "path": "scripts/probe_jodell_dual_com.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "eaa61024c451dacbda761e247bc5d4d162fea710",
+    "path": "scripts/push_dataset_to_hub.py"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "8fcde9c51beeb10f2e9892d5381f160d4f03ccbc",
+    "path": "scripts/run-act-deploy.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "f7856e862a7efff7a7e560939a19f120e1f9d0be",
+    "path": "scripts/run-act-jepa-deploy.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "2bf1de1c24eaf25fe48b7e6807328a65c07de63d",
+    "path": "scripts/start-hal.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "ba013db01d7347d706c7af90b5f28acd87b06d46",
+    "path": "scripts/start-stack-dds.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "13f770ad4d1ae999720ddb7fbdad759e75291208",
+    "path": "scripts/start-stack.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "bea724f8740b621789130381fc1b162fe968c0b8",
+    "path": "scripts/stop-stack.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "3a4787e6fca2d2ccc93819bc9cbbad5448b69cde",
+    "path": "scripts/verify-hal-native-teleop-report.ps1"
+  },
+  {
+    "mode": "100644",
+    "type": "blob",
+    "sha": "a1a196b0944bcf39d6af2d019ba09967242bc03a",
+    "path": "六维力传感器应用场景分析.md"
+  }
+]

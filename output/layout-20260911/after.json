@@ -1,0 +1,930 @@
+{
+  "results": [
+    {
+      "width": 2560,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "76px 992px 92px",
+          "width": 1180,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 992px 92px",
+          "width": 1180,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 992px 92px",
+          "width": 1180,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 992px 92px",
+          "width": 1180,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 992px 92px",
+          "width": 1180,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 992px 92px",
+          "width": 1180,
+          "inputWidth": 92
+        }
+      ]
+    },
+    {
+      "width": 2560,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "76px 672px 92px",
+          "width": 860,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 672px 92px",
+          "width": 860,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 672px 92px",
+          "width": 860,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 672px 92px",
+          "width": 860,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 672px 92px",
+          "width": 860,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 672px 92px",
+          "width": 860,
+          "inputWidth": 92
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "76px 432px 92px",
+          "width": 620,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 432px 92px",
+          "width": 620,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 432px 92px",
+          "width": 620,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 432px 92px",
+          "width": 620,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 432px 92px",
+          "width": 620,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 432px 92px",
+          "width": 620,
+          "inputWidth": 92
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "76px 312.5px 92px",
+          "width": 500.5,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 312.5px 92px",
+          "width": 500.5,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 312.5px 92px",
+          "width": 500.5,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 312.5px 92px",
+          "width": 500.5,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 312.5px 92px",
+          "width": 500.5,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 312.5px 92px",
+          "width": 500.5,
+          "inputWidth": 92
+        }
+      ]
+    },
+    {
+      "width": 1201,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "76px 700px 92px",
+          "width": 888,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 700px 92px",
+          "width": 888,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 700px 92px",
+          "width": 888,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 700px 92px",
+          "width": 888,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 700px 92px",
+          "width": 888,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 700px 92px",
+          "width": 888,
+          "inputWidth": 92
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "76px 476px 92px",
+          "width": 664,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 476px 92px",
+          "width": 664,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 476px 92px",
+          "width": 664,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 476px 92px",
+          "width": 664,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 476px 92px",
+          "width": 664,
+          "inputWidth": 92
+        },
+        {
+          "columns": "76px 476px 92px",
+          "width": 664,
+          "inputWidth": 92
+        }
+      ]
+    },
+    {
+      "width": 800,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 90,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    }
+  ],
+  "pageErrors": [
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch"
+  ]
+}

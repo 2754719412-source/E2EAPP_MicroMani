@@ -1,0 +1,4928 @@
+{
+  "results": [
+    {
+      "width": 2560,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 1180,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 1180,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 1180,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 1180,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 1180,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 1180,
+          "excess": 48
+        }
+      ],
+      "mainOverflow": 12,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "86px 982px 92px",
+          "width": 1180,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 982px 92px",
+          "width": 1180,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 982px 92px",
+          "width": 1180,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 982px 92px",
+          "width": 1180,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 982px 92px",
+          "width": 1180,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 982px 92px",
+          "width": 1180,
+          "inputWidth": 140
+        }
+      ]
+    },
+    {
+      "width": 2560,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "遗忘因子 beta",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "方差下限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "方差上限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "dt 下限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "dt 上限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移位置 P",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移速度 V",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移测量方差 R",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移过程方差 Qp",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移过程方差 Qv",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移阈值 v_th",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转位置 P",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转速度 V",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转测量方差 R",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转过程方差 Qp",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转过程方差 Qv",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转阈值 v_th",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        }
+      ],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 2560,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 152.484375,
+          "excess": 24
+        }
+      ],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 860,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 860,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 860,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 860,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 860,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 860,
+          "excess": 48
+        }
+      ],
+      "mainOverflow": 12,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "86px 662px 92px",
+          "width": 860,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 662px 92px",
+          "width": 860,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 662px 92px",
+          "width": 860,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 662px 92px",
+          "width": 860,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 662px 92px",
+          "width": 860,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 662px 92px",
+          "width": 860,
+          "inputWidth": 140
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "遗忘因子 beta",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "方差下限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "方差上限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "dt 下限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "dt 上限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移位置 P",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移速度 V",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移测量方差 R",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移过程方差 Qp",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移过程方差 Qv",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移阈值 v_th",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转位置 P",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转速度 V",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转测量方差 R",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转过程方差 Qp",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转过程方差 Qv",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转阈值 v_th",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        }
+      ],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1920,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        }
+      ],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 25,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 620,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 620,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 620,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 620,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 620,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 620,
+          "excess": 48
+        }
+      ],
+      "mainOverflow": 12,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "86px 422px 92px",
+          "width": 620,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 422px 92px",
+          "width": 620,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 422px 92px",
+          "width": 620,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 422px 92px",
+          "width": 620,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 422px 92px",
+          "width": 620,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 422px 92px",
+          "width": 620,
+          "inputWidth": 140
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "遗忘因子 beta",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "方差下限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "方差上限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "dt 下限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "dt 上限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移位置 P",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移速度 V",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移测量方差 R",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移过程方差 Qp",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移过程方差 Qv",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移阈值 v_th",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转位置 P",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转速度 V",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转测量方差 R",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转过程方差 Qp",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转过程方差 Qv",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转阈值 v_th",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        }
+      ],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1440,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "label.ui-field",
+          "label": "目标开度 mm",
+          "width": 140,
+          "parentWidth": 110.828125,
+          "excess": 29
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.ui-field",
+          "label": "命令力限制 N",
+          "width": 140,
+          "parentWidth": 110.828125,
+          "excess": 29
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.ui-field",
+          "label": "目标开度 mm",
+          "width": 140,
+          "parentWidth": 110.828125,
+          "excess": 29
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.ui-field",
+          "label": "命令力限制 N",
+          "width": 140,
+          "parentWidth": 110.828125,
+          "excess": 29
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        }
+      ],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "span.",
+          "card": "teleop-left",
+          "width": 140,
+          "parentWidth": 168.828125,
+          "excess": 11
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "span.",
+          "card": "teleop-left",
+          "width": 140,
+          "parentWidth": 168.828125,
+          "excess": 17
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "span.",
+          "card": "teleop-left",
+          "width": 140,
+          "parentWidth": 168.828125,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "span.",
+          "card": "teleop-left",
+          "width": 140,
+          "parentWidth": 168.828125,
+          "excess": 33
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "span.",
+          "card": "teleop-right",
+          "width": 140,
+          "parentWidth": 168.828125,
+          "excess": 11
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "span.",
+          "card": "teleop-right",
+          "width": 140,
+          "parentWidth": 168.828125,
+          "excess": 17
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "span.",
+          "card": "teleop-right",
+          "width": 140,
+          "parentWidth": 168.828125,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "span.",
+          "card": "teleop-right",
+          "width": 140,
+          "parentWidth": 168.828125,
+          "excess": 33
+        }
+      ],
+      "mainOverflow": 65,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 500.5,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 500.5,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 500.5,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 500.5,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 500.5,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 500.5,
+          "excess": 48
+        }
+      ],
+      "mainOverflow": 12,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "86px 302.5px 92px",
+          "width": 500.5,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 302.5px 92px",
+          "width": 500.5,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 302.5px 92px",
+          "width": 500.5,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 302.5px 92px",
+          "width": 500.5,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 302.5px 92px",
+          "width": 500.5,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 302.5px 92px",
+          "width": 500.5,
+          "inputWidth": 140
+        }
+      ]
+    },
+    {
+      "width": 1201,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "遗忘因子 beta",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "方差下限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "方差上限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "dt 下限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "dt 上限",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移位置 P",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移速度 V",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移测量方差 R",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移过程方差 Qp",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移过程方差 Qv",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移阈值 v_th",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转位置 P",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转速度 V",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转测量方差 R",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转过程方差 Qp",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转过程方差 Qv",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转阈值 v_th",
+          "width": 140,
+          "parentWidth": 128.5,
+          "excess": 12
+        }
+      ],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1201,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 151.328125,
+          "excess": 25
+        }
+      ],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 888,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 888,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 888,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 888,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 888,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 888,
+          "excess": 48
+        }
+      ],
+      "mainOverflow": 12,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "86px 690px 92px",
+          "width": 888,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 690px 92px",
+          "width": 888,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 690px 92px",
+          "width": 888,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 690px 92px",
+          "width": 888,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 690px 92px",
+          "width": 888,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 690px 92px",
+          "width": 888,
+          "inputWidth": 140
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "遗忘因子 beta",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "方差下限",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "方差上限",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "dt 下限",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "dt 上限",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移位置 P",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移速度 V",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移测量方差 R",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移过程方差 Qp",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移过程方差 Qv",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "平移阈值 v_th",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转位置 P",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转速度 V",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转测量方差 R",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转过程方差 Qp",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转过程方差 Qv",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "label.record-kalman-param",
+          "label": "旋转阈值 v_th",
+          "width": 140,
+          "parentWidth": 137.828125,
+          "excess": 2
+        }
+      ],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 1024,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        }
+      ],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 11,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 664,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-global",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 664,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 664,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-left",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 664,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 664,
+          "excess": 48
+        },
+        {
+          "element": "input.ui-input",
+          "parent": "div.camera-tuning-control-row",
+          "card": "camera-right",
+          "label": "曝光 / 增益",
+          "width": 140,
+          "parentWidth": 664,
+          "excess": 48
+        }
+      ],
+      "mainOverflow": 12,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "86px 466px 92px",
+          "width": 664,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 466px 92px",
+          "width": 664,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 466px 92px",
+          "width": 664,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 466px 92px",
+          "width": 664,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 466px 92px",
+          "width": 664,
+          "inputWidth": 140
+        },
+        {
+          "columns": "86px 466px 92px",
+          "width": 664,
+          "inputWidth": 140
+        }
+      ]
+    },
+    {
+      "width": 800,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 800,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 90,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-left",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 117.75,
+          "excess": 58
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        },
+        {
+          "element": "input.ui-input.axis-map-input.axis-limit-input",
+          "parent": "td.",
+          "card": "motion-right",
+          "width": 167,
+          "parentWidth": 130,
+          "excess": 46
+        }
+      ],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    },
+    {
+      "width": 390,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": []
+    }
+  ],
+  "pageErrors": [
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch",
+    "Failed to fetch"
+  ]
+}

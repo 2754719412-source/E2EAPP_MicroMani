@@ -1,0 +1,18 @@
+{
+  "revision": "72a7e2e6c8e640e87a94cb2992f60392ace66501",
+  "file_count": 318,
+  "counts": {
+    "(root)": 10,
+    ".specify": 36,
+    "backend": 73,
+    "docs": 24,
+    "frontend": 112,
+    "hal": 46,
+    "scripts": 17
+  },
+  "gitlinks": [],
+  "symlinks": [],
+  "archive_bytes": 6468769,
+  "audit_dir": "D:\\E2EAPP_MicroMani\\output\\remote-audit-20260917-213346-72a7e2e",
+  "snapshot": "D:\\E2EAPP_MicroMani\\output\\remote-audit-20260917-213346-72a7e2e\\source"
+}

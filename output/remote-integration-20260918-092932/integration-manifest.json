@@ -1,0 +1,241 @@
+{
+  "base": {
+    "local_head": "6d898c9df4a3b13b415e3dabd75591ed2aabc2ac",
+    "remote": "aabe6734b2ad39945641fe8a53e107c8d3409b76",
+    "backup_files": 378,
+    "scope": "Only nine items in user screenshot; preserve local safety/UI/hardware bindings; no broader audit remediation."
+  },
+  "changed_files": 35,
+  "changes": [
+    {
+      "path": ".github/pull_request_template.md",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "58ff43205cf4c6d34c1bce80b198921cb5f702d41e9b0671f016da3be0e8cfc2"
+    },
+    {
+      "path": "AGENTS.md",
+      "status": "modified",
+      "before_sha256": "232a9e17bc12da0b964b0b81f0fdf9825e8164f621f5935da14963b9397b09d0",
+      "after_sha256": "5c9a0832371636ad4a02230bbbd1cf0e0682fb16658c69571ddfc41a69fba83a"
+    },
+    {
+      "path": "backend/app.py",
+      "status": "modified",
+      "before_sha256": "9d4f40fddc53f176325628fb3bd308fe5622b6294e5e1bcee34644d0aedde7b0",
+      "after_sha256": "a2db2a105485224290ad45a01401baa360fcb9c891cf166c9c511ecbe4e516ec"
+    },
+    {
+      "path": "backend/core/config.py",
+      "status": "modified",
+      "before_sha256": "72dfbf7568d9b0b982b3d1a2be662ff5c8ce43289f6fbfdc082a474198aa6d7e",
+      "after_sha256": "e3d9dc93c50a2d339bc9f8bbfac3e1a7a8ddcea2b05e4d06b9b8612d3ba44fef"
+    },
+    {
+      "path": "backend/core/data_contract.py",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "bd1d93228874808d2b1aa27ba4308bbfcc10c15cf82b58795f607af0b9ec5461"
+    },
+    {
+      "path": "backend/core/units.py",
+      "status": "modified",
+      "before_sha256": "a07ec9bef3d85b6770dc62dae39a9fc8b31e57965ee52c4db7509ab3408a58af",
+      "after_sha256": "8161cbde75a0516d03e22b947a74eebdbbd4f87bdc3ca1e64a71c7606e13f663"
+    },
+    {
+      "path": "backend/drivers/camera_opencv.py",
+      "status": "modified",
+      "before_sha256": "005ee4de9b4c9fdcbf4026f71cbf3d331e9a7ea20961da7b50ae6ae27ba9b018",
+      "after_sha256": "3ac5f91da4a145bdfee8cc81840436fd7e942a411443632ac69b772f3a60b2ca"
+    },
+    {
+      "path": "backend/hal_client/client.py",
+      "status": "modified",
+      "before_sha256": "14a5f13928859392873d56ea9dd1c9dbefa8c8ff836a2f23adb4064dff9774f7",
+      "after_sha256": "194907f678ec3cd3f368bd4aeaf7a16ca506b5366fa2d199e97af938ad6bde7e"
+    },
+    {
+      "path": "backend/hal_client/dds_client.py",
+      "status": "modified",
+      "before_sha256": "e03a608164077d6e7180de7abb68b7a342aa8ee59719488fe81acf4177c64969",
+      "after_sha256": "2bea02ef22dc4af24bfdbfac0ad34dab489921ace90909f2cf0142bdf1b6d913"
+    },
+    {
+      "path": "backend/services/dataset_recorder.py",
+      "status": "modified",
+      "before_sha256": "cb346056d67ee92ad0479dfb63c6e026c8bb81d874566aea9aa190243698bcd2",
+      "after_sha256": "06ff174679ad28bc858f2f96bba401cad7184a1739489d7cc9a999cee9996e30"
+    },
+    {
+      "path": "backend/services/policy_bridge.py",
+      "status": "modified",
+      "before_sha256": "63eb073fd2cbfb08f5c7e34f74a3e512b6bb675b8b960c12e082cc407dbb5977",
+      "after_sha256": "f6b146f0edc08e4c5d9f85109167bca07dc0500b6cc12e84328a7b7ef0b32fcc"
+    },
+    {
+      "path": "backend/tests/test_camera_fixed_fps.py",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "42c0a6c042f769a9f5a4087b50104c98e82f008c3c99ac56334938a62defa46a"
+    },
+    {
+      "path": "backend/tests/test_camera_identification.py",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "743705d27941840450167dafc83d12f9fec55d38857d627ef90e9c803923424f"
+    },
+    {
+      "path": "backend/tests/test_control_stop_races.py",
+      "status": "modified",
+      "before_sha256": "32873544909ec8d559e230c639da77d133c65a33b903d6ba2051bc7a0e49573c",
+      "after_sha256": "95e10b393a8a4dec8522494692dc881416e8f55e342eb63c9a5da5f9889ca136"
+    },
+    {
+      "path": "backend/tests/test_data_contract.py",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "be1ea9a7b2aef38381603ef6079afc63ec65038efd98a50bd314de9b0c745502"
+    },
+    {
+      "path": "backend/tests/test_dataset_recorder.py",
+      "status": "modified",
+      "before_sha256": "cdf9b69902d8cb9a12b9fbb2124661091338e87a467629301525135315633ee6",
+      "after_sha256": "3a7d3d0d88de384eff6b0280a8e4a58caf48b331a79c18dc8e59c867604f04e9"
+    },
+    {
+      "path": "backend/tests/test_hal_health_capabilities.py",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "c19c0e13978bef3977aae945e38d42fbc934c60e45c084aeea51a06adf9f9b36"
+    },
+    {
+      "path": "backend/tests/test_normalize_origin.py",
+      "status": "modified",
+      "before_sha256": "a79556a11dfbf2f26dcb6ded259f1047987bc54efddc16c9eec3daf7759fcab5",
+      "after_sha256": "6acf81fe11ef771a655c40c307f2c7cea46df60268748054356c80e273c777f5"
+    },
+    {
+      "path": "backend/tests/test_policy_bridge.py",
+      "status": "modified",
+      "before_sha256": "c30555c162617f18b31fed0968a325c5863d3aea9d94469084803f2063d4293e",
+      "after_sha256": "c04ae0d5d29138de39db7fa0d44238d07e71ab29dd1235e7057a767e2dab6896"
+    },
+    {
+      "path": "backend/tests/test_policy_contract_api.py",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "1962f0c1be048c18a84c0941db4e4bb1ad180c01bd71d02b1eb30b57831dcda7"
+    },
+    {
+      "path": "docs/data-contract-and-deployment.md",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "8d7791f9c3596f85b532ea2026a3e63fd1d949bbc05019f2f5683ec18f166f25"
+    },
+    {
+      "path": "docs/github-upload-contract.md",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "7058c091dd3e28a69ad3056760e4f4c073a6ec2ee276cbbea275b5c0d5259dc1"
+    },
+    {
+      "path": "frontend/output/ui-redesign/SESSION_SUMMARY.md",
+      "status": "modified",
+      "before_sha256": "d58a4d7c4dc43a76413124778d5bdc2a7ae13ea1f01bfa306588cbf693bd331f",
+      "after_sha256": "cb9bf7c4e23f4bd025341b4d00e50462331fcc9103aa9319ad4d15021b48c656"
+    },
+    {
+      "path": "frontend/src/api/index.ts",
+      "status": "modified",
+      "before_sha256": "0ae4bdd7637def1c2cff4efaae933ded0603ce45a18477c858e324d40e504ef9",
+      "after_sha256": "40c30b63ceb3ab579d01376969245cd7337ef8cbc53c8ff76768290f53734385"
+    },
+    {
+      "path": "frontend/src/components/WristCameraIdentification.test.tsx",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "793af9e84a1aaf1c210ff5dbb92b687e41176b4e1c90fb3f3aa033d95713c0e8"
+    },
+    {
+      "path": "frontend/src/components/WristCameraIdentification.tsx",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "1b6b081b17b2558283dbde9a22ba4c1c502f2571e06800d47bfbc8c59bb2cca9"
+    },
+    {
+      "path": "frontend/src/views/SettingsView.cameraIdentification.test.tsx",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "331f13c08cf8e9783c1c003d476dbf05baf520144b5346eaf3db86a8c929b187"
+    },
+    {
+      "path": "frontend/src/views/SettingsView.tsx",
+      "status": "modified",
+      "before_sha256": "9edd6cf1e9c753ec42dd8123da575d1174868e51326d8ac2edc93d66e9cd4c2f",
+      "after_sha256": "66d0c58630bd43fd395e82943c81b47440d87ec79114236f8d38c35a9d0aaa74"
+    },
+    {
+      "path": "frontend/src/views/settings/CameraCard.tsx",
+      "status": "modified",
+      "before_sha256": "0795afe082f4adbe844cd942acf475137ee00a63542fdbf0d2570fd050a4edc1",
+      "after_sha256": "d23638ec2da72720637afa5c2a5de6580c572bd2516c18fb04e346abc24b0f01"
+    },
+    {
+      "path": "hal/CMakeLists.txt",
+      "status": "modified",
+      "before_sha256": "9abf8ba40d58cb42a37ab93a1473e156662667c3bbbe7b8182f0931f706a7cb1",
+      "after_sha256": "515014930bc53970d90d1ee5b94e051c053ed170d1607106f641bfa9998c9e1c"
+    },
+    {
+      "path": "hal/include/HalVersion.h",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "c9affa02b1a7239907bcabc6cfed49cd62743130bec3c3e95cb7699ef75ba47a"
+    },
+    {
+      "path": "hal/src/HalJson.cpp",
+      "status": "modified",
+      "before_sha256": "17d9fe08bc7f546cc487ebebab7f1920c9efc0ce6a21ca9a7eb6ad1b99db136e",
+      "after_sha256": "7d68037d3a1b18c34d04716c90373661183b2cc09f818c0a2270355f278d4ca9"
+    },
+    {
+      "path": "hal/src/LTDMCDriver.cpp",
+      "status": "modified",
+      "before_sha256": "f55cdfe48dcc7c6d90e2cf99c5f06fe2b6b25d5f301d355bcd102ab25839204d",
+      "after_sha256": "5fb0cee2d0ce6fe8c50b91dd632251dd76e313c7458be8e63b326972b298d34a"
+    },
+    {
+      "path": "hal/tests/HalHealthTests.cpp",
+      "status": "added",
+      "before_sha256": null,
+      "after_sha256": "5d0cb4d888991d5f96dde49a514e4a2a59ed99f5b55f8f12b42ded3f1e4dbb91"
+    },
+    {
+      "path": "scripts/normalize_origin.py",
+      "status": "modified",
+      "before_sha256": "c45f3282ddf51db93e0bb94fee0db075ca61aac49f0f7615b354fb99ada7aae3",
+      "after_sha256": "8f281d309033b7e47a549b172dc0168a84d2a5545dacc79cf57e856b92f4506f"
+    }
+  ],
+  "protected_files_unchanged": {
+    "backend/runtime/config.json": true,
+    "backend/core/defaults.py": true,
+    "backend/core/motion_safety.py": true,
+    "backend/services/control_watchdog.py": true,
+    "backend/services/command_service.py": true,
+    "frontend/src/data.ts": true,
+    "frontend/src/stores/telemetry.ts": true,
+    "frontend/src/main.tsx": true,
+    "hal/src/ForceControlRuntime.cpp": true,
+    "hal/src/HkvlForceDriver.cpp": true,
+    "hal/src/HalCommandDispatcher.cpp": true,
+    "hal/include/ControlLeaseState.h": true,
+    "hal/include/EmergencyStopState.h": true,
+    "scripts/start-hal.ps1": true,
+    "scripts/start-ui.ps1": true,
+    "scripts/launch-app.ps1": true,
+    "scripts/stop-stack.ps1": true
+  },
+  "note": "Patch normalizes line endings for review; ZIP preserves original bytes for restoration. No source was restored or deleted."
+}

@@ -1,0 +1,10 @@
+^D:\E2EAPP_MICROMANI\OUTPUT\REMOTE-INTEGRATION-20260918-092932\HAL-SKELETON-BUILD\CMAKEFILES\2BD16EFACD3B341E64D7E2AD3D9B053A\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -SD:/E2EAPP_MicroMani/hal -BD:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/hal-skeleton-build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/hal-skeleton-build/AppStationHal.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

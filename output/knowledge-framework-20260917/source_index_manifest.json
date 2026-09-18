@@ -1,0 +1,4705 @@
+{
+  "total_files": 288,
+  "counts": {
+    "launchers": 5,
+    "backend_app": 27,
+    "backend_io": 14,
+    "backend_native": 4,
+    "backend_tests": 35,
+    "frontend_tools": 20,
+    "frontend_tests": 38,
+    "frontend_base": 14,
+    "frontend_state": 9,
+    "frontend_assets": 3,
+    "frontend_components": 26,
+    "frontend_views": 20,
+    "hal_build": 3,
+    "hal_headers": 26,
+    "hal_sources": 20,
+    "hal_tests": 6,
+    "scripts": 18
+  },
+  "parse_issues": [],
+  "missing_links": [],
+  "records": [
+    {
+      "path": "Start-App.cmd",
+      "group": "launchers",
+      "topic": "桌面应用启动包装；继续追踪所调用 PowerShell",
+      "symbols": [],
+      "question": "追踪 `launch-app.ps1`"
+    },
+    {
+      "path": "Start-UI.cmd",
+      "group": "launchers",
+      "topic": "界面测试启动包装；继续追踪所调用 PowerShell",
+      "symbols": [],
+      "question": "追踪 `start-ui.ps1`"
+    },
+    {
+      "path": "Stop-App.cmd",
+      "group": "launchers",
+      "topic": "应用停止包装；继续追踪所调用 PowerShell",
+      "symbols": [],
+      "question": "追踪 `stop-stack.ps1`"
+    },
+    {
+      "path": "backend/__init__.py",
+      "group": "backend_app",
+      "topic": "Python 包入口；查看是否仅作包标记或显式导出",
+      "symbols": [],
+      "question": "包初始化是否含可执行语句或重导出？"
+    },
+    {
+      "path": "backend/app.py",
+      "group": "backend_app",
+      "topic": "FastAPI HTTP/WS 入口、服务生命周期和控制会话绑定",
+      "symbols": [
+        [
+          "create_app",
+          390
+        ],
+        [
+          "make_hal_client",
+          2316
+        ]
+      ],
+      "question": "`create_app` → `make_hal_client`"
+    },
+    {
+      "path": "backend/app_factory.py",
+      "group": "backend_app",
+      "topic": "AppServices 依赖装配与共享安全服务连接",
+      "symbols": [
+        [
+          "AppServices",
+          29
+        ],
+        [
+          "create_services",
+          45
+        ]
+      ],
+      "question": "`AppServices` → `create_services`"
+    },
+    {
+      "path": "backend/core/__init__.py",
+      "group": "backend_app",
+      "topic": "Python 包入口；查看是否仅作包标记或显式导出",
+      "symbols": [],
+      "question": "包初始化是否含可执行语句或重导出？"
+    },
+    {
+      "path": "backend/core/config.py",
+      "group": "backend_app",
+      "topic": "配置合并、迁移、校验、原子保存与参数快照",
+      "symbols": [
+        [
+          "SettingsService",
+          419
+        ],
+        [
+          "save_config",
+          480
+        ]
+      ],
+      "question": "`SettingsService` → `save_config`"
+    },
+    {
+      "path": "backend/core/defaults.py",
+      "group": "backend_app",
+      "topic": "设备、运动、相机、力与存储的默认配置",
+      "symbols": [
+        [
+          "anchored_mechanical_soft_limits",
+          247
+        ],
+        [
+          "rotation_work_limits_from_soft_limits",
+          272
+        ],
+        [
+          "stable_mechanical_soft_limits",
+          301
+        ]
+      ],
+      "question": "`anchored_mechanical_soft_limits` → `rotation_work_limits_from_soft_limits` → `stable_mechanical_soft_limits`"
+    },
+    {
+      "path": "backend/core/force_config.py",
+      "group": "backend_app",
+      "topic": "力源/标定/安全参数校验及 HAL 载荷",
+      "symbols": [
+        [
+          "validate_force_config",
+          55
+        ],
+        [
+          "hal_force_config_payload",
+          116
+        ]
+      ],
+      "question": "`validate_force_config` → `hal_force_config_payload`"
+    },
+    {
+      "path": "backend/core/gripper_protection.py",
+      "group": "backend_app",
+      "topic": "夹爪保护间距与目标限制",
+      "symbols": [
+        [
+          "gripper_stroke_mm",
+          13
+        ],
+        [
+          "icf_target_protection_enabled",
+          18
+        ],
+        [
+          "icf_target_min_gap_mm",
+          23
+        ]
+      ],
+      "question": "`gripper_stroke_mm` → `icf_target_protection_enabled` → `icf_target_min_gap_mm`"
+    },
+    {
+      "path": "backend/core/logging.py",
+      "group": "backend_app",
+      "topic": "结构化日志、会话编号、增量读取与配置哈希",
+      "symbols": [
+        [
+          "now_ms",
+          22
+        ],
+        [
+          "monotonic_ms",
+          26
+        ],
+        [
+          "default_session_id",
+          30
+        ]
+      ],
+      "question": "`now_ms` → `monotonic_ms` → `default_session_id`"
+    },
+    {
+      "path": "backend/core/motion_limits.py",
+      "group": "backend_app",
+      "topic": "工作原点、机械范围、旋转范围与恢复方向",
+      "symbols": [
+        [
+          "AxisLimit",
+          25
+        ],
+        [
+          "WorkOriginMissing",
+          30
+        ],
+        [
+          "side_offset",
+          34
+        ]
+      ],
+      "question": "`AxisLimit` → `WorkOriginMissing` → `side_offset`"
+    },
+    {
+      "path": "backend/core/motion_safety.py",
+      "group": "backend_app",
+      "topic": "共享运动安全代际、锁存及任务资源互斥",
+      "symbols": [
+        [
+          "motion_operation",
+          12
+        ],
+        [
+          "MotionSafetyToken",
+          30
+        ],
+        [
+          "MotionSafetyGate",
+          35
+        ]
+      ],
+      "question": "`motion_operation` → `MotionSafetyToken` → `MotionSafetyGate`"
+    },
+    {
+      "path": "backend/core/operator_view.py",
+      "group": "backend_app",
+      "topic": "操作者侧与历史硬件侧转换",
+      "symbols": [
+        [
+          "hardware_side_for_operator_side",
+          14
+        ],
+        [
+          "operator_side_for_hardware_side",
+          18
+        ],
+        [
+          "operator_gripper_source_for_side",
+          22
+        ]
+      ],
+      "question": "`hardware_side_for_operator_side` → `operator_side_for_hardware_side` → `operator_gripper_source_for_side`"
+    },
+    {
+      "path": "backend/core/schemas.py",
+      "group": "backend_app",
+      "topic": "Pydantic 请求、配置、快照与遥测结构",
+      "symbols": [
+        [
+          "ApiEnvelope",
+          40
+        ],
+        [
+          "ErrorEnvelope",
+          46
+        ],
+        [
+          "LogEntry",
+          52
+        ]
+      ],
+      "question": "`ApiEnvelope` → `ErrorEnvelope` → `LogEntry`"
+    },
+    {
+      "path": "backend/core/units.py",
+      "group": "backend_app",
+      "topic": "脉冲、UI μm/degree 与 LeRobot mdeg 换算",
+      "symbols": [
+        [
+          "pulse_to_ui",
+          24
+        ],
+        [
+          "ui_to_lerobot_state",
+          32
+        ]
+      ],
+      "question": "`pulse_to_ui` → `ui_to_lerobot_state`"
+    },
+    {
+      "path": "backend/drivers/__init__.py",
+      "group": "backend_io",
+      "topic": "Python 包入口；查看是否仅作包标记或显式导出",
+      "symbols": [],
+      "question": "包初始化是否含可执行语句或重导出？"
+    },
+    {
+      "path": "backend/drivers/camera_opencv.py",
+      "group": "backend_io",
+      "topic": "OpenCV 采集、缓存、JPEG 与可选进程隔离",
+      "symbols": [
+        [
+          "OpenCVCameraDriver",
+          356
+        ],
+        [
+          "_process_capture_enabled",
+          1104
+        ]
+      ],
+      "question": "`OpenCVCameraDriver` → `_process_capture_enabled`"
+    },
+    {
+      "path": "backend/drivers/force_nidaq.py",
+      "group": "backend_io",
+      "topic": "可选 NI-DAQ 采样、校准、去皮及滤波",
+      "symbols": [
+        [
+          "NidaqForceDriver",
+          123
+        ],
+        [
+          "_PersistentTask",
+          55
+        ]
+      ],
+      "question": "`NidaqForceDriver` → `_PersistentTask`"
+    },
+    {
+      "path": "backend/drivers/gripper_rs485.py",
+      "group": "backend_io",
+      "topic": "保留的 Python Jodell SDK/串口驱动及诊断",
+      "symbols": [
+        [
+          "GripperResult",
+          20
+        ],
+        [
+          "Rs485GripperDriver",
+          27
+        ]
+      ],
+      "question": "`GripperResult` → `Rs485GripperDriver`"
+    },
+    {
+      "path": "backend/drivers/pico_adb.py",
+      "group": "backend_io",
+      "topic": "ADB 命令和外部 PICO 视觉脚本调用",
+      "symbols": [
+        [
+          "PicoResult",
+          16
+        ],
+        [
+          "PicoAdbDriver",
+          23
+        ]
+      ],
+      "question": "`PicoResult` → `PicoAdbDriver`"
+    },
+    {
+      "path": "backend/hal_client/__init__.py",
+      "group": "backend_io",
+      "topic": "Python 包入口；查看是否仅作包标记或显式导出",
+      "symbols": [],
+      "question": "包初始化是否含可执行语句或重导出？"
+    },
+    {
+      "path": "backend/hal_client/bounded_lane.py",
+      "group": "backend_io",
+      "topic": "有界无排队原生阻塞调用通道",
+      "symbols": [
+        [
+          "BlockingCallTimeout",
+          12
+        ],
+        [
+          "BoundedLane",
+          16
+        ]
+      ],
+      "question": "`BlockingCallTimeout` → `BoundedLane`"
+    },
+    {
+      "path": "backend/hal_client/client.py",
+      "group": "backend_io",
+      "topic": "HAL 抽象、测试替身及保留的 HTTP 客户端",
+      "symbols": [
+        [
+          "HalClient",
+          35
+        ],
+        [
+          "TestHalClient",
+          52
+        ]
+      ],
+      "question": "`HalClient` → `TestHalClient`"
+    },
+    {
+      "path": "backend/hal_client/dds_client.py",
+      "group": "backend_io",
+      "topic": "真实 DDS 异步命令/状态适配、期限及故障隔离",
+      "symbols": [
+        [
+          "DdsRuntimeUnavailableError",
+          39
+        ],
+        [
+          "DdsTransportCallError",
+          43
+        ],
+        [
+          "DdsHalTransport",
+          47
+        ]
+      ],
+      "question": "`DdsRuntimeUnavailableError` → `DdsTransportCallError` → `DdsHalTransport`"
+    },
+    {
+      "path": "backend/hal_client/dds_runtime.py",
+      "group": "backend_io",
+      "topic": "ctypes 调用自有 Fast-DDS C ABI DLL",
+      "symbols": [
+        [
+          "FastDdsBindingUnavailableError",
+          42
+        ],
+        [
+          "FastDdsHalTransport",
+          182
+        ]
+      ],
+      "question": "`FastDdsBindingUnavailableError` → `FastDdsHalTransport`"
+    },
+    {
+      "path": "backend/hal_client/dds_types.py",
+      "group": "backend_io",
+      "topic": "DDS 主题、domain、信封和命令请求/应答类型",
+      "symbols": [
+        [
+          "JsonEnvelope",
+          29
+        ],
+        [
+          "HalCommandRequest",
+          38
+        ],
+        [
+          "HalCommandReply",
+          47
+        ]
+      ],
+      "question": "`JsonEnvelope` → `HalCommandRequest` → `HalCommandReply`"
+    },
+    {
+      "path": "backend/hal_client/protocol.py",
+      "group": "backend_io",
+      "topic": "HAL 命令名、载荷和超时/安全重试策略",
+      "symbols": [
+        [
+          "HalCommandSpec",
+          13
+        ],
+        [
+          "command_spec",
+          54
+        ],
+        [
+          "command_request_policy",
+          61
+        ]
+      ],
+      "question": "`HalCommandSpec` → `command_spec` → `command_request_policy`"
+    },
+    {
+      "path": "backend/native/appstation_fastdds_transport.cpp",
+      "group": "backend_native",
+      "topic": "Python 调用的 C ABI、Fast-DDS 缓存及命令应答同步",
+      "symbols": [
+        [
+          "envBoolValue",
+          118
+        ],
+        [
+          "value",
+          124
+        ],
+        [
+          "stringPayloadSize",
+          130
+        ]
+      ],
+      "question": "`envBoolValue` → `value` → `stringPayloadSize`"
+    },
+    {
+      "path": "backend/native/build_fastdds_transport.cmd",
+      "group": "backend_native",
+      "topic": "Fast-DDS 原生绑定 DLL 的构建与产物路径",
+      "symbols": [],
+      "question": "从环境变量、编译器/进程命令和 errorlevel 判断副作用。"
+    },
+    {
+      "path": "backend/pyproject.toml",
+      "group": "backend_native",
+      "topic": "Python 基础/可选依赖、pytest、Ruff 与 mypy 配置",
+      "symbols": [],
+      "question": "`[project]` → `[project.optional-dependencies]` → `[tool.*]`"
+    },
+    {
+      "path": "backend/services/__init__.py",
+      "group": "backend_app",
+      "topic": "Python 包入口；查看是否仅作包标记或显式导出",
+      "symbols": [],
+      "question": "包初始化是否含可执行语句或重导出？"
+    },
+    {
+      "path": "backend/services/command_service.py",
+      "group": "backend_app",
+      "topic": "手动运动、工作原点、夹爪与安全命令校验",
+      "symbols": [
+        [
+          "CommandService",
+          88
+        ],
+        [
+          "manual_axis_move",
+          720
+        ]
+      ],
+      "question": "`CommandService` → `manual_axis_move`"
+    },
+    {
+      "path": "backend/services/control_watchdog.py",
+      "group": "backend_app",
+      "topic": "浏览器挑战应答、HAL 执行租约及失联急停",
+      "symbols": [
+        [
+          "BrowserLease",
+          16
+        ],
+        [
+          "ControlLeaseUnavailable",
+          31
+        ],
+        [
+          "ControlWatchdog",
+          35
+        ]
+      ],
+      "question": "`BrowserLease` → `ControlLeaseUnavailable` → `ControlWatchdog`"
+    },
+    {
+      "path": "backend/services/dataset_recorder.py",
+      "group": "backend_app",
+      "topic": "采样缓存、组帧、LeRobot 写线程及数据集管理",
+      "symbols": [
+        [
+          "DatasetRecorderService",
+          439
+        ],
+        [
+          "FrameAssembler",
+          318
+        ],
+        [
+          "LeRobotWriterThread",
+          190
+        ]
+      ],
+      "question": "`DatasetRecorderService` → `FrameAssembler` → `LeRobotWriterThread`"
+    },
+    {
+      "path": "backend/services/gripper_backend.py",
+      "group": "backend_app",
+      "topic": "HAL-native 夹爪协议适配与状态载荷",
+      "symbols": [
+        [
+          "GripperBackend",
+          16
+        ],
+        [
+          "native_teleop_enabled",
+          44
+        ],
+        [
+          "gripper_serial_ports",
+          48
+        ]
+      ],
+      "question": "`GripperBackend` → `native_teleop_enabled` → `gripper_serial_ports`"
+    },
+    {
+      "path": "backend/services/gripper_router.py",
+      "group": "backend_app",
+      "topic": "当前始终选择 native 夹爪后端的路由层",
+      "symbols": [
+        [
+          "GripperRouter",
+          19
+        ]
+      ],
+      "question": "`GripperRouter`"
+    },
+    {
+      "path": "backend/services/hardware_service.py",
+      "group": "backend_app",
+      "topic": "Python 相机、NI-DAQ、夹爪和 PICO 驱动聚合",
+      "symbols": [
+        [
+          "HardwareService",
+          18
+        ]
+      ],
+      "question": "`HardwareService`"
+    },
+    {
+      "path": "backend/services/pico_network.py",
+      "group": "backend_app",
+      "topic": "PICO 网络地址与接口信息发现",
+      "symbols": [
+        [
+          "PicoNetworkDetectionError",
+          17
+        ],
+        [
+          "IPv4Adapter",
+          22
+        ],
+        [
+          "IPv4Route",
+          31
+        ]
+      ],
+      "question": "`PicoNetworkDetectionError` → `IPv4Adapter` → `IPv4Route`"
+    },
+    {
+      "path": "backend/services/policy_bridge.py",
+      "group": "backend_app",
+      "topic": "14 维状态/动作转换、分侧动作计划与限幅",
+      "symbols": [
+        [
+          "lerobot_state_from_ui",
+          20
+        ],
+        [
+          "build_policy_action_plan",
+          26
+        ]
+      ],
+      "question": "`lerobot_state_from_ui` → `build_policy_action_plan`"
+    },
+    {
+      "path": "backend/services/policy_service.py",
+      "group": "backend_app",
+      "topic": "模型登记、有限动作队列及微调计划状态",
+      "symbols": [
+        [
+          "PolicyService",
+          20
+        ]
+      ],
+      "question": "`PolicyService`"
+    },
+    {
+      "path": "backend/services/stability_monitor.py",
+      "group": "backend_app",
+      "topic": "稳定性观察任务与 HAL/相机/力状态记录",
+      "symbols": [
+        [
+          "StabilityMonitorService",
+          20
+        ]
+      ],
+      "question": "`StabilityMonitorService`"
+    },
+    {
+      "path": "backend/services/telemetry_hub.py",
+      "group": "backend_app",
+      "topic": "显示遥测聚合、缓存与后台硬件读取",
+      "symbols": [
+        [
+          "TelemetryHub",
+          20
+        ]
+      ],
+      "question": "`TelemetryHub`"
+    },
+    {
+      "path": "backend/services/teleop_mapping.py",
+      "group": "backend_app",
+      "topic": "native 遥操作配置、来源管理、启动停止与状态采样",
+      "symbols": [
+        [
+          "TeleopMappingService",
+          53
+        ]
+      ],
+      "question": "`TeleopMappingService`"
+    },
+    {
+      "path": "backend/tests/HOME_SETTINGS_TEST_PLAN.md",
+      "group": "backend_tests",
+      "topic": "设置/原点人工验证计划；不是已通过的测试报告",
+      "symbols": [],
+      "question": "区分计划步骤、已执行记录与验收判据。"
+    },
+    {
+      "path": "backend/tests/__init__.py",
+      "group": "backend_tests",
+      "topic": "Python 包入口；查看是否仅作包标记或显式导出",
+      "symbols": [],
+      "question": "包初始化是否含可执行语句或重导出？"
+    },
+    {
+      "path": "backend/tests/test_app.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜API 路由、错误处理与应用服务交互",
+      "symbols": [
+        [
+          "test_backend_app_import_does_not_create_runtime_services",
+          107
+        ],
+        [
+          "test_create_app_exposes_gripper_router",
+          128
+        ]
+      ],
+      "question": "`test_backend_app_import_does_not_create_runtime_services` → `test_create_app_exposes_gripper_router`"
+    },
+    {
+      "path": "backend/tests/test_camera_format.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜相机角色、格式、采集与回退",
+      "symbols": [
+        [
+          "test_camera_driver_requests_yuyv_fourcc_before_capture_dimensions",
+          34
+        ],
+        [
+          "test_camera_worker_requests_yuyv_fourcc_before_capture_dimensions",
+          47
+        ]
+      ],
+      "question": "`test_camera_driver_requests_yuyv_fourcc_before_capture_dimensions` → `test_camera_worker_requests_yuyv_fourcc_before_capture_dimensions`"
+    },
+    {
+      "path": "backend/tests/test_command_diagnostic_logging.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜运动命令诊断日志字段",
+      "symbols": [
+        [
+          "test_manual_axis_move_logs_structured_event",
+          134
+        ],
+        [
+          "test_work_origin_home_all_logs_operation_and_moves",
+          155
+        ]
+      ],
+      "question": "`test_manual_axis_move_logs_structured_event` → `test_work_origin_home_all_logs_operation_and_moves`"
+    },
+    {
+      "path": "backend/tests/test_control_stop_races.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜急停、恢复和异步返回之间的竞争条件",
+      "symbols": [
+        [
+          "test_policy_stop_invalidates_action_already_removed_from_queue",
+          19
+        ],
+        [
+          "test_policy_rejects_actions_queued_during_emergency_before_later_restart",
+          53
+        ]
+      ],
+      "question": "`test_policy_stop_invalidates_action_already_removed_from_queue` → `test_policy_rejects_actions_queued_during_emergency_before_later_restart`"
+    },
+    {
+      "path": "backend/tests/test_control_watchdog.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜浏览器心跳、HAL 租约与明确恢复",
+      "symbols": [
+        [
+          "test_ack_readiness_requires_confirmed_current_session_and_rejects_trip_before_hal_expiry",
+          47
+        ],
+        [
+          "test_late_response_cannot_revive_browser_before_monitor_checks_timeout",
+          64
+        ]
+      ],
+      "question": "`test_ack_readiness_requires_confirmed_current_session_and_rejects_trip_before_hal_expiry` → `test_late_response_cannot_revive_browser_before_monitor_checks_timeout`"
+    },
+    {
+      "path": "backend/tests/test_dataset_recorder.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜episode 顺序、原生写入、对齐、质量与清理",
+      "symbols": [
+        [
+          "test_dataset_recorder_declares_and_writes_motion_pulses",
+          88
+        ],
+        [
+          "test_dataset_recorder_hal_fallback_reuses_last_valid_motion_pulses",
+          97
+        ]
+      ],
+      "question": "`test_dataset_recorder_declares_and_writes_motion_pulses` → `test_dataset_recorder_hal_fallback_reuses_last_valid_motion_pulses`"
+    },
+    {
+      "path": "backend/tests/test_dds_blocking_isolation.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜阻塞 DLL 隔离、有界容量与停止续租",
+      "symbols": [
+        [
+          "test_blocked_command_capacity_does_not_queue_or_block_emergency_and_lease",
+          16
+        ],
+        [
+          "test_emergency_transport_failure_stops_lease_renewal",
+          79
+        ]
+      ],
+      "question": "`test_blocked_command_capacity_does_not_queue_or_block_emergency_and_lease` → `test_emergency_transport_failure_stops_lease_renewal`"
+    },
+    {
+      "path": "backend/tests/test_diagnostic_logging.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜结构化日志格式、哈希和限流",
+      "symbols": [
+        [
+          "test_event_log_formats_stable_key_value_message",
+          17
+        ],
+        [
+          "test_event_log_uses_generated_operation_id",
+          46
+        ]
+      ],
+      "question": "`test_event_log_formats_stable_key_value_message` → `test_event_log_uses_generated_operation_id`"
+    },
+    {
+      "path": "backend/tests/test_force_axis_calibration.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜双侧力轴符号与标定契约",
+      "symbols": [
+        [
+          "test_axis_sign_migration_requires_a_new_compliance_confirmation",
+          15
+        ]
+      ],
+      "question": "`test_axis_sign_migration_requires_a_new_compliance_confirmation`"
+    },
+    {
+      "path": "backend/tests/test_force_config.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜力源和安全配置校验",
+      "symbols": [
+        [
+          "test_force_source_selection_survives_settings_reload",
+          21
+        ],
+        [
+          "test_legacy_config_without_force_source_defaults_to_hkvl",
+          36
+        ]
+      ],
+      "question": "`test_force_source_selection_survives_settings_reload` → `test_legacy_config_without_force_source_defaults_to_hkvl`"
+    },
+    {
+      "path": "backend/tests/test_force_nidaq_driver.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜NI-DAQ 采样、标定、滤波与任务复用",
+      "symbols": [
+        [
+          "test_force_driver_applies_reference_calibration_fallback",
+          14
+        ],
+        [
+          "test_force_driver_tare_bias_is_subtracted_before_calibration",
+          29
+        ]
+      ],
+      "question": "`test_force_driver_applies_reference_calibration_fallback` → `test_force_driver_tare_bias_is_subtracted_before_calibration`"
+    },
+    {
+      "path": "backend/tests/test_gripper_driver.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜Python 夹爪驱动/SDK 替身",
+      "symbols": [
+        [
+          "test_jodell_gripper_target_position_mapping",
+          14
+        ],
+        [
+          "test_gripper_close_respects_icf_min_gap_protection",
+          22
+        ]
+      ],
+      "question": "`test_jodell_gripper_target_position_mapping` → `test_gripper_close_respects_icf_min_gap_protection`"
+    },
+    {
+      "path": "backend/tests/test_gripper_router.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜夹爪 native 路由与状态/命令",
+      "symbols": [
+        [
+          "test_router_always_selects_hal_native",
+          42
+        ],
+        [
+          "test_router_ignores_legacy_python_mapper_engine",
+          50
+        ]
+      ],
+      "question": "`test_router_always_selects_hal_native` → `test_router_ignores_legacy_python_mapper_engine`"
+    },
+    {
+      "path": "backend/tests/test_hal_dds_client.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜DDS 缓存、请求匹配、应答和错误",
+      "symbols": [
+        [
+          "test_dds_hal_client_reads_health_from_topic_cache",
+          56
+        ],
+        [
+          "test_dds_hal_client_reads_motion_state_from_topic_cache",
+          84
+        ]
+      ],
+      "question": "`test_dds_hal_client_reads_health_from_topic_cache` → `test_dds_hal_client_reads_motion_state_from_topic_cache`"
+    },
+    {
+      "path": "backend/tests/test_hal_native_acceptance_report.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜HAL-native 验收报告解析及约束",
+      "symbols": [
+        [
+          "test_hal_native_acceptance_report_verifier_accepts_full_pass",
+          113
+        ],
+        [
+          "test_hal_native_acceptance_report_verifier_rejects_missing_axes",
+          123
+        ]
+      ],
+      "question": "`test_hal_native_acceptance_report_verifier_accepts_full_pass` → `test_hal_native_acceptance_report_verifier_rejects_missing_axes`"
+    },
+    {
+      "path": "backend/tests/test_hal_protocol.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜HAL 命令载荷、超时和重试策略",
+      "symbols": [
+        [
+          "test_shared_hal_command_protocol_covers_existing_real_hal_commands",
+          18
+        ],
+        [
+          "test_hal_command_payload_flattens_teleop_target_deltas",
+          50
+        ]
+      ],
+      "question": "`test_shared_hal_command_protocol_covers_existing_real_hal_commands` → `test_hal_command_payload_flattens_teleop_target_deltas`"
+    },
+    {
+      "path": "backend/tests/test_hal_source_contracts.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜跨语言 HAL 源码契约静态检查",
+      "symbols": [
+        [
+          "test_hal_motion_state_json_exposes_axis_moving_flags",
+          22
+        ],
+        [
+          "test_hal_removes_orphaned_axis_diagnostics_entrypoint",
+          33
+        ]
+      ],
+      "question": "`test_hal_motion_state_json_exposes_axis_moving_flags` → `test_hal_removes_orphaned_axis_diagnostics_entrypoint`"
+    },
+    {
+      "path": "backend/tests/test_hal_transport_selection.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜真实模式 DDS 选择及 HTTP 拒绝",
+      "symbols": [
+        [
+          "test_make_hal_client_defaults_to_dds_real_hal",
+          21
+        ],
+        [
+          "test_make_hal_client_keeps_test_hal_even_when_dds_transport_is_set",
+          32
+        ]
+      ],
+      "question": "`test_make_hal_client_defaults_to_dds_real_hal` → `test_make_hal_client_keeps_test_hal_even_when_dds_transport_is_set`"
+    },
+    {
+      "path": "backend/tests/test_hardware_defaults.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜默认设备参数与配置迁移契约",
+      "symbols": [
+        [
+          "test_hal_defaults_use_backend_hal_boundary",
+          22
+        ],
+        [
+          "test_motion_translation_profile_uses_um_units",
+          32
+        ]
+      ],
+      "question": "`test_hal_defaults_use_backend_hal_boundary` → `test_motion_translation_profile_uses_um_units`"
+    },
+    {
+      "path": "backend/tests/test_import_icf_teleop_config.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜ICF 参数导入及迁移",
+      "symbols": [
+        [
+          "test_import_icf_gripper_sources_are_normalized_to_operator_view",
+          49
+        ],
+        [
+          "test_import_icf_config_restores_card0_yaw_permission",
+          78
+        ]
+      ],
+      "question": "`test_import_icf_gripper_sources_are_normalized_to_operator_view` → `test_import_icf_config_restores_card0_yaw_permission`"
+    },
+    {
+      "path": "backend/tests/test_module_isolation.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜单模块失败不饿死遥测/日志或资源清理",
+      "symbols": [
+        [
+          "test_gripper_status_failure_does_not_starve_other_telemetry_or_logs",
+          50
+        ],
+        [
+          "test_health_read_failure_keeps_socket_observable_without_stale_health",
+          94
+        ]
+      ],
+      "question": "`test_gripper_status_failure_does_not_starve_other_telemetry_or_logs` → `test_health_read_failure_keeps_socket_observable_without_stale_health`"
+    },
+    {
+      "path": "backend/tests/test_normalize_origin.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜原点归一化辅助工具",
+      "symbols": [
+        [
+          "test_normalize_frame_to_origin_updates_motion_state_and_action_only",
+          26
+        ],
+        [
+          "test_normalize_origin_dataset_dry_run_and_apply_rewrite_parquet",
+          91
+        ]
+      ],
+      "question": "`test_normalize_frame_to_origin_updates_motion_state_and_action_only` → `test_normalize_origin_dataset_dry_run_and_apply_rewrite_parquet`"
+    },
+    {
+      "path": "backend/tests/test_operator_view.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜操作者与硬件左右映射",
+      "symbols": [
+        [
+          "test_operator_view_maps_left_to_existing_right_hardware",
+          16
+        ],
+        [
+          "test_operator_view_gripper_sources_follow_same_named_operator_hand",
+          23
+        ]
+      ],
+      "question": "`test_operator_view_maps_left_to_existing_right_hardware` → `test_operator_view_gripper_sources_follow_same_named_operator_hand`"
+    },
+    {
+      "path": "backend/tests/test_pico_adb_driver.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜ADB 连接/离线及视觉脚本调用",
+      "symbols": [
+        [
+          "test_pico_status_reports_offline_device_as_not_ok",
+          15
+        ]
+      ],
+      "question": "`test_pico_status_reports_offline_device_as_not_ok`"
+    },
+    {
+      "path": "backend/tests/test_pico_network.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜网卡、路由与 PICO 地址发现",
+      "symbols": [
+        [
+          "test_select_pico_network_prefers_related_physical_lan_over_virtual_default_route",
+          17
+        ],
+        [
+          "test_pico_network_endpoint_preserves_operator_ip_and_persists_detected_pc_fields",
+          41
+        ]
+      ],
+      "question": "`test_select_pico_network_prefers_related_physical_lan_over_virtual_default_route` → `test_pico_network_endpoint_preserves_operator_ip_and_persists_detected_pc_fields`"
+    },
+    {
+      "path": "backend/tests/test_policy_bridge.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜14 维动作语义与单位/限幅",
+      "symbols": [
+        [
+          "test_lerobot_state_from_ui_inserts_grippers_and_converts_rotation_to_mdeg",
+          15
+        ],
+        [
+          "test_build_policy_action_plan_clamps_motion_and_gripper_steps",
+          24
+        ]
+      ],
+      "question": "`test_lerobot_state_from_ui_inserts_grippers_and_converts_rotation_to_mdeg` → `test_build_policy_action_plan_clamps_motion_and_gripper_steps`"
+    },
+    {
+      "path": "backend/tests/test_probe_jodell_dual_com.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜双串口夹爪诊断工具解析",
+      "symbols": [
+        [
+          "test_probe_script_parses_com_ports_and_latency_percentiles",
+          23
+        ],
+        [
+          "test_probe_stats_report_success_rate_and_raw_range",
+          32
+        ]
+      ],
+      "question": "`test_probe_script_parses_com_ports_and_latency_percentiles` → `test_probe_stats_report_success_rate_and_raw_range`"
+    },
+    {
+      "path": "backend/tests/test_review_remediation.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜控制会话、并发拒绝、参数及数据保留回归",
+      "symbols": [
+        [
+          "test_expired_open_socket_does_not_block_new_owner_or_revoke_it_later",
+          20
+        ],
+        [
+          "test_nonfinite_or_negative_steps_rejected_at_both_inputs",
+          39
+        ]
+      ],
+      "question": "`test_expired_open_socket_does_not_block_new_owner_or_revoke_it_later` → `test_nonfinite_or_negative_steps_rejected_at_both_inputs`"
+    },
+    {
+      "path": "backend/tests/test_stability_monitor.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜稳定性监测任务状态与异常",
+      "symbols": [
+        [
+          "test_stability_monitor_reads_hkvl_state_without_nidaq",
+          14
+        ]
+      ],
+      "question": "`test_stability_monitor_reads_hkvl_state_without_nidaq`"
+    },
+    {
+      "path": "backend/tests/test_stack_scripts.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜启动停止脚本的静态行为约束",
+      "symbols": [
+        [
+          "test_start_stack_cleans_backend_process_tree_even_without_listening_port",
+          14
+        ],
+        [
+          "test_start_stack_stops_backend_before_restarting_hal",
+          24
+        ]
+      ],
+      "question": "`test_start_stack_cleans_backend_process_tree_even_without_listening_port` → `test_start_stack_stops_backend_before_restarting_hal`"
+    },
+    {
+      "path": "backend/tests/test_telemetry_hub.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜遥测真机/测试语义与缓存",
+      "symbols": [
+        [
+          "test_real_hal_ok_is_not_reported_faulted_when_force_probe_is_unavailable",
+          39
+        ],
+        [
+          "test_nidaq_force_status_reports_the_motion_estop_latch",
+          53
+        ]
+      ],
+      "question": "`test_real_hal_ok_is_not_reported_faulted_when_force_probe_is_unavailable` → `test_nidaq_force_status_reports_the_motion_estop_latch`"
+    },
+    {
+      "path": "backend/tests/test_teleop_mapping.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜native 遥操作来源、配置、原点及恢复",
+      "symbols": [
+        [
+          "test_native_teleop_start_configures_and_starts_hal_controller",
+          214
+        ],
+        [
+          "test_teleop_mapper_start_stop_read_config_off_event_loop",
+          277
+        ]
+      ],
+      "question": "`test_native_teleop_start_configures_and_starts_hal_controller` → `test_teleop_mapper_start_stop_read_config_off_event_loop`"
+    },
+    {
+      "path": "backend/tests/test_units.py",
+      "group": "backend_tests",
+      "topic": "回归测试｜脉冲与 UI/LeRobot 单位换算",
+      "symbols": [
+        [
+          "test_rotation_ui_uses_degrees_not_millidegrees",
+          12
+        ],
+        [
+          "test_translation_ui_uses_micrometers",
+          17
+        ]
+      ],
+      "question": "`test_rotation_ui_uses_degrees_not_millidegrees` → `test_translation_ui_uses_micrometers`"
+    },
+    {
+      "path": "backend/workers/__init__.py",
+      "group": "backend_io",
+      "topic": "Python 包入口；查看是否仅作包标记或显式导出",
+      "symbols": [],
+      "question": "包初始化是否含可执行语句或重导出？"
+    },
+    {
+      "path": "backend/workers/camera_capture_worker.py",
+      "group": "backend_io",
+      "topic": "可选独立相机进程、stdin/stdout IPC 与 JPEG 回传",
+      "symbols": [
+        [
+          "run_camera_capture_worker",
+          23
+        ],
+        [
+          "run_camera_capture_worker_stdio",
+          48
+        ]
+      ],
+      "question": "`run_camera_capture_worker` → `run_camera_capture_worker_stdio`"
+    },
+    {
+      "path": "frontend/.gitignore",
+      "group": "frontend_tools",
+      "topic": "前端依赖、构建与本机文件的 Git 排除规则",
+      "symbols": [],
+      "question": "哪些目录/文件被检查、忽略或排除？"
+    },
+    {
+      "path": "frontend/eslint.config.js",
+      "group": "frontend_tools",
+      "topic": "ESLint 前端规则与文件范围",
+      "symbols": [],
+      "question": "从顶层执行语句和导出对象追踪调用关系。"
+    },
+    {
+      "path": "frontend/index.html",
+      "group": "frontend_tools",
+      "topic": "浏览器页面骨架与前端脚本入口",
+      "symbols": [],
+      "question": "HTML 根节点与 module script 指向哪个 TSX 入口？"
+    },
+    {
+      "path": "frontend/package-lock.json",
+      "group": "frontend_tools",
+      "topic": "npm 依赖解析锁定；保留的可复现配置，不是应用入口",
+      "symbols": [],
+      "question": "配置字段：`name`、`version`、`lockfileVersion`、`requires`、`packages`"
+    },
+    {
+      "path": "frontend/package.json",
+      "group": "frontend_tools",
+      "topic": "npm 命令、依赖和包元数据",
+      "symbols": [],
+      "question": "配置字段：`name`、`private`、`version`、`type`、`scripts`"
+    },
+    {
+      "path": "frontend/scripts/find-lines.py",
+      "group": "frontend_tools",
+      "topic": "历史辅助检索：读取 SettingsView 定位待替换片段；非运行入口",
+      "symbols": [],
+      "question": "读取哪份 SettingsView，按哪些文本定位并打印行号？"
+    },
+    {
+      "path": "frontend/scripts/fix-dash-antd.py",
+      "group": "frontend_tools",
+      "topic": "历史 UI 文本替换/迁移脚本；会改源码，非运行入口，不应直接重跑",
+      "symbols": [],
+      "question": "顶层 `Path/read_text/replace/write_text`：目标文件及替换前提仍成立吗？"
+    },
+    {
+      "path": "frontend/scripts/fix-dash-antd2.py",
+      "group": "frontend_tools",
+      "topic": "历史 UI 文本替换/迁移脚本；会改源码，非运行入口，不应直接重跑",
+      "symbols": [],
+      "question": "顶层 `Path/read_text/replace/write_text`：目标文件及替换前提仍成立吗？"
+    },
+    {
+      "path": "frontend/scripts/patch-dataset-ui.py",
+      "group": "frontend_tools",
+      "topic": "历史 UI 文本替换/迁移脚本；会改源码，非运行入口，不应直接重跑",
+      "symbols": [],
+      "question": "顶层 `Path/read_text/replace/write_text`：目标文件及替换前提仍成立吗？"
+    },
+    {
+      "path": "frontend/scripts/patch-settings-ui.py",
+      "group": "frontend_tools",
+      "topic": "历史 UI 文本替换/迁移脚本；会改源码，非运行入口，不应直接重跑",
+      "symbols": [],
+      "question": "顶层 `Path/read_text/replace/write_text`：目标文件及替换前提仍成立吗？"
+    },
+    {
+      "path": "frontend/scripts/patch-settings-ui2.py",
+      "group": "frontend_tools",
+      "topic": "历史 UI 文本替换/迁移脚本；会改源码，非运行入口，不应直接重跑",
+      "symbols": [],
+      "question": "顶层 `Path/read_text/replace/write_text`：目标文件及替换前提仍成立吗？"
+    },
+    {
+      "path": "frontend/scripts/patch-settings-ui3.py",
+      "group": "frontend_tools",
+      "topic": "历史 UI 文本替换/迁移脚本；会改源码，非运行入口，不应直接重跑",
+      "symbols": [],
+      "question": "顶层 `Path/read_text/replace/write_text`：目标文件及替换前提仍成立吗？"
+    },
+    {
+      "path": "frontend/scripts/patch-settings-ui4.py",
+      "group": "frontend_tools",
+      "topic": "历史 UI 文本替换/迁移脚本；会改源码，非运行入口，不应直接重跑",
+      "symbols": [
+        [
+          "replace_range",
+          8
+        ]
+      ],
+      "question": "`replace_range`"
+    },
+    {
+      "path": "frontend/scripts/patch-settings-ui5.py",
+      "group": "frontend_tools",
+      "topic": "历史 UI 文本替换/迁移脚本；会改源码，非运行入口，不应直接重跑",
+      "symbols": [],
+      "question": "顶层 `Path/read_text/replace/write_text`：目标文件及替换前提仍成立吗？"
+    },
+    {
+      "path": "frontend/scripts/serve-dist.mjs",
+      "group": "frontend_tools",
+      "topic": "构建产物的本地 HTTP 静态服务与路由回退",
+      "symbols": [
+        [
+          "args",
+          11
+        ],
+        [
+          "key",
+          14
+        ],
+        [
+          "value",
+          18
+        ]
+      ],
+      "question": "`args` → `key` → `value`"
+    },
+    {
+      "path": "frontend/scripts/visual-check.mjs",
+      "group": "frontend_tools",
+      "topic": "构建、启动预览与 Playwright 视觉检查；辅助验收入口",
+      "symbols": [
+        [
+          "port",
+          13
+        ],
+        [
+          "baseUrl",
+          15
+        ],
+        [
+          "npmCommand",
+          16
+        ]
+      ],
+      "question": "`port` → `baseUrl` → `npmCommand`"
+    },
+    {
+      "path": "frontend/src/App.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜React 应用装配、路由及连接生命周期",
+      "symbols": [
+        [
+          "AppStation M0 frontend",
+          98
+        ],
+        [
+          "renders a before and after comparison before confirming a high-risk action",
+          99
+        ]
+      ],
+      "question": "用例：“AppStation M0 frontend”；“renders a before and after comparison before confirming a high-risk action”"
+    },
+    {
+      "path": "frontend/src/App.tsx",
+      "group": "frontend_base",
+      "topic": "React 应用装配、路由及连接生命周期",
+      "symbols": [
+        [
+          "App",
+          41
+        ],
+        [
+          "DashboardView",
+          16
+        ],
+        [
+          "RecordPage",
+          17
+        ]
+      ],
+      "question": "`App` → `DashboardView` → `RecordPage`"
+    },
+    {
+      "path": "frontend/src/DatasetView.lazy.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜数据集、episode、回看及管理界面",
+      "symbols": [
+        [
+          "DatasetView backend datasets",
+          27
+        ],
+        [
+          "loads episode samples from the detail endpoint after listing metadata",
+          28
+        ]
+      ],
+      "question": "用例：“DatasetView backend datasets”；“loads episode samples from the detail endpoint after listing metadata”"
+    },
+    {
+      "path": "frontend/src/api.controlRecovery.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜HTTP 客户端生命周期与控制恢复",
+      "symbols": [
+        [
+          "请求超时即撤权并结束等待；Abort 不表示服务端动作已取消",
+          6
+        ],
+        [
+          "两个页面的回原点请求在共享 API 边界互斥",
+          27
+        ]
+      ],
+      "question": "用例：“请求超时即撤权并结束等待；Abort 不表示服务端动作已取消”；“两个页面的回原点请求在共享 API 边界互斥”"
+    },
+    {
+      "path": "frontend/src/api.lifecycle.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜HTTP 客户端生命周期与控制恢复",
+      "symbols": [
+        [
+          "runtime lifecycle release",
+          14
+        ],
+        [
+          "sends release_handles once when the page is hidden",
+          15
+        ]
+      ],
+      "question": "用例：“runtime lifecycle release”；“sends release_handles once when the page is hidden”"
+    },
+    {
+      "path": "frontend/src/api/index.ts",
+      "group": "frontend_state",
+      "topic": "HTTP/WS 地址与请求、控制会话头、错误和超时封装",
+      "symbols": [
+        [
+          "apiBase",
+          25
+        ],
+        [
+          "wsUrl",
+          27
+        ],
+        [
+          "mockMode",
+          28
+        ]
+      ],
+      "question": "`apiBase` → `wsUrl` → `mockMode`"
+    },
+    {
+      "path": "frontend/src/assets/hero.png",
+      "group": "frontend_assets",
+      "topic": "静态图片/图标资源；是否实际引用需搜索文件名",
+      "symbols": [],
+      "question": "搜索文件名确认引用；图像资源没有函数入口。"
+    },
+    {
+      "path": "frontend/src/assets/react.svg",
+      "group": "frontend_assets",
+      "topic": "静态图片/图标资源；是否实际引用需搜索文件名",
+      "symbols": [],
+      "question": "搜索文件名确认引用；图像资源没有函数入口。"
+    },
+    {
+      "path": "frontend/src/assets/vite.svg",
+      "group": "frontend_assets",
+      "topic": "静态图片/图标资源；是否实际引用需搜索文件名",
+      "symbols": [],
+      "question": "搜索文件名确认引用；图像资源没有函数入口。"
+    },
+    {
+      "path": "frontend/src/components/ActionCompareModal.tsx",
+      "group": "frontend_components",
+      "topic": "操作前后参数及影响对比对话框",
+      "symbols": [
+        [
+          "ActionCompareModal",
+          60
+        ],
+        [
+          "ActionCompareItem",
+          10
+        ],
+        [
+          "ActionCompareModalProps",
+          16
+        ]
+      ],
+      "question": "`ActionCompareModal` → `ActionCompareItem` → `ActionCompareModalProps`"
+    },
+    {
+      "path": "frontend/src/components/AppLayout.errors.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜主界面框架、导航、连接与安全提示",
+      "symbols": [
+        [
+          "业务页错误隔离",
+          35
+        ],
+        [
+          "急停状态显示自身失败时仍保留直接急停按钮",
+          36
+        ]
+      ],
+      "question": "用例：“业务页错误隔离”；“急停状态显示自身失败时仍保留直接急停按钮”"
+    },
+    {
+      "path": "frontend/src/components/AppLayout.mode.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜主界面框架、导航、连接与安全提示",
+      "symbols": [
+        [
+          "工作模式分段与路由",
+          47
+        ],
+        [
+          "按 URL 推导选中项：record / auto / settings#manual",
+          48
+        ]
+      ],
+      "question": "用例：“工作模式分段与路由”；“按 URL 推导选中项：record / auto / settings#manual”"
+    },
+    {
+      "path": "frontend/src/components/AppLayout.safety.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜主界面框架、导航、连接与安全提示",
+      "symbols": [
+        [
+          "顶部与底部全局安全状态",
+          30
+        ],
+        [
+          "HAL 失联时安全值不可用",
+          50
+        ]
+      ],
+      "question": "用例：“顶部与底部全局安全状态”；“HAL 失联时安全值不可用”"
+    },
+    {
+      "path": "frontend/src/components/AppLayout.tsx",
+      "group": "frontend_components",
+      "topic": "主界面框架、导航、连接与安全提示",
+      "symbols": [
+        [
+          "AppLayout",
+          96
+        ],
+        [
+          "navItems",
+          34
+        ],
+        [
+          "WorkMode",
+          44
+        ]
+      ],
+      "question": "`AppLayout` → `navItems` → `WorkMode`"
+    },
+    {
+      "path": "frontend/src/components/CameraPreview.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜相机画面组件与连接/失败处理",
+      "symbols": [
+        [
+          "CameraPreview",
+          25
+        ],
+        [
+          "uses the MJPEG stream endpoint instead of polling snapshots",
+          32
+        ]
+      ],
+      "question": "用例：“CameraPreview”；“uses the MJPEG stream endpoint instead of polling snapshots”"
+    },
+    {
+      "path": "frontend/src/components/CameraPreview.tsx",
+      "group": "frontend_components",
+      "topic": "相机画面组件与连接/失败处理",
+      "symbols": [
+        [
+          "CameraPreview",
+          30
+        ],
+        [
+          "CameraPreviewProps",
+          13
+        ],
+        [
+          "cameraResolution",
+          23
+        ]
+      ],
+      "question": "`CameraPreview` → `CameraPreviewProps` → `cameraResolution`"
+    },
+    {
+      "path": "frontend/src/components/Charts.tsx",
+      "group": "frontend_components",
+      "topic": "遥测曲线绘制与数据呈现",
+      "symbols": [
+        [
+          "JointChart",
+          199
+        ],
+        [
+          "AxisGroupChart",
+          213
+        ],
+        [
+          "ForceChart",
+          243
+        ]
+      ],
+      "question": "`JointChart` → `AxisGroupChart` → `ForceChart`"
+    },
+    {
+      "path": "frontend/src/components/ControlLeaseStatus.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜控制租约状态及恢复入口展示",
+      "symbols": [
+        [
+          "真实模式租约未确认时明确提示，Safety 不显示绿色正常数值",
+          11
+        ],
+        [
+          "租约确认后仍要求显式解除硬件锁定，不自动 ACK",
+          22
+        ]
+      ],
+      "question": "用例：“真实模式租约未确认时明确提示，Safety 不显示绿色正常数值”；“租约确认后仍要求显式解除硬件锁定，不自动 ACK”"
+    },
+    {
+      "path": "frontend/src/components/ControlLeaseStatus.tsx",
+      "group": "frontend_components",
+      "topic": "控制租约状态及恢复入口展示",
+      "symbols": [
+        [
+          "ControlLeaseStatus",
+          6
+        ],
+        [
+          "lease",
+          7
+        ],
+        [
+          "safetyLatched",
+          8
+        ]
+      ],
+      "question": "`ControlLeaseStatus` → `lease` → `safetyLatched`"
+    },
+    {
+      "path": "frontend/src/components/GlobalEmergencyStopButton.tsx",
+      "group": "frontend_components",
+      "topic": "全局急停 UI 与请求触发",
+      "symbols": [
+        [
+          "GlobalEmergencyStopButton",
+          12
+        ],
+        [
+          "safetyLatched",
+          13
+        ],
+        [
+          "safety",
+          14
+        ]
+      ],
+      "question": "`GlobalEmergencyStopButton` → `safetyLatched` → `safety`"
+    },
+    {
+      "path": "frontend/src/components/LogPanel.tsx",
+      "group": "frontend_components",
+      "topic": "结构化日志的筛选与列表显示",
+      "symbols": [
+        [
+          "LogPanel",
+          53
+        ],
+        [
+          "levelOptions",
+          14
+        ],
+        [
+          "quickFilters",
+          16
+        ]
+      ],
+      "question": "`LogPanel` → `levelOptions` → `quickFilters`"
+    },
+    {
+      "path": "frontend/src/components/MetricPill.tsx",
+      "group": "frontend_components",
+      "topic": "紧凑数值/状态指标组件",
+      "symbols": [
+        [
+          "MetricPill",
+          25
+        ],
+        [
+          "toneByState",
+          10
+        ],
+        [
+          "MetricPillProps",
+          18
+        ]
+      ],
+      "question": "`MetricPill` → `toneByState` → `MetricPillProps`"
+    },
+    {
+      "path": "frontend/src/components/ModuleErrorBoundary.tsx",
+      "group": "frontend_components",
+      "topic": "模块级 React 异常边界",
+      "symbols": [
+        [
+          "ModuleErrorBoundary",
+          5
+        ]
+      ],
+      "question": "`ModuleErrorBoundary`"
+    },
+    {
+      "path": "frontend/src/components/RouteErrorBoundary.tsx",
+      "group": "frontend_components",
+      "topic": "路由级异常隔离与恢复界面",
+      "symbols": [
+        [
+          "RouteErrorBoundary",
+          6
+        ],
+        [
+          "store",
+          27
+        ]
+      ],
+      "question": "`RouteErrorBoundary` → `store`"
+    },
+    {
+      "path": "frontend/src/components/SafetyOverlay.tsx",
+      "group": "frontend_components",
+      "topic": "安全锁存及恢复提示覆盖层",
+      "symbols": [
+        [
+          "SafetyOverlay",
+          13
+        ],
+        [
+          "dangerIndex",
+          14
+        ],
+        [
+          "setDangerOverride",
+          15
+        ]
+      ],
+      "question": "`SafetyOverlay` → `dangerIndex` → `setDangerOverride`"
+    },
+    {
+      "path": "frontend/src/components/StatusBar.tsx",
+      "group": "frontend_components",
+      "topic": "连接、运行与资源状态栏",
+      "symbols": [
+        [
+          "StatusBar",
+          13
+        ],
+        [
+          "halOk",
+          14
+        ],
+        [
+          "wsHz",
+          15
+        ]
+      ],
+      "question": "`StatusBar` → `halOk` → `wsHz`"
+    },
+    {
+      "path": "frontend/src/components/dashboard/ArmOverviewPanel.tsx",
+      "group": "frontend_components",
+      "topic": "单侧机械手运动/反馈概览",
+      "symbols": [
+        [
+          "ArmOverviewPanel",
+          34
+        ],
+        [
+          "diagnosticState",
+          18
+        ],
+        [
+          "cameraByKey",
+          22
+        ]
+      ],
+      "question": "`ArmOverviewPanel` → `diagnosticState` → `cameraByKey`"
+    },
+    {
+      "path": "frontend/src/components/dashboard/ModuleStatusGrid.tsx",
+      "group": "frontend_components",
+      "topic": "硬件与运行模块状态总览",
+      "symbols": [
+        [
+          "ModuleStatusGrid",
+          39
+        ],
+        [
+          "ModuleStatus",
+          10
+        ],
+        [
+          "iconByState",
+          22
+        ]
+      ],
+      "question": "`ModuleStatusGrid` → `ModuleStatus` → `iconByState`"
+    },
+    {
+      "path": "frontend/src/components/dashboard/PlatformOverview.tsx",
+      "group": "frontend_components",
+      "topic": "平台总体运行状态视图",
+      "symbols": [
+        [
+          "PlatformOverview",
+          29
+        ],
+        [
+          "processState",
+          16
+        ],
+        [
+          "item",
+          17
+        ]
+      ],
+      "question": "`PlatformOverview` → `processState` → `item`"
+    },
+    {
+      "path": "frontend/src/components/dashboard/ReadinessSummary.tsx",
+      "group": "frontend_components",
+      "topic": "控制和录制前准备条件归纳",
+      "symbols": [
+        [
+          "ReadinessSummary",
+          17
+        ],
+        [
+          "scoreStatus",
+          11
+        ],
+        [
+          "status",
+          32
+        ]
+      ],
+      "question": "`ReadinessSummary` → `scoreStatus` → `status`"
+    },
+    {
+      "path": "frontend/src/components/record/CameraPanel.tsx",
+      "group": "frontend_components",
+      "topic": "录制页面相机分组显示",
+      "symbols": [
+        [
+          "CameraPanel",
+          70
+        ],
+        [
+          "cameraSpecs",
+          11
+        ],
+        [
+          "cameraResolution",
+          18
+        ]
+      ],
+      "question": "`CameraPanel` → `cameraSpecs` → `cameraResolution`"
+    },
+    {
+      "path": "frontend/src/components/record/EpisodeControlPanel.safety.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜episode 保存、丢弃、复位与会话操作",
+      "symbols": [
+        [
+          "急停后保留中断片段的保存入口，不投影成空闲会话",
+          9
+        ]
+      ],
+      "question": "用例：“急停后保留中断片段的保存入口，不投影成空闲会话”"
+    },
+    {
+      "path": "frontend/src/components/record/EpisodeControlPanel.tsx",
+      "group": "frontend_components",
+      "topic": "episode 保存、丢弃、复位与会话操作",
+      "symbols": [
+        [
+          "EpisodeControlPanel",
+          55
+        ],
+        [
+          "PRESET_TASKS",
+          13
+        ],
+        [
+          "phaseConfig",
+          19
+        ]
+      ],
+      "question": "`EpisodeControlPanel` → `PRESET_TASKS` → `phaseConfig`"
+    },
+    {
+      "path": "frontend/src/components/record/EpisodeHistoryCard.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜已录 episode 历史与操作",
+      "symbols": [
+        [
+          "EpisodeHistoryCard",
+          54
+        ],
+        [
+          "loads the current dataset history from the backend in newest-first order",
+          55
+        ]
+      ],
+      "question": "用例：“EpisodeHistoryCard”；“loads the current dataset history from the backend in newest-first order”"
+    },
+    {
+      "path": "frontend/src/components/record/EpisodeHistoryCard.tsx",
+      "group": "frontend_components",
+      "topic": "已录 episode 历史与操作",
+      "symbols": [
+        [
+          "EpisodeHistoryCard",
+          36
+        ],
+        [
+          "RecentEpisode",
+          13
+        ],
+        [
+          "episodeIndex",
+          23
+        ]
+      ],
+      "question": "`EpisodeHistoryCard` → `RecentEpisode` → `episodeIndex`"
+    },
+    {
+      "path": "frontend/src/components/record/HardwareStatusCard.tsx",
+      "group": "frontend_components",
+      "topic": "录制所需硬件连接状态",
+      "symbols": [
+        [
+          "HardwareStatusCard",
+          28
+        ],
+        [
+          "toneColor",
+          11
+        ],
+        [
+          "dotStyle",
+          18
+        ]
+      ],
+      "question": "`HardwareStatusCard` → `toneColor` → `dotStyle`"
+    },
+    {
+      "path": "frontend/src/components/record/KalmanFilterCard.tsx",
+      "group": "frontend_components",
+      "topic": "遥操作滤波参数编辑界面；算法执行需追踪 HAL",
+      "symbols": [
+        [
+          "KalmanFilterCard",
+          53
+        ],
+        [
+          "TeleopConfig",
+          10
+        ],
+        [
+          "NumericTeleopKey",
+          12
+        ]
+      ],
+      "question": "`KalmanFilterCard` → `TeleopConfig` → `NumericTeleopKey`"
+    },
+    {
+      "path": "frontend/src/components/record/PreCheckModal.reasons.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜录制前检查条件与阻断原因显示",
+      "symbols": [
+        [
+          "PreCheck 失败原因与使能入口",
+          56
+        ],
+        [
+          "硬件连接未通过时列出具体原因",
+          57
+        ]
+      ],
+      "question": "用例：“PreCheck 失败原因与使能入口”；“硬件连接未通过时列出具体原因”"
+    },
+    {
+      "path": "frontend/src/components/record/PreCheckModal.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜录制前检查条件与阻断原因显示",
+      "symbols": [
+        [
+          "PreCheckModal",
+          93
+        ],
+        [
+          "allows a single logically connected Omega hand to satisfy the record hardware check",
+          94
+        ]
+      ],
+      "question": "用例：“PreCheckModal”；“allows a single logically connected Omega hand to satisfy the record hardware check”"
+    },
+    {
+      "path": "frontend/src/components/record/PreCheckModal.tsx",
+      "group": "frontend_components",
+      "topic": "录制前检查条件与阻断原因显示",
+      "symbols": [
+        [
+          "PreCheckModal",
+          134
+        ],
+        [
+          "PreCheckFrame",
+          15
+        ],
+        [
+          "StepDef",
+          17
+        ]
+      ],
+      "question": "`PreCheckModal` → `PreCheckFrame` → `StepDef`"
+    },
+    {
+      "path": "frontend/src/components/record/QualityReportModal.tsx",
+      "group": "frontend_components",
+      "topic": "episode 质量统计和警告展示",
+      "symbols": [
+        [
+          "QualityReportModal",
+          17
+        ],
+        [
+          "QualityReportModalProps",
+          9
+        ]
+      ],
+      "question": "`QualityReportModal` → `QualityReportModalProps`"
+    },
+    {
+      "path": "frontend/src/components/record/RecordTelemetryPanel.tsx",
+      "group": "frontend_components",
+      "topic": "录制中的运动、力与状态显示",
+      "symbols": [
+        [
+          "RecordTelemetryPanel",
+          157
+        ],
+        [
+          "axes",
+          13
+        ],
+        [
+          "forceLabels",
+          15
+        ]
+      ],
+      "question": "`RecordTelemetryPanel` → `axes` → `forceLabels`"
+    },
+    {
+      "path": "frontend/src/components/record/SafetyMonitorCard.tsx",
+      "group": "frontend_components",
+      "topic": "录制中的安全指标展示",
+      "symbols": [
+        [
+          "SafetyMonitorCard",
+          73
+        ],
+        [
+          "getDangerColor",
+          11
+        ],
+        [
+          "DangerBarProps",
+          18
+        ]
+      ],
+      "question": "`SafetyMonitorCard` → `getDangerColor` → `DangerBarProps`"
+    },
+    {
+      "path": "frontend/src/components/ui.tsx",
+      "group": "frontend_components",
+      "topic": "本地通用 UI 组件及交互封装",
+      "symbols": [
+        [
+          "UiButton",
+          20
+        ],
+        [
+          "UiTag",
+          55
+        ],
+        [
+          "UiSpace",
+          64
+        ]
+      ],
+      "question": "`UiButton` → `UiTag` → `UiSpace`"
+    },
+    {
+      "path": "frontend/src/data.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜前端默认配置、演示数据与展示元数据",
+      "symbols": [
+        [
+          "motion calibration defaults",
+          9
+        ],
+        [
+          "keeps frontend default kinematics aligned with backend runtime defaults",
+          10
+        ]
+      ],
+      "question": "用例：“motion calibration defaults”；“keeps frontend default kinematics aligned with backend runtime defaults”"
+    },
+    {
+      "path": "frontend/src/data.ts",
+      "group": "frontend_base",
+      "topic": "前端默认配置、演示数据与展示元数据",
+      "symbols": [
+        [
+          "axisNames",
+          8
+        ],
+        [
+          "forceChannels",
+          23
+        ],
+        [
+          "semanticAxes",
+          25
+        ]
+      ],
+      "question": "`axisNames` → `forceChannels` → `semanticAxes`"
+    },
+    {
+      "path": "frontend/src/gripperDisplay.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜夹爪位置、反馈与不可用状态的显示规则",
+      "symbols": [
+        [
+          "夹爪展示语义拆分",
+          41
+        ],
+        [
+          "请求启停来自配置，不依赖反馈",
+          42
+        ]
+      ],
+      "question": "用例：“夹爪展示语义拆分”；“请求启停来自配置，不依赖反馈”"
+    },
+    {
+      "path": "frontend/src/gripperDisplay.ts",
+      "group": "frontend_base",
+      "topic": "夹爪位置、反馈与不可用状态的显示规则",
+      "symbols": [
+        [
+          "GripperRequestState",
+          16
+        ],
+        [
+          "GripperCommandPhase",
+          19
+        ],
+        [
+          "GripperFeedbackHealth",
+          22
+        ]
+      ],
+      "question": "`GripperRequestState` → `GripperCommandPhase` → `GripperFeedbackHealth`"
+    },
+    {
+      "path": "frontend/src/hardwareStatus.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜硬件状态与未知/异常状态的显示判定",
+      "symbols": [
+        [
+          "hardware status projection",
+          65
+        ],
+        [
+          "uses configured and live telemetry values without new probes",
+          66
+        ]
+      ],
+      "question": "用例：“hardware status projection”；“uses configured and live telemetry values without new probes”"
+    },
+    {
+      "path": "frontend/src/hardwareStatus.ts",
+      "group": "frontend_base",
+      "topic": "硬件状态与未知/异常状态的显示判定",
+      "symbols": [
+        [
+          "HardwareStatusTone",
+          15
+        ],
+        [
+          "HardwareStatusRow",
+          17
+        ],
+        [
+          "telemetryStaleAfterMs",
+          24
+        ]
+      ],
+      "question": "`HardwareStatusTone` → `HardwareStatusRow` → `telemetryStaleAfterMs`"
+    },
+    {
+      "path": "frontend/src/hooks/useGripperDisplay.ts",
+      "group": "frontend_state",
+      "topic": "从共享状态组合夹爪显示数据的 Hook",
+      "symbols": [
+        [
+          "useGripperDisplay",
+          15
+        ],
+        [
+          "requestedEnabled",
+          16
+        ],
+        [
+          "command",
+          17
+        ]
+      ],
+      "question": "`useGripperDisplay` → `requestedEnabled` → `command`"
+    },
+    {
+      "path": "frontend/src/hooks/useLiveCameraSnapshot.ts",
+      "group": "frontend_state",
+      "topic": "MJPEG 图像流 URL、刷新与释放 Hook；名称保留 Snapshot",
+      "symbols": [
+        [
+          "useLiveCameraSnapshot",
+          17
+        ],
+        [
+          "refreshCameraStream",
+          96
+        ],
+        [
+          "CAMERA_RETRY_DELAY_MS",
+          10
+        ]
+      ],
+      "question": "`useLiveCameraSnapshot` → `refreshCameraStream` → `CAMERA_RETRY_DELAY_MS`"
+    },
+    {
+      "path": "frontend/src/hooks/useMotionEnable.ts",
+      "group": "frontend_state",
+      "topic": "运动使能操作的 Hook 与状态反馈",
+      "symbols": [
+        [
+          "useMotionEnable",
+          8
+        ],
+        [
+          "command",
+          9
+        ],
+        [
+          "deviceState",
+          10
+        ]
+      ],
+      "question": "`useMotionEnable` → `command` → `deviceState`"
+    },
+    {
+      "path": "frontend/src/index.css",
+      "group": "frontend_base",
+      "topic": "全局样式、布局、响应式与组件视觉规则",
+      "symbols": [],
+      "question": "从 `:root` 变量、布局类和媒体查询追踪到使用组件。"
+    },
+    {
+      "path": "frontend/src/main.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜React 根节点、启动与开发检查边界",
+      "symbols": [
+        [
+          "frontend bootstrap runtime lifecycle",
+          28
+        ],
+        [
+          "installs pagehide runtime release listener",
+          36
+        ]
+      ],
+      "question": "用例：“frontend bootstrap runtime lifecycle”；“installs pagehide runtime release listener”"
+    },
+    {
+      "path": "frontend/src/main.tsx",
+      "group": "frontend_base",
+      "topic": "React 根节点、启动与开发检查边界",
+      "symbols": [],
+      "question": "从顶层执行语句和导出对象追踪调用关系。"
+    },
+    {
+      "path": "frontend/src/manualMotionLimits.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜手动轴动作的单位、工作范围与限位计算",
+      "symbols": [
+        [
+          "manualAxisStepLimitFromPulse",
+          10
+        ],
+        [
+          "allows coarse rotation requests up to the backend chunked cap",
+          11
+        ]
+      ],
+      "question": "用例：“manualAxisStepLimitFromPulse”；“allows coarse rotation requests up to the backend chunked cap”"
+    },
+    {
+      "path": "frontend/src/manualMotionLimits.ts",
+      "group": "frontend_base",
+      "topic": "手动轴动作的单位、工作范围与限位计算",
+      "symbols": [
+        [
+          "manualAxisStepLimitPulse",
+          7
+        ],
+        [
+          "manualAxisStepLimitFromPulse",
+          13
+        ],
+        [
+          "manualTranslationStepLimitUm",
+          8
+        ]
+      ],
+      "question": "`manualAxisStepLimitPulse` → `manualAxisStepLimitFromPulse` → `manualTranslationStepLimitUm`"
+    },
+    {
+      "path": "frontend/src/manualSpeed.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜手动运动速度档位与参数换算",
+      "symbols": [
+        [
+          "manualSpeedScale",
+          10
+        ],
+        [
+          "uses a faster coarse speed while preserving medium and fine precision",
+          11
+        ]
+      ],
+      "question": "用例：“manualSpeedScale”；“uses a faster coarse speed while preserving medium and fine precision”"
+    },
+    {
+      "path": "frontend/src/manualSpeed.ts",
+      "group": "frontend_base",
+      "topic": "手动运动速度档位与参数换算",
+      "symbols": [
+        [
+          "manualSpeedScale",
+          10
+        ],
+        [
+          "manualMaxVelocity",
+          16
+        ],
+        [
+          "cappedConfiguredSpeed",
+          17
+        ]
+      ],
+      "question": "`manualSpeedScale` → `manualMaxVelocity` → `cappedConfiguredSpeed`"
+    },
+    {
+      "path": "frontend/src/motionReturnReady.ts",
+      "group": "frontend_base",
+      "topic": "返回原点动作的准备条件",
+      "symbols": [
+        [
+          "motionSideReturnOriginReady",
+          10
+        ],
+        [
+          "MotionSide",
+          8
+        ],
+        [
+          "axisEnabled",
+          16
+        ]
+      ],
+      "question": "`motionSideReturnOriginReady` → `MotionSide` → `axisEnabled`"
+    },
+    {
+      "path": "frontend/src/recordDisplay.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜录制状态与界面动作的显示规则",
+      "symbols": [
+        [
+          "录制业务派生",
+          9
+        ],
+        [
+          "仅 phase=recording 视为业务录制中",
+          10
+        ]
+      ],
+      "question": "用例：“录制业务派生”；“仅 phase=recording 视为业务录制中”"
+    },
+    {
+      "path": "frontend/src/recordDisplay.ts",
+      "group": "frontend_base",
+      "topic": "录制状态与界面动作的显示规则",
+      "symbols": [
+        [
+          "RecordPhase",
+          7
+        ],
+        [
+          "recordUiIsRecording",
+          11
+        ],
+        [
+          "recordSessionBusy",
+          16
+        ]
+      ],
+      "question": "`RecordPhase` → `recordUiIsRecording` → `recordSessionBusy`"
+    },
+    {
+      "path": "frontend/src/stores/controlLease.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜控制会话、挑战应答、到期与撤销状态",
+      "symbols": [
+        [
+          "主线程安全挑战与执行侧租约",
+          16
+        ],
+        [
+          "未确认的真实连接拒绝控制，仅显式 mock 不要求租约",
+          17
+        ]
+      ],
+      "question": "用例：“主线程安全挑战与执行侧租约”；“未确认的真实连接拒绝控制，仅显式 mock 不要求租约”"
+    },
+    {
+      "path": "frontend/src/stores/controlLease.ts",
+      "group": "frontend_state",
+      "topic": "控制会话、挑战应答、到期与撤销状态",
+      "symbols": [
+        [
+          "ControlLeaseState",
+          2
+        ],
+        [
+          "challengeTimeoutMs",
+          9
+        ],
+        [
+          "executionLeaseTimeoutMs",
+          11
+        ]
+      ],
+      "question": "`ControlLeaseState` → `challengeTimeoutMs` → `executionLeaseTimeoutMs`"
+    },
+    {
+      "path": "frontend/src/stores/frameSelectors.live.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜从遥测状态选择局部字段并控制订阅范围",
+      "symbols": [
+        [
+          "只有时钟偏差或相机名称变化时，轻量订阅仍更新预览告警和标签",
+          15
+        ]
+      ],
+      "question": "用例：“只有时钟偏差或相机名称变化时，轻量订阅仍更新预览告警和标签”"
+    },
+    {
+      "path": "frontend/src/stores/frameSelectors.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜从遥测状态选择局部字段并控制订阅范围",
+      "symbols": [
+        [
+          "frame 切片相等性",
+          39
+        ],
+        [
+          "数组比较：内容相同视为相等",
+          40
+        ]
+      ],
+      "question": "用例：“frame 切片相等性”；“数组比较：内容相同视为相等”"
+    },
+    {
+      "path": "frontend/src/stores/frameSelectors.ts",
+      "group": "frontend_state",
+      "topic": "从遥测状态选择局部字段并控制订阅范围",
+      "symbols": [
+        [
+          "numberArrayEqual",
+          11
+        ],
+        [
+          "boolArrayEqual",
+          21
+        ],
+        [
+          "shallowEqualRecord",
+          31
+        ]
+      ],
+      "question": "`numberArrayEqual` → `boolArrayEqual` → `shallowEqualRecord`"
+    },
+    {
+      "path": "frontend/src/stores/motionCommands.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜使能/断使能请求、遥测确认与命令状态协调",
+      "symbols": [
+        [
+          "运动使能命令与设备反馈",
+          108
+        ],
+        [
+          "初始 idle；API 成功只进入等待反馈，不改变设备态",
+          109
+        ]
+      ],
+      "question": "用例：“运动使能命令与设备反馈”；“初始 idle；API 成功只进入等待反馈，不改变设备态”"
+    },
+    {
+      "path": "frontend/src/stores/motionCommands.ts",
+      "group": "frontend_state",
+      "topic": "使能/断使能请求、遥测确认与命令状态协调",
+      "symbols": [
+        [
+          "MotionCommandPhase",
+          3
+        ],
+        [
+          "MotionCommandState",
+          5
+        ],
+        [
+          "MotionCommands",
+          14
+        ]
+      ],
+      "question": "`MotionCommandPhase` → `MotionCommandState` → `MotionCommands`"
+    },
+    {
+      "path": "frontend/src/stores/telemetry.controlLease.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜Zustand 共享状态、连接与遥测生命周期",
+      "symbols": [
+        [
+          "观察页不续租，切换路由后重连仍保持只读",
+          57
+        ],
+        [
+          "控制权冲突后不自动重试抢占",
+          73
+        ]
+      ],
+      "question": "用例：“观察页不续租，切换路由后重连仍保持只读”；“控制权冲突后不自动重试抢占”"
+    },
+    {
+      "path": "frontend/src/stores/telemetry.gripper.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜Zustand 共享状态、连接与遥测生命周期",
+      "symbols": [
+        [
+          "真实夹爪请求的异步归属",
+          59
+        ],
+        [
+          "旧启停命令失败不能回滚后续命令保留的请求使能标志",
+          81
+        ]
+      ],
+      "question": "用例：“真实夹爪请求的异步归属”；“旧启停命令失败不能回滚后续命令保留的请求使能标志”"
+    },
+    {
+      "path": "frontend/src/stores/telemetry.ingress.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜Zustand 共享状态、连接与遥测生命周期",
+      "symbols": [
+        [
+          "共享遥测入口的故障隔离",
+          44
+        ],
+        [
+          "连接构造失败只降级连接，不使应用启动抛错",
+          45
+        ]
+      ],
+      "question": "用例：“共享遥测入口的故障隔离”；“连接构造失败只降级连接，不使应用启动抛错”"
+    },
+    {
+      "path": "frontend/src/stores/telemetry.safety.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜Zustand 共享状态、连接与遥测生命周期",
+      "symbols": [
+        [
+          "真实 HTTP 分支的急停保护（全部网络隔离）",
+          78
+        ],
+        [
+          "显示订阅异常不能阻止急停网络请求",
+          79
+        ]
+      ],
+      "question": "用例：“真实 HTTP 分支的急停保护（全部网络隔离）”；“显示订阅异常不能阻止急停网络请求”"
+    },
+    {
+      "path": "frontend/src/stores/telemetry.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜Zustand 共享状态、连接与遥测生命周期",
+      "symbols": [
+        [
+          "telemetry config normalization",
+          11
+        ],
+        [
+          "保留用户显式选择的 NI-DAQ 备用数据源及通道",
+          12
+        ]
+      ],
+      "question": "用例：“telemetry config normalization”；“保留用户显式选择的 NI-DAQ 备用数据源及通道”"
+    },
+    {
+      "path": "frontend/src/stores/telemetry.ts",
+      "group": "frontend_state",
+      "topic": "Zustand 共享状态、连接与遥测生命周期",
+      "symbols": [
+        [
+          "uiFrameIntervalMs",
+          80
+        ],
+        [
+          "uiFrameIntervalHiddenMs",
+          82
+        ],
+        [
+          "chartHistoryIntervalMs",
+          83
+        ]
+      ],
+      "question": "`uiFrameIntervalMs` → `uiFrameIntervalHiddenMs` → `chartHistoryIntervalMs`"
+    },
+    {
+      "path": "frontend/src/stores/telemetryIngress.ts",
+      "group": "frontend_state",
+      "topic": "网络遥测与日志进入状态前的结构校验",
+      "symbols": [
+        [
+          "isWireRecord",
+          2
+        ],
+        [
+          "parseTelemetryFrame",
+          11
+        ],
+        [
+          "wireFrameIsLatched",
+          62
+        ]
+      ],
+      "question": "`isWireRecord` → `parseTelemetryFrame` → `wireFrameIsLatched`"
+    },
+    {
+      "path": "frontend/src/teleopStatus.ts",
+      "group": "frontend_base",
+      "topic": "遥操作手状态与可用性归纳",
+      "symbols": [
+        [
+          "teleopHandState",
+          22
+        ],
+        [
+          "teleopHandValue",
+          37
+        ],
+        [
+          "teleopPairState",
+          45
+        ]
+      ],
+      "question": "`teleopHandState` → `teleopHandValue` → `teleopPairState`"
+    },
+    {
+      "path": "frontend/src/test/setup.ts",
+      "group": "frontend_tests",
+      "topic": "Vitest 测试环境补丁、清理与浏览器替身",
+      "symbols": [
+        [
+          "ResizeObserverMock",
+          22
+        ],
+        [
+          "originalGetComputedStyle",
+          68
+        ]
+      ],
+      "question": "`ResizeObserverMock` → `originalGetComputedStyle`"
+    },
+    {
+      "path": "frontend/src/types.ts",
+      "group": "frontend_base",
+      "topic": "前后端契约、配置及遥测 TypeScript 类型",
+      "symbols": [
+        [
+          "ConnectionState",
+          7
+        ],
+        [
+          "TelemetryLinkState",
+          8
+        ],
+        [
+          "TelemetryLinkStatus",
+          10
+        ]
+      ],
+      "question": "`ConnectionState` → `TelemetryLinkState` → `TelemetryLinkStatus`"
+    },
+    {
+      "path": "frontend/src/utils/controlFaults.test.ts",
+      "group": "frontend_tests",
+      "topic": "回归测试｜全局脚本异常/未处理 Promise 拒绝与控制撤销",
+      "symbols": [
+        [
+          "脚本错误与未处理拒绝撤销控制，卸载后监听对称释放",
+          4
+        ]
+      ],
+      "question": "用例：“脚本错误与未处理拒绝撤销控制，卸载后监听对称释放”"
+    },
+    {
+      "path": "frontend/src/utils/controlFaults.ts",
+      "group": "frontend_base",
+      "topic": "全局脚本异常/未处理 Promise 拒绝与控制撤销",
+      "symbols": [
+        [
+          "installControlFaultHandlers",
+          2
+        ],
+        [
+          "onError",
+          3
+        ],
+        [
+          "onRejection",
+          4
+        ]
+      ],
+      "question": "`installControlFaultHandlers` → `onError` → `onRejection`"
+    },
+    {
+      "path": "frontend/src/utils/controlSafety.ts",
+      "group": "frontend_base",
+      "topic": "前端控制可用性与安全动作判定",
+      "symbols": [
+        [
+          "ControlSafetyState",
+          4
+        ],
+        [
+          "initialControlSafety",
+          13
+        ],
+        [
+          "controlSafetyBlockReason",
+          27
+        ]
+      ],
+      "question": "`ControlSafetyState` → `initialControlSafety` → `controlSafetyBlockReason`"
+    },
+    {
+      "path": "frontend/src/views/AutoView.tsx",
+      "group": "frontend_views",
+      "topic": "自动执行控制面板与动作队列展示",
+      "symbols": [
+        [
+          "AutoView",
+          16
+        ],
+        [
+          "cameras",
+          17
+        ],
+        [
+          "queueLeft",
+          18
+        ]
+      ],
+      "question": "`AutoView` → `cameras` → `queueLeft`"
+    },
+    {
+      "path": "frontend/src/views/DashboardView.tsx",
+      "group": "frontend_views",
+      "topic": "平台仪表盘页面组合",
+      "symbols": [
+        [
+          "DashboardView",
+          312
+        ],
+        [
+          "semanticAxes",
+          19
+        ],
+        [
+          "forceChannels",
+          21
+        ]
+      ],
+      "question": "`DashboardView` → `semanticAxes` → `forceChannels`"
+    },
+    {
+      "path": "frontend/src/views/DatasetView.lifecycle.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜数据集、episode、回看及管理界面",
+      "symbols": [
+        [
+          "真实数据集页面的请求结果归属",
+          34
+        ],
+        [
+          "删除 A 的同名 episode 不隐藏 B 的数据",
+          45
+        ]
+      ],
+      "question": "用例：“真实数据集页面的请求结果归属”；“删除 A 的同名 episode 不隐藏 B 的数据”"
+    },
+    {
+      "path": "frontend/src/views/DatasetView.tsx",
+      "group": "frontend_views",
+      "topic": "数据集、episode、回看及管理界面",
+      "symbols": [
+        [
+          "DatasetView",
+          460
+        ],
+        [
+          "DatasetApi",
+          36
+        ],
+        [
+          "DatasetCameraResolutionApi",
+          37
+        ]
+      ],
+      "question": "`DatasetView` → `DatasetApi` → `DatasetCameraResolutionApi`"
+    },
+    {
+      "path": "frontend/src/views/DirectControls.safety.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜页面直接控制入口的安全门禁",
+      "symbols": [
+        [
+          "直接 API 页面入口的安全约束",
+          82
+        ],
+        [
+          "排队期间急停，即使后来解除门闩也不能由旧成功响应续发动作",
+          100
+        ]
+      ],
+      "question": "用例：“直接 API 页面入口的安全约束”；“排队期间急停，即使后来解除门闩也不能由旧成功响应续发动作”"
+    },
+    {
+      "path": "frontend/src/views/FineTuneView.tsx",
+      "group": "frontend_views",
+      "topic": "微调任务计划界面；不代表后台已运行训练",
+      "symbols": [
+        [
+          "FineTuneView",
+          19
+        ],
+        [
+          "jobTone",
+          11
+        ],
+        [
+          "requestId",
+          25
+        ]
+      ],
+      "question": "`FineTuneView` → `jobTone` → `requestId`"
+    },
+    {
+      "path": "frontend/src/views/ModelView.tsx",
+      "group": "frontend_views",
+      "topic": "模型登记与启动状态界面；不代表已加载权重",
+      "symbols": [
+        [
+          "ModelView",
+          24
+        ],
+        [
+          "fallbackModels",
+          11
+        ],
+        [
+          "statusTone",
+          17
+        ]
+      ],
+      "question": "`ModelView` → `fallbackModels` → `statusTone`"
+    },
+    {
+      "path": "frontend/src/views/RecordPage.tsx",
+      "group": "frontend_views",
+      "topic": "遥操作录制页面及会话流程",
+      "symbols": [
+        [
+          "RecordPage",
+          19
+        ],
+        [
+          "latestReport",
+          21
+        ],
+        [
+          "datasetName",
+          23
+        ]
+      ],
+      "question": "`RecordPage` → `latestReport` → `datasetName`"
+    },
+    {
+      "path": "frontend/src/views/SettingsView.gripper.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜设置页面装配、参数提交及操作确认",
+      "symbols": [
+        [
+          "夹爪三套展示语义",
+          61
+        ],
+        [
+          "请求启停、命令进度、反馈健康分开展示",
+          62
+        ]
+      ],
+      "question": "用例：“夹爪三套展示语义”；“请求启停、命令进度、反馈健康分开展示”"
+    },
+    {
+      "path": "frontend/src/views/SettingsView.motion.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜设置页面装配、参数提交及操作确认",
+      "symbols": [
+        [
+          "运动使能共享入口",
+          111
+        ],
+        [
+          "WS 挑战已经应答但执行侧未确认租约时两处仍拒绝使能",
+          112
+        ]
+      ],
+      "question": "用例：“运动使能共享入口”；“WS 挑战已经应答但执行侧未确认租约时两处仍拒绝使能”"
+    },
+    {
+      "path": "frontend/src/views/SettingsView.regressions.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜设置页面装配、参数提交及操作确认",
+      "symbols": [
+        [
+          "设置迁移回归",
+          52
+        ],
+        [
+          "默认显示 HKVL 主用串口，并可切换 NI-DAQ 备用后保留选择",
+          53
+        ]
+      ],
+      "question": "用例：“设置迁移回归”；“默认显示 HKVL 主用串口，并可切换 NI-DAQ 备用后保留选择”"
+    },
+    {
+      "path": "frontend/src/views/SettingsView.tsx",
+      "group": "frontend_views",
+      "topic": "设置页面装配、参数提交及操作确认",
+      "symbols": [
+        [
+          "SettingsView",
+          97
+        ],
+        [
+          "MotionPreviousRestoreStatus",
+          20
+        ],
+        [
+          "RobotSide",
+          26
+        ]
+      ],
+      "question": "`SettingsView` → `MotionPreviousRestoreStatus` → `RobotSide`"
+    },
+    {
+      "path": "frontend/src/views/TaskPages.lifecycle.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜任务页面异步请求与卸载生命周期",
+      "symbols": [
+        [
+          "初始网络失败显示可重试错误，不产生未处理拒绝",
+          26
+        ],
+        [
+          "创建后等列表刷新结束才解除 loading，期间不重复创建",
+          35
+        ]
+      ],
+      "question": "用例：“初始网络失败显示可重试错误，不产生未处理拒绝”；“创建后等列表刷新结束才解除 loading，期间不重复创建”"
+    },
+    {
+      "path": "frontend/src/views/settings/CameraCard.tsx",
+      "group": "frontend_views",
+      "topic": "相机设备、格式、曝光等参数设置",
+      "symbols": [
+        [
+          "CameraCard",
+          84
+        ],
+        [
+          "CameraKey",
+          51
+        ],
+        [
+          "InlineStatusTone",
+          36
+        ]
+      ],
+      "question": "`CameraCard` → `CameraKey` → `InlineStatusTone`"
+    },
+    {
+      "path": "frontend/src/views/settings/ForceSensorCard.tsx",
+      "group": "frontend_views",
+      "topic": "力源、标定、去皮和相关设置",
+      "symbols": [
+        [
+          "ForceSensorCard",
+          67
+        ],
+        [
+          "RobotSide",
+          27
+        ],
+        [
+          "forceAxisCalibrationAxes",
+          37
+        ]
+      ],
+      "question": "`ForceSensorCard` → `RobotSide` → `forceAxisCalibrationAxes`"
+    },
+    {
+      "path": "frontend/src/views/settings/GripperCards.safety.test.tsx",
+      "group": "frontend_tests",
+      "topic": "回归测试｜双侧夹爪配置与控制入口",
+      "symbols": [
+        [
+          "保护状态仍允许断使能",
+          82
+        ]
+      ],
+      "question": "用例：“保护状态仍允许断使能”"
+    },
+    {
+      "path": "frontend/src/views/settings/GripperCards.tsx",
+      "group": "frontend_views",
+      "topic": "双侧夹爪配置与控制入口",
+      "symbols": [
+        [
+          "GripperCard",
+          50
+        ],
+        [
+          "ManualGripperControl",
+          314
+        ],
+        [
+          "RobotSide",
+          15
+        ]
+      ],
+      "question": "`GripperCard` → `ManualGripperControl` → `RobotSide`"
+    },
+    {
+      "path": "frontend/src/views/settings/HalCard.tsx",
+      "group": "frontend_views",
+      "topic": "HAL 状态、连接及部署信息设置",
+      "symbols": [
+        [
+          "HalCard",
+          20
+        ],
+        [
+          "halOk",
+          32
+        ],
+        [
+          "wsOk",
+          33
+        ]
+      ],
+      "question": "`HalCard` → `halOk` → `wsOk`"
+    },
+    {
+      "path": "frontend/src/views/settings/ManualControlPanel.tsx",
+      "group": "frontend_views",
+      "topic": "手动运动控件与请求协调",
+      "symbols": [
+        [
+          "ManualControlPanel",
+          493
+        ],
+        [
+          "ManualArmControl",
+          205
+        ],
+        [
+          "ManualMemoryRow",
+          387
+        ]
+      ],
+      "question": "`ManualControlPanel` → `ManualArmControl` → `ManualMemoryRow`"
+    },
+    {
+      "path": "frontend/src/views/settings/MotionCards.tsx",
+      "group": "frontend_views",
+      "topic": "运动卡、原点、轴配置与限位界面",
+      "symbols": [
+        [
+          "MotionCard",
+          426
+        ],
+        [
+          "MotionOriginCaptureDrift",
+          9
+        ],
+        [
+          "MotionPreviousRestoreStatus",
+          10
+        ]
+      ],
+      "question": "`MotionCard` → `MotionOriginCaptureDrift` → `MotionPreviousRestoreStatus`"
+    },
+    {
+      "path": "frontend/src/views/settings/ParameterSnapshotMenu.tsx",
+      "group": "frontend_views",
+      "topic": "参数快照创建、应用与删除菜单",
+      "symbols": [
+        [
+          "ParameterSnapshotMenu",
+          11
+        ],
+        [
+          "SnapshotMenuData",
+          3
+        ]
+      ],
+      "question": "`ParameterSnapshotMenu` → `SnapshotMenuData`"
+    },
+    {
+      "path": "frontend/src/views/settings/PicoVisionCard.tsx",
+      "group": "frontend_views",
+      "topic": "PICO 网络、ADB 和视觉连接设置",
+      "symbols": [
+        [
+          "PicoVisionCard",
+          39
+        ],
+        [
+          "rotationOptions",
+          26
+        ],
+        [
+          "cameraSourceOptions",
+          33
+        ]
+      ],
+      "question": "`PicoVisionCard` → `rotationOptions` → `cameraSourceOptions`"
+    },
+    {
+      "path": "frontend/src/views/settings/SafetyCard.tsx",
+      "group": "frontend_views",
+      "topic": "安全阈值及相关参数编辑",
+      "symbols": [
+        [
+          "SafetyCard",
+          11
+        ],
+        [
+          "dangerIndex",
+          25
+        ],
+        [
+          "safetyLatched",
+          26
+        ]
+      ],
+      "question": "`SafetyCard` → `dangerIndex` → `safetyLatched`"
+    },
+    {
+      "path": "frontend/src/views/settings/StorageCard.tsx",
+      "group": "frontend_views",
+      "topic": "数据存储及录制参数编辑",
+      "symbols": [
+        [
+          "StorageCard",
+          7
+        ],
+        [
+          "recordFps",
+          12
+        ],
+        [
+          "updateStorage",
+          13
+        ]
+      ],
+      "question": "`StorageCard` → `recordFps` → `updateStorage`"
+    },
+    {
+      "path": "frontend/src/views/settings/TeleopHandCard.tsx",
+      "group": "frontend_views",
+      "topic": "遥操作手连接与映射参数界面",
+      "symbols": [
+        [
+          "TeleopHandCard",
+          54
+        ],
+        [
+          "RobotSide",
+          34
+        ],
+        [
+          "commandErrorMessage",
+          46
+        ]
+      ],
+      "question": "`TeleopHandCard` → `RobotSide` → `commandErrorMessage`"
+    },
+    {
+      "path": "frontend/src/views/settings/motionHelpers.ts",
+      "group": "frontend_views",
+      "topic": "运动设置界面的换算、比较和辅助规则",
+      "symbols": [
+        [
+          "TRANSLATION_SOFT_LIMIT_DISABLED_MIN",
+          12
+        ],
+        [
+          "TRANSLATION_SOFT_LIMIT_DISABLED_MAX",
+          14
+        ],
+        [
+          "commandErrorMessage",
+          15
+        ]
+      ],
+      "question": "`TRANSLATION_SOFT_LIMIT_DISABLED_MIN` → `TRANSLATION_SOFT_LIMIT_DISABLED_MAX` → `commandErrorMessage`"
+    },
+    {
+      "path": "frontend/src/views/settings/shared.tsx",
+      "group": "frontend_views",
+      "topic": "设置模块共享类型、格式化和状态展示组件",
+      "symbols": [
+        [
+          "GripperPortHint",
+          4
+        ],
+        [
+          "InlineStatusTone",
+          13
+        ],
+        [
+          "ActionCompareItem",
+          15
+        ]
+      ],
+      "question": "`GripperPortHint` → `InlineStatusTone` → `ActionCompareItem`"
+    },
+    {
+      "path": "frontend/tsconfig.app.json",
+      "group": "frontend_tools",
+      "topic": "浏览器应用 TypeScript 编译/检查选项",
+      "symbols": [],
+      "question": "配置字段：`compilerOptions`、`tsBuildInfoFile`、`target`、`lib`、`module`"
+    },
+    {
+      "path": "frontend/tsconfig.json",
+      "group": "frontend_tools",
+      "topic": "TypeScript 工程引用关系",
+      "symbols": [],
+      "question": "配置字段：`files`、`references`"
+    },
+    {
+      "path": "frontend/tsconfig.node.json",
+      "group": "frontend_tools",
+      "topic": "Node 工具配置文件的 TypeScript 选项",
+      "symbols": [],
+      "question": "配置字段：`compilerOptions`、`tsBuildInfoFile`、`target`、`lib`、`module`"
+    },
+    {
+      "path": "frontend/vite.config.ts",
+      "group": "frontend_tools",
+      "topic": "Vite 构建/开发与 Vitest 配置",
+      "symbols": [],
+      "question": "从顶层执行语句和导出对象追踪调用关系。"
+    },
+    {
+      "path": "frontend/启动真实前端.bat",
+      "group": "launchers",
+      "topic": "真实前端启动辅助包装；先审目标脚本和模式",
+      "symbols": [],
+      "question": "从环境变量、编译器/进程命令和 errorlevel 判断副作用。"
+    },
+    {
+      "path": "frontend/打开前端.bat",
+      "group": "launchers",
+      "topic": "打开前端的辅助包装；不是 React 源码",
+      "symbols": [],
+      "question": "从环境变量、编译器/进程命令和 errorlevel 判断副作用。"
+    },
+    {
+      "path": "hal/CMakeLists.txt",
+      "group": "hal_build",
+      "topic": "HAL/C++ 测试构建目标、编译配置和 SDK 依赖",
+      "symbols": [],
+      "question": "构建目标：`appstation_hal_core`、`HalServer`、`JodellGripperWorker`"
+    },
+    {
+      "path": "hal/build_hal.cmd",
+      "group": "hal_build",
+      "topic": "Windows HAL 构建、链接与产物部署脚本",
+      "symbols": [],
+      "question": "从环境变量、编译器/进程命令和 errorlevel 判断副作用。"
+    },
+    {
+      "path": "hal/dds/appstation_hal.idl",
+      "group": "hal_build",
+      "topic": "HAL DDS 类型、字段与序列化契约定义",
+      "symbols": [
+        [
+          "JsonEnvelope",
+          7
+        ],
+        [
+          "HalCommandRequest",
+          13
+        ],
+        [
+          "HalCommandReply",
+          20
+        ]
+      ],
+      "question": "`JsonEnvelope` → `HalCommandRequest` → `HalCommandReply`"
+    },
+    {
+      "path": "hal/include/CommandDeadline.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜执行命令有效期和迟到请求拒绝",
+      "symbols": [
+        [
+          "ensureCommandNotExpired",
+          10
+        ]
+      ],
+      "question": "`ensureCommandNotExpired`"
+    },
+    {
+      "path": "hal/include/ControlLeaseGuardian.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜执行租约失效检查与守护执行",
+      "symbols": [
+        [
+          "ControlLeaseGuardian",
+          12
+        ],
+        [
+          "start",
+          19
+        ],
+        [
+          "stop",
+          52
+        ]
+      ],
+      "question": "`ControlLeaseGuardian` → `start` → `stop`"
+    },
+    {
+      "path": "hal/include/ControlLeaseState.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜执行租约会话、序号和新鲜度状态",
+      "symbols": [
+        [
+          "ControlLeaseState",
+          15
+        ],
+        [
+          "nowMs",
+          18
+        ],
+        [
+          "require",
+          22
+        ]
+      ],
+      "question": "`ControlLeaseState` → `nowMs` → `require`"
+    },
+    {
+      "path": "hal/include/EmergencyStopState.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜急停代际、确认与恢复状态",
+      "symbols": [
+        [
+          "EmergencyStopState",
+          9
+        ],
+        [
+          "epoch",
+          11
+        ],
+        [
+          "active",
+          12
+        ]
+      ],
+      "question": "`EmergencyStopState` → `epoch` → `active`"
+    },
+    {
+      "path": "hal/include/ForceComplianceController.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜力柔顺控制计算、限幅与偏移",
+      "symbols": [
+        [
+          "ForceComplianceSideConfig",
+          14
+        ],
+        [
+          "ForceComplianceConfig",
+          23
+        ],
+        [
+          "ForceComplianceResult",
+          28
+        ]
+      ],
+      "question": "`ForceComplianceSideConfig` → `ForceComplianceConfig` → `ForceComplianceResult`"
+    },
+    {
+      "path": "hal/include/ForceControlRuntime.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜力采样、安全和柔顺的运行时组织",
+      "symbols": [
+        [
+          "ForceRuntimeConfig",
+          22
+        ],
+        [
+          "ForceControlRuntime",
+          33
+        ],
+        [
+          "configure",
+          49
+        ]
+      ],
+      "question": "`ForceRuntimeConfig` → `ForceControlRuntime` → `configure`"
+    },
+    {
+      "path": "hal/include/ForceSafetyLatch.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜力阈值/异常触发的执行侧安全锁存",
+      "symbols": [
+        [
+          "ForceSafetyConfig",
+          14
+        ],
+        [
+          "ForceSafetyTrip",
+          21
+        ],
+        [
+          "ForceSafetyLatch",
+          28
+        ]
+      ],
+      "question": "`ForceSafetyConfig` → `ForceSafetyTrip` → `ForceSafetyLatch`"
+    },
+    {
+      "path": "hal/include/HalCommandDispatcher.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜HAL 命令分类、参数解析和执行路由",
+      "symbols": [
+        [
+          "HalCommandDispatcher",
+          22
+        ],
+        [
+          "handle",
+          32
+        ],
+        [
+          "handleEmergencyStop",
+          34
+        ]
+      ],
+      "question": "`HalCommandDispatcher` → `handle` → `handleEmergencyStop`"
+    },
+    {
+      "path": "hal/include/HalDdsControlServer.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜DDS 状态发布和命令/急停接收",
+      "symbols": [
+        [
+          "HalDdsControlServer",
+          22
+        ],
+        [
+          "Impl",
+          41
+        ],
+        [
+          "enabled",
+          35
+        ]
+      ],
+      "question": "`HalDdsControlServer` → `Impl` → `enabled`"
+    },
+    {
+      "path": "hal/include/HalHttpServer.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜HAL HTTP 服务实现；实际开放能力须看处理分支",
+      "symbols": [
+        [
+          "runHalHttpServer",
+          13
+        ]
+      ],
+      "question": "`runHalHttpServer`"
+    },
+    {
+      "path": "hal/include/HalJson.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜HAL 状态与命令结果的 JSON 表达",
+      "symbols": [
+        [
+          "requestBody",
+          22
+        ],
+        [
+          "lowercase",
+          24
+        ],
+        [
+          "envIntValue",
+          25
+        ]
+      ],
+      "question": "`requestBody` → `lowercase` → `envIntValue`"
+    },
+    {
+      "path": "hal/include/HalTypes.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜HAL 共享状态与控制载荷结构",
+      "symbols": [
+        [
+          "AxisLimit",
+          23
+        ],
+        [
+          "MotionProfile",
+          29
+        ],
+        [
+          "AxisState",
+          37
+        ]
+      ],
+      "question": "`AxisLimit` → `MotionProfile` → `AxisState`"
+    },
+    {
+      "path": "hal/include/HkvlForceDriver.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜HKVL 串口六维力采集与状态管理",
+      "symbols": [
+        [
+          "HkvlSerialConfig",
+          19
+        ],
+        [
+          "HkvlDriverSample",
+          29
+        ],
+        [
+          "HkvlSideSnapshot",
+          38
+        ]
+      ],
+      "question": "`HkvlSerialConfig` → `HkvlDriverSample` → `HkvlSideSnapshot`"
+    },
+    {
+      "path": "hal/include/HkvlForceProtocol.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜HKVL 字节流分帧、校验和数值解析",
+      "symbols": [
+        [
+          "HkvlForceFrame",
+          17
+        ],
+        [
+          "HkvlForceParserStats",
+          21
+        ],
+        [
+          "HkvlForceParser",
+          30
+        ]
+      ],
+      "question": "`HkvlForceFrame` → `HkvlForceParserStats` → `HkvlForceParser`"
+    },
+    {
+      "path": "hal/include/HttpConnectionWorkers.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜HTTP 连接任务数量与并发资源管理",
+      "symbols": [
+        [
+          "HttpConnectionWorkers",
+          15
+        ],
+        [
+          "Slot",
+          43
+        ],
+        [
+          "tryStart",
+          17
+        ]
+      ],
+      "question": "`HttpConnectionWorkers` → `Slot` → `tryStart`"
+    },
+    {
+      "path": "hal/include/JodellGripperDriver.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜Jodell 夹爪 SDK、通信及 worker 交互",
+      "symbols": [
+        [
+          "JodellGripperConfig",
+          19
+        ],
+        [
+          "JodellGripperDriver",
+          35
+        ],
+        [
+          "ProcessWorkerHandle",
+          62
+        ]
+      ],
+      "question": "`JodellGripperConfig` → `JodellGripperDriver` → `ProcessWorkerHandle`"
+    },
+    {
+      "path": "hal/include/LTDMCDriver.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜雷赛运动控制卡 SDK 包装、读状态与轴命令",
+      "symbols": [
+        [
+          "LTDMCDriver",
+          24
+        ],
+        [
+          "initialize",
+          27
+        ],
+        [
+          "emergencyStop",
+          32
+        ]
+      ],
+      "question": "`LTDMCDriver` → `initialize` → `emergencyStop`"
+    },
+    {
+      "path": "hal/include/MotionControlThread.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜运动状态周期轮询、线程启停与异常处理",
+      "symbols": [
+        [
+          "MotionControlThread",
+          23
+        ],
+        [
+          "start",
+          33
+        ],
+        [
+          "stop",
+          35
+        ]
+      ],
+      "question": "`MotionControlThread` → `start` → `stop`"
+    },
+    {
+      "path": "hal/include/NativeTeleopController.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜原生遥操作生命周期、映射与夹爪协同",
+      "symbols": [
+        [
+          "NativeTeleopConfig",
+          29
+        ],
+        [
+          "NativeTeleopAction",
+          154
+        ],
+        [
+          "NativeTeleopController",
+          180
+        ]
+      ],
+      "question": "`NativeTeleopConfig` → `NativeTeleopAction` → `NativeTeleopController`"
+    },
+    {
+      "path": "hal/include/Omega7Driver.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜Omega.7 SDK 主手读取、重力补偿与力输出",
+      "symbols": [
+        [
+          "Omega7State",
+          21
+        ],
+        [
+          "Omega7Driver",
+          49
+        ],
+        [
+          "initialize",
+          52
+        ]
+      ],
+      "question": "`Omega7State` → `Omega7Driver` → `initialize`"
+    },
+    {
+      "path": "hal/include/TeleopDdsTypes.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜遥操作 DDS 数据类型与序列化契约",
+      "symbols": [
+        [
+          "TeleopHardwareTarget",
+          16
+        ]
+      ],
+      "question": "`TeleopHardwareTarget`"
+    },
+    {
+      "path": "hal/include/TeleopFollowerTargetSubscriber.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜从端目标订阅与状态读取",
+      "symbols": [
+        [
+          "TeleopFollowerTargetSubscriber",
+          16
+        ],
+        [
+          "Impl",
+          29
+        ],
+        [
+          "enabled",
+          23
+        ]
+      ],
+      "question": "`TeleopFollowerTargetSubscriber` → `Impl` → `enabled`"
+    },
+    {
+      "path": "hal/include/TeleopHardwareTargetExecutor.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜遥操作目标进入真实运动执行的边界",
+      "symbols": [
+        [
+          "TeleopHardwareTargetExecutor",
+          17
+        ],
+        [
+          "apply",
+          23
+        ],
+        [
+          "reportControlFailure",
+          25
+        ]
+      ],
+      "question": "`TeleopHardwareTargetExecutor` → `apply` → `reportControlFailure`"
+    },
+    {
+      "path": "hal/include/TeleopLeaderPublisher.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜主手状态发布与采样链路",
+      "symbols": [
+        [
+          "TeleopLeaderPublisher",
+          15
+        ],
+        [
+          "Impl",
+          27
+        ],
+        [
+          "enabled",
+          22
+        ]
+      ],
+      "question": "`TeleopLeaderPublisher` → `Impl` → `enabled`"
+    },
+    {
+      "path": "hal/include/TeleopMappingNode.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜主手到从端增量/目标的映射与滤波",
+      "symbols": [
+        [
+          "TeleopMappingNode",
+          17
+        ],
+        [
+          "Impl",
+          31
+        ],
+        [
+          "enabled",
+          24
+        ]
+      ],
+      "question": "`TeleopMappingNode` → `Impl` → `enabled`"
+    },
+    {
+      "path": "hal/include/WorkerExceptionBoundary.h",
+      "group": "hal_headers",
+      "topic": "声明/接口｜工作循环异常捕获与错误报告边界",
+      "symbols": [
+        [
+          "launchWorker",
+          13
+        ],
+        [
+          "runWorkerBoundary",
+          20
+        ]
+      ],
+      "question": "`launchWorker` → `runWorkerBoundary`"
+    },
+    {
+      "path": "hal/src/ForceComplianceController.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜力柔顺控制计算、限幅与偏移",
+      "symbols": [
+        [
+          "ForceComplianceController::configure",
+          22
+        ],
+        [
+          "ForceComplianceController::correction",
+          28
+        ],
+        [
+          "ForceComplianceController::commit",
+          83
+        ]
+      ],
+      "question": "`ForceComplianceController::configure` → `ForceComplianceController::correction` → `ForceComplianceController::commit`"
+    },
+    {
+      "path": "hal/src/ForceControlRuntime.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜力采样、安全和柔顺的运行时组织",
+      "symbols": [
+        [
+          "ForceControlRuntime::ForceControlRuntime",
+          67
+        ],
+        [
+          "ForceControlRuntime::~ForceControlRuntime",
+          78
+        ],
+        [
+          "ForceControlRuntime::configure",
+          82
+        ]
+      ],
+      "question": "`ForceControlRuntime::ForceControlRuntime` → `ForceControlRuntime::~ForceControlRuntime` → `ForceControlRuntime::configure`"
+    },
+    {
+      "path": "hal/src/ForceSafetyLatch.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜力阈值/异常触发的执行侧安全锁存",
+      "symbols": [
+        [
+          "ForceSafetyLatch::ForceSafetyLatch",
+          14
+        ],
+        [
+          "ForceSafetyLatch::configure",
+          20
+        ],
+        [
+          "ForceSafetyLatch::onSample",
+          43
+        ]
+      ],
+      "question": "`ForceSafetyLatch::ForceSafetyLatch` → `ForceSafetyLatch::configure` → `ForceSafetyLatch::onSample`"
+    },
+    {
+      "path": "hal/src/HalCommandDispatcher.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜HAL 命令分类、参数解析和执行路由",
+      "symbols": [
+        [
+          "HalCommandDispatcher::HalCommandDispatcher",
+          16
+        ],
+        [
+          "HalCommandDispatcher::handleEmergencyStop",
+          28
+        ],
+        [
+          "HalCommandDispatcher::handle",
+          52
+        ]
+      ],
+      "question": "`HalCommandDispatcher::HalCommandDispatcher` → `HalCommandDispatcher::handleEmergencyStop` → `HalCommandDispatcher::handle`"
+    },
+    {
+      "path": "hal/src/HalDdsControlServer.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜DDS 状态发布和命令/急停接收",
+      "symbols": [
+        [
+          "HalDdsControlServer::HalDdsControlServer",
+          642
+        ],
+        [
+          "HalDdsControlServer::~HalDdsControlServer",
+          657
+        ],
+        [
+          "HalDdsControlServer::enabled",
+          659
+        ]
+      ],
+      "question": "`HalDdsControlServer::HalDdsControlServer` → `HalDdsControlServer::~HalDdsControlServer` → `HalDdsControlServer::enabled`"
+    },
+    {
+      "path": "hal/src/HalHttpServer.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜HAL HTTP 服务实现；实际开放能力须看处理分支",
+      "symbols": [
+        [
+          "wantsClose",
+          26
+        ],
+        [
+          "httpResponse",
+          45
+        ],
+        [
+          "readHttpRequest",
+          57
+        ]
+      ],
+      "question": "`wantsClose` → `httpResponse` → `readHttpRequest`"
+    },
+    {
+      "path": "hal/src/HalJson.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜HAL 状态与命令结果的 JSON 表达",
+      "symbols": [
+        [
+          "jsonEscape",
+          29
+        ],
+        [
+          "jsonHealth",
+          57
+        ],
+        [
+          "jsonMotionState",
+          68
+        ]
+      ],
+      "question": "`jsonEscape` → `jsonHealth` → `jsonMotionState`"
+    },
+    {
+      "path": "hal/src/HalServer.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜HAL 进程启动、驱动/线程/服务装配",
+      "symbols": [
+        [
+          "runHalServer",
+          29
+        ],
+        [
+          "main",
+          173
+        ],
+        [
+          "RuntimeShutdown",
+          111
+        ]
+      ],
+      "question": "`runHalServer` → `main` → `RuntimeShutdown`"
+    },
+    {
+      "path": "hal/src/HkvlForceDriver.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜HKVL 串口六维力采集与状态管理",
+      "symbols": [
+        [
+          "HkvlForceDriver::HkvlForceDriver",
+          344
+        ],
+        [
+          "HkvlForceDriver::~HkvlForceDriver",
+          350
+        ],
+        [
+          "HkvlForceDriver::start",
+          354
+        ]
+      ],
+      "question": "`HkvlForceDriver::HkvlForceDriver` → `HkvlForceDriver::~HkvlForceDriver` → `HkvlForceDriver::start`"
+    },
+    {
+      "path": "hal/src/HkvlForceProtocol.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜HKVL 字节流分帧、校验和数值解析",
+      "symbols": [
+        [
+          "HkvlForceParser::feed",
+          26
+        ],
+        [
+          "HkvlForceParser::reset",
+          76
+        ],
+        [
+          "HkvlForceParser::stats",
+          81
+        ]
+      ],
+      "question": "`HkvlForceParser::feed` → `HkvlForceParser::reset` → `HkvlForceParser::stats`"
+    },
+    {
+      "path": "hal/src/JodellGripperDriver.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜Jodell 夹爪 SDK、通信及 worker 交互",
+      "symbols": [
+        [
+          "JodellGripperDriver::JodellGripperDriver",
+          162
+        ],
+        [
+          "JodellGripperDriver::~JodellGripperDriver",
+          164
+        ],
+        [
+          "JodellGripperDriver::configure",
+          173
+        ]
+      ],
+      "question": "`JodellGripperDriver::JodellGripperDriver` → `JodellGripperDriver::~JodellGripperDriver` → `JodellGripperDriver::configure`"
+    },
+    {
+      "path": "hal/src/JodellGripperWorker.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜独立夹爪工作进程入口与命令处理",
+      "symbols": [
+        [
+          "splitTabs",
+          19
+        ],
+        [
+          "sanitizeField",
+          35
+        ],
+        [
+          "argValue",
+          45
+        ]
+      ],
+      "question": "`splitTabs` → `sanitizeField` → `argValue`"
+    },
+    {
+      "path": "hal/src/LTDMCDriver.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜雷赛运动控制卡 SDK 包装、读状态与轴命令",
+      "symbols": [
+        [
+          "LTDMCDriver::initialize",
+          450
+        ],
+        [
+          "LTDMCDriver::health",
+          520
+        ],
+        [
+          "LTDMCDriver::ensureMotionReturnAllowed",
+          533
+        ]
+      ],
+      "question": "`LTDMCDriver::initialize` → `LTDMCDriver::health` → `LTDMCDriver::ensureMotionReturnAllowed`"
+    },
+    {
+      "path": "hal/src/MotionControlThread.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜运动状态周期轮询、线程启停与异常处理",
+      "symbols": [
+        [
+          "MotionControlThread::~MotionControlThread",
+          21
+        ],
+        [
+          "MotionControlThread::start",
+          25
+        ],
+        [
+          "MotionControlThread::stop",
+          43
+        ]
+      ],
+      "question": "`MotionControlThread::~MotionControlThread` → `MotionControlThread::start` → `MotionControlThread::stop`"
+    },
+    {
+      "path": "hal/src/NativeTeleopController.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜原生遥操作生命周期、映射与夹爪协同",
+      "symbols": [
+        [
+          "NativeTeleopController::NativeTeleopController",
+          215
+        ],
+        [
+          "NativeTeleopController::~NativeTeleopController",
+          244
+        ],
+        [
+          "NativeTeleopController::configure",
+          248
+        ]
+      ],
+      "question": "`NativeTeleopController::NativeTeleopController` → `NativeTeleopController::~NativeTeleopController` → `NativeTeleopController::configure`"
+    },
+    {
+      "path": "hal/src/Omega7Driver.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜Omega.7 SDK 主手读取、重力补偿与力输出",
+      "symbols": [
+        [
+          "Omega7Driver::initialize",
+          98
+        ],
+        [
+          "Omega7Driver::ensureReady",
+          281
+        ],
+        [
+          "Omega7Driver::ok",
+          297
+        ]
+      ],
+      "question": "`Omega7Driver::initialize` → `Omega7Driver::ensureReady` → `Omega7Driver::ok`"
+    },
+    {
+      "path": "hal/src/TeleopFollowerTargetSubscriber.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜从端目标订阅与状态读取",
+      "symbols": [
+        [
+          "TargetListener::on_data_available",
+          332
+        ],
+        [
+          "TeleopFollowerTargetSubscriber::TeleopFollowerTargetSubscriber",
+          346
+        ],
+        [
+          "TeleopFollowerTargetSubscriber::~TeleopFollowerTargetSubscriber",
+          349
+        ]
+      ],
+      "question": "`TargetListener::on_data_available` → `TeleopFollowerTargetSubscriber::TeleopFollowerTargetSubscriber` → `TeleopFollowerTargetSubscriber::~TeleopFollowerTargetSubscriber`"
+    },
+    {
+      "path": "hal/src/TeleopHardwareTargetExecutor.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜遥操作目标进入真实运动执行的边界",
+      "symbols": [
+        [
+          "TeleopHardwareTargetExecutor::TeleopHardwareTargetExecutor",
+          12
+        ],
+        [
+          "TeleopHardwareTargetExecutor::reportControlFailure",
+          19
+        ],
+        [
+          "TeleopHardwareTargetExecutor::apply",
+          31
+        ]
+      ],
+      "question": "`TeleopHardwareTargetExecutor::TeleopHardwareTargetExecutor` → `TeleopHardwareTargetExecutor::reportControlFailure` → `TeleopHardwareTargetExecutor::apply`"
+    },
+    {
+      "path": "hal/src/TeleopLeaderPublisher.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜主手状态发布与采样链路",
+      "symbols": [
+        [
+          "TeleopLeaderPublisher::TeleopLeaderPublisher",
+          239
+        ],
+        [
+          "TeleopLeaderPublisher::~TeleopLeaderPublisher",
+          241
+        ],
+        [
+          "TeleopLeaderPublisher::enabled",
+          243
+        ]
+      ],
+      "question": "`TeleopLeaderPublisher::TeleopLeaderPublisher` → `TeleopLeaderPublisher::~TeleopLeaderPublisher` → `TeleopLeaderPublisher::enabled`"
+    },
+    {
+      "path": "hal/src/TeleopMappingNode.cpp",
+      "group": "hal_sources",
+      "topic": "实现｜主手到从端增量/目标的映射与滤波",
+      "symbols": [
+        [
+          "LeaderListener::on_data_available",
+          415
+        ],
+        [
+          "TeleopMappingNode::TeleopMappingNode",
+          424
+        ],
+        [
+          "TeleopMappingNode::~TeleopMappingNode",
+          427
+        ]
+      ],
+      "question": "`LeaderListener::on_data_available` → `TeleopMappingNode::TeleopMappingNode` → `TeleopMappingNode::~TeleopMappingNode`"
+    },
+    {
+      "path": "hal/tests/ControlLeaseTests.cpp",
+      "group": "hal_tests",
+      "topic": "C++ 测试｜执行租约期限、序号及失效路径",
+      "symbols": [
+        [
+          "testInitiallyClosed",
+          19
+        ],
+        [
+          "testExpiryBeforeLateHeartbeat",
+          33
+        ],
+        [
+          "testPollAndNoRepeatedTrip",
+          48
+        ]
+      ],
+      "question": "`testInitiallyClosed` → `testExpiryBeforeLateHeartbeat` → `testPollAndNoRepeatedTrip`"
+    },
+    {
+      "path": "hal/tests/EmergencyStopTests.cpp",
+      "group": "hal_tests",
+      "topic": "C++ 测试｜急停、确认、并发代际与恢复",
+      "symbols": [
+        [
+          "testStopEpoch",
+          23
+        ],
+        [
+          "testMotionAcknowledgementEpoch",
+          47
+        ],
+        [
+          "testRejectedMotionAcknowledgementKeepsForceLatch",
+          61
+        ]
+      ],
+      "question": "`testStopEpoch` → `testMotionAcknowledgementEpoch` → `testRejectedMotionAcknowledgementKeepsForceLatch`"
+    },
+    {
+      "path": "hal/tests/ForceCoreTests.cpp",
+      "group": "hal_tests",
+      "topic": "C++ 测试｜力协议、阈值锁存和柔顺控制",
+      "symbols": [
+        [
+          "testParser",
+          85
+        ],
+        [
+          "testOfficialHkvlSafetyDefaults",
+          138
+        ],
+        [
+          "testOfficialHkvlHardwareSidePorts",
+          145
+        ]
+      ],
+      "question": "`testParser` → `testOfficialHkvlSafetyDefaults` → `testOfficialHkvlHardwareSidePorts`"
+    },
+    {
+      "path": "hal/tests/ThreadStabilityTests.cpp",
+      "group": "hal_tests",
+      "topic": "C++ 测试｜线程与连接工作资源稳定性",
+      "symbols": [
+        [
+          "testPublisherFailureStopsControl",
+          21
+        ],
+        [
+          "testForceStopCallbackFailureStaysContained",
+          61
+        ],
+        [
+          "testHttpConnectionCapacityAndReuse",
+          87
+        ]
+      ],
+      "question": "`testPublisherFailureStopsControl` → `testForceStopCallbackFailureStaysContained` → `testHttpConnectionCapacityAndReuse`"
+    },
+    {
+      "path": "hal/tests/WorkerResilienceTests.cpp",
+      "group": "hal_tests",
+      "topic": "C++ 测试｜工作循环异常与恢复边界",
+      "symbols": [
+        [
+          "testMotionFailureAndRecovery",
+          40
+        ],
+        [
+          "testMotionThreadCreationFailure",
+          65
+        ],
+        [
+          "testMotionInvalidFrequency",
+          80
+        ]
+      ],
+      "question": "`testMotionFailureAndRecovery` → `testMotionThreadCreationFailure` → `testMotionInvalidFrequency`"
+    },
+    {
+      "path": "hal/tests/fixtures/hkvl_active_v1_frames.hex",
+      "group": "hal_tests",
+      "topic": "HKVL 协议字节流测试样本；数据夹具",
+      "symbols": [],
+      "question": "帧头、长度、校验及期望解析结果与协议测试如何对应？"
+    },
+    {
+      "path": "mypy.ini",
+      "group": "backend_native",
+      "topic": "仓库级 Python 静态类型检查范围与忽略规则",
+      "symbols": [],
+      "question": "哪些目录/文件被检查、忽略或排除？"
+    },
+    {
+      "path": "scripts/accept-hal-native-teleop.ps1",
+      "group": "scripts",
+      "topic": "HAL-native 遥操作验收采集；先审参数和设备副作用",
+      "symbols": [],
+      "question": "从 `param(...)` 到末尾执行流：调用哪些进程、写哪些文件、会不会连接设备？"
+    },
+    {
+      "path": "scripts/benchmark_jodell_gripper.py",
+      "group": "scripts",
+      "topic": "夹爪通信/动作性能测量；非纯离线脚本",
+      "symbols": [
+        [
+          "BenchResult",
+          25
+        ],
+        [
+          "percentile",
+          40
+        ],
+        [
+          "mean",
+          55
+        ]
+      ],
+      "question": "`BenchResult` → `percentile` → `mean`"
+    },
+    {
+      "path": "scripts/capture-hkvl-force.ps1",
+      "group": "scripts",
+      "topic": "HKVL 力状态采集和诊断记录",
+      "symbols": [
+        [
+          "New-ReadOnlySerialPort",
+          26
+        ],
+        [
+          "Get-ModbusCrc16",
+          43
+        ],
+        [
+          "Test-HkvlCandidateFrames",
+          63
+        ]
+      ],
+      "question": "`New-ReadOnlySerialPort` → `Get-ModbusCrc16` → `Test-HkvlCandidateFrames`"
+    },
+    {
+      "path": "scripts/check-hal.ps1",
+      "group": "scripts",
+      "topic": "HAL 进程、接口与运行状态诊断",
+      "symbols": [],
+      "question": "从 `param(...)` 到末尾执行流：调用哪些进程、写哪些文件、会不会连接设备？"
+    },
+    {
+      "path": "scripts/diagnose-teleop-latency.ps1",
+      "group": "scripts",
+      "topic": "遥操作链路延迟与状态诊断",
+      "symbols": [],
+      "question": "从 `param(...)` 到末尾执行流：调用哪些进程、写哪些文件、会不会连接设备？"
+    },
+    {
+      "path": "scripts/import_icf_teleop_config.py",
+      "group": "scripts",
+      "topic": "从参考工程导入遥操作/设备参数",
+      "symbols": [
+        [
+          "main",
+          60
+        ],
+        [
+          "load_runtime_config",
+          87
+        ],
+        [
+          "apply_icf_config",
+          97
+        ]
+      ],
+      "question": "`main` → `load_runtime_config` → `apply_icf_config`"
+    },
+    {
+      "path": "scripts/launch-app.ps1",
+      "group": "scripts",
+      "topic": "桌面启动编排与前端打开方式",
+      "symbols": [
+        [
+          "Find-Browser",
+          18
+        ],
+        [
+          "Wait-HttpOk",
+          33
+        ],
+        [
+          "Test-HttpOk",
+          44
+        ]
+      ],
+      "question": "`Find-Browser` → `Wait-HttpOk` → `Test-HttpOk`"
+    },
+    {
+      "path": "scripts/normalize_origin.py",
+      "group": "scripts",
+      "topic": "配置与数据原点归一化辅助工具",
+      "symbols": [
+        [
+          "parse_args",
+          25
+        ],
+        [
+          "normalize_frame_to_origin",
+          38
+        ],
+        [
+          "normalize_dataset",
+          77
+        ]
+      ],
+      "question": "`parse_args` → `normalize_frame_to_origin` → `normalize_dataset`"
+    },
+    {
+      "path": "scripts/probe_jodell_dual_com.py",
+      "group": "scripts",
+      "topic": "双 COM 夹爪串口与 SDK 诊断",
+      "symbols": [
+        [
+          "parse_port",
+          22
+        ],
+        [
+          "percentile",
+          31
+        ],
+        [
+          "mean",
+          46
+        ]
+      ],
+      "question": "`parse_port` → `percentile` → `mean`"
+    },
+    {
+      "path": "scripts/push_dataset_to_hub.py",
+      "group": "scripts",
+      "topic": "原生数据集上传 Hub 的辅助进程",
+      "symbols": [
+        [
+          "parse_args",
+          15
+        ],
+        [
+          "push_dataset",
+          23
+        ],
+        [
+          "main",
+          47
+        ]
+      ],
+      "question": "`parse_args` → `push_dataset` → `main`"
+    },
+    {
+      "path": "scripts/run-act-deploy.ps1",
+      "group": "scripts",
+      "topic": "ACT 外部策略部署脚本参数装配；可能启动设备栈",
+      "symbols": [],
+      "question": "从 `param(...)` 到末尾执行流：调用哪些进程、写哪些文件、会不会连接设备？"
+    },
+    {
+      "path": "scripts/run-act-jepa-deploy.ps1",
+      "group": "scripts",
+      "topic": "ACT-JEPA 外部策略部署和平滑参数装配",
+      "symbols": [
+        [
+          "Convert-ToBooleanParameter",
+          55
+        ]
+      ],
+      "question": "`Convert-ToBooleanParameter`"
+    },
+    {
+      "path": "scripts/start-hal.ps1",
+      "group": "scripts",
+      "topic": "HAL 构建产物部署、配置与进程启动",
+      "symbols": [
+        [
+          "Stop-ProcessTree",
+          28
+        ],
+        [
+          "Stop-HalRuntimeProcessTrees",
+          47
+        ],
+        [
+          "Promote-HalCandidate",
+          75
+        ]
+      ],
+      "question": "`Stop-ProcessTree` → `Stop-HalRuntimeProcessTrees` → `Promote-HalCandidate`"
+    },
+    {
+      "path": "scripts/start-stack-dds.ps1",
+      "group": "scripts",
+      "topic": "DDS 模式的启动包装与参数传递",
+      "symbols": [
+        [
+          "Stop-RepoProcessByPattern",
+          19
+        ]
+      ],
+      "question": "`Stop-RepoProcessByPattern`"
+    },
+    {
+      "path": "scripts/start-stack.ps1",
+      "group": "scripts",
+      "topic": "后端、前端与 HAL 全栈启动编排",
+      "symbols": [
+        [
+          "Stop-ProcessTree",
+          17
+        ],
+        [
+          "Stop-BackendProcessTrees",
+          28
+        ]
+      ],
+      "question": "`Stop-ProcessTree` → `Stop-BackendProcessTrees`"
+    },
+    {
+      "path": "scripts/start-ui.ps1",
+      "group": "scripts",
+      "topic": "界面测试栈启动；依赖具体脚本隔离策略",
+      "symbols": [
+        [
+          "Test-HttpOk",
+          24
+        ],
+        [
+          "Wait-HttpOk",
+          33
+        ],
+        [
+          "Find-Browser",
+          44
+        ]
+      ],
+      "question": "`Test-HttpOk` → `Wait-HttpOk` → `Find-Browser`"
+    },
+    {
+      "path": "scripts/stop-stack.ps1",
+      "group": "scripts",
+      "topic": "按进程/端口停止运行栈及资源清理",
+      "symbols": [
+        [
+          "Stop-ProcessTree",
+          10
+        ],
+        [
+          "Stop-BackendProcessTrees",
+          29
+        ],
+        [
+          "Stop-HalRuntimeProcessTrees",
+          76
+        ]
+      ],
+      "question": "`Stop-ProcessTree` → `Stop-BackendProcessTrees` → `Stop-HalRuntimeProcessTrees`"
+    },
+    {
+      "path": "scripts/verify-hal-native-teleop-report.ps1",
+      "group": "scripts",
+      "topic": "离线验收报告检查与失败条件",
+      "symbols": [
+        [
+          "Add-Failure",
+          35
+        ],
+        [
+          "As-Array",
+          42
+        ],
+        [
+          "Has-Value",
+          50
+        ]
+      ],
+      "question": "`Add-Failure` → `As-Array` → `Has-Value`"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "dependencies": [
+    {
+      "config_key": "force.leftCalibrationPath",
+      "path": "C:/Program Files (x86)/ATI Industrial Automation/ATIDAQFT.NET/FT32918.cal",
+      "exists": false
+    },
+    {
+      "config_key": "force.rightCalibrationPath",
+      "path": "C:/Program Files (x86)/ATI Industrial Automation/ATIDAQFT.NET/FT38799.cal",
+      "exists": false
+    },
+    {
+      "config_key": "hal.ltdmcDllPath",
+      "path": "F:/E2EAPP_MicroMani/hal/vendor/leishine/bin/LTDMC.dll",
+      "exists": false
+    },
+    {
+      "config_key": "hal.dhdDllPath",
+      "path": "F:/E2EAPP_MicroMani/hal/vendor/force_dimension/bin/dhd64.dll",
+      "exists": false
+    },
+    {
+      "path": "F:/opt/ros/jazzy",
+      "exists": false
+    },
+    {
+      "path": "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvars64.bat",
+      "exists": false
+    },
+    {
+      "path": "D:\\E2EAPP_MicroMani\\hal\\vendor",
+      "exists": false
+    }
+  ],
+  "configured_dataset_root": "C:\\Users\\tianxiayifang\\.appstation\\datasets",
+  "dataset_root_exists": false,
+  "dataset_metadata": []
+}

@@ -1,0 +1,720 @@
+/*
+ * 阅读导航 02｜前端契约与状态
+ * 职责：提供前端默认配置、诊断初值与显示标签；包含操作者侧和硬件侧的转换函数。
+ * 先看：RobotSide → hardwareSideForOperatorSide → operatorSideForHardwareSide → operatorSideLabel。
+ * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
+ */
+import type { AppConfig, DiagnosticItem, LogChannel } from './types'
+
+export const axisNames = [
+  'L-X',
+  'L-Y',
+  'L-Z',
+  'L-RX',
+  'L-RY',
+  'L-RZ',
+  'R-X',
+  'R-Y',
+  'R-Z',
+  'R-RX',
+  'R-RY',
+  'R-RZ',
+]
+
+export const forceChannels = ['Fx', 'Fy', 'Fz', 'Mx', 'My', 'Mz']
+
+export const semanticAxes = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw'] as const
+
+export type RobotSide = 'left' | 'right'
+
+export function hardwareSideForOperatorSide(side: RobotSide): RobotSide {
+  return side === 'left' ? 'right' : 'left'
+}
+
+export function operatorSideForHardwareSide(side: RobotSide): RobotSide {
+  return side === 'left' ? 'right' : 'left'
+}
+
+export function operatorSideLabel(side: RobotSide) {
+  return side === 'left' ? '左臂' : '右臂'
+}
+
+/** 力觉数据源对应的显示型号，随 config.force.source 实时切换。 */
+export function forceSensorModelLabel(source?: string) {
+  return source === 'hkvl_serial' ? 'HKVL-36A' : 'Nano-17'
+}
+
+/** 力觉主通道显示单位：HKVL 用 N，Nano-17 用 mN。 */
+export function forceSensorUnitLabel(source?: string) {
+  return source === 'hkvl_serial' ? 'N / Nm' : 'mN'
+}
+
+export function hardwareChannelLabel(side: RobotSide) {
+  return side === 'left' ? '硬件左侧通道' : '硬件右侧通道'
+}
+
+export const motionCardModelByNo: Record<number, string> = {
+  0: 'DMC5C10',
+  1: 'DMC3C00',
+}
+
+export const armHardwareSpecs = {
+  left: {
+    label: '左机械臂',
+    shortLabel: '左臂',
+    cardNo: 1,
+    configKey: 'Motion/LeftStageCardNo',
+    axisOrder: [0, 1, 3, 5, 4, 2],
+    stateOffset: 0,
+    gripperPort: 'COM8',
+    gripperSlaveId: 10,
+    omegaDeviceId: 0,
+    forceIpKey: 'leftIp',
+  },
+  right: {
+    label: '右机械臂',
+    shortLabel: '右臂',
+    cardNo: 0,
+    configKey: 'Motion/RightStageCardNo',
+    axisOrder: [2, 0, 5, 8, 1, 7],
+    stateOffset: 6,
+    gripperPort: 'COM9',
+    gripperSlaveId: 9,
+    omegaDeviceId: 1,
+    forceIpKey: 'rightIp',
+  },
+} as const
+
+export const axisHardwareSpecs = [
+  {
+    axis: 'X',
+    unit: 'µm',
+    travel: '50 mm',
+    model: 'KXL0605-C1-C',
+    leftPulsePerUnit: 5000,
+    rightPulsePerUnit: 5000,
+    softLimit: '机械行程 50 mm',
+    warning: false,
+  },
+  {
+    axis: 'Y',
+    unit: 'µm',
+    travel: '75 mm',
+    model: 'KXL06075-C1-G4',
+    leftPulsePerUnit: 5000,
+    rightPulsePerUnit: 10000,
+    softLimit: '机械行程 75 mm',
+    warning: false,
+  },
+  {
+    axis: 'Z',
+    unit: 'µm',
+    travel: '75 mm',
+    model: 'KXL06075-C1-G4',
+    leftPulsePerUnit: 10000,
+    rightPulsePerUnit: 5000,
+    softLimit: '机械行程 75 mm',
+    warning: false,
+  },
+  {
+    axis: 'Roll',
+    unit: '°',
+    travel: '360°',
+    model: 'KRW04360M-LC',
+    leftPulsePerUnit: 1666.666667,
+    rightPulsePerUnit: 1666.666667,
+    softLimit: '硬件零点 ±100°',
+    warning: false,
+  },
+  {
+    axis: 'Pitch',
+    unit: '°',
+    travel: '360°',
+    model: 'KRW06360M-LC',
+    leftPulsePerUnit: 2500,
+    rightPulsePerUnit: 2500,
+    softLimit: '硬件零点 ±100°',
+    warning: false,
+  },
+  {
+    axis: 'Yaw',
+    unit: '°',
+    travel: '±8°',
+    model: 'KGW04040M-LC',
+    leftPulsePerUnit: 3333.333,
+    rightPulsePerUnit: 333.3333,
+    softLimit: '硬件零点 ±7°（机械 ±8°）',
+    warning: true,
+  },
+] as const
+
+export const cameraHardwareSpecs = {
+  global: {
+    label: '全局相机',
+    model: 'IMX335',
+    device: 'IMX335 / index 1',
+    rawResolution: '1920x1080',
+    previewResolution: '640x480',
+    fps: 30,
+    lerobotKey: 'observation.images.global',
+  },
+  wrist_left: {
+    label: '左腕相机',
+    model: 'IMX335',
+    device: 'IMX335 / index 0',
+    rawResolution: '1920x1080',
+    previewResolution: '640x480',
+    fps: 30,
+    lerobotKey: 'observation.images.wrist_left',
+  },
+  wrist_right: {
+    label: '右腕相机',
+    model: 'IMX335',
+    device: 'IMX335 / index 2',
+    rawResolution: '1920x1080',
+    previewResolution: '640x480',
+    fps: 30,
+    lerobotKey: 'observation.images.wrist_right',
+  },
+} as const
+
+export const nano17Spec = {
+  model: 'ATI Nano-17 SI-12-0.12',
+  range: {
+    fxy: '±12 N',
+    fz: '±17 N',
+    moment: '±120 mN·m',
+  },
+  channels: 'Fx, Fy, Fz, Mx, My, Mz',
+  port: 49152,
+  rdtHz: 7000,
+  fastDaqHz: 200,
+} as const
+
+export const omega7Spec = {
+  translationWorkspace: 'Ø160 mm × 110 mm',
+  rotationWorkspace: 'Roll 240° / Pitch 140° / Yaw 180°',
+  gripperDistance: '25 mm',
+  maxForceN: 12,
+  maxGripperForceN: 8,
+  sdkMaxHz: 4000,
+  mapping: {
+    x: 0.469,
+    y: 0.455,
+    z: 0.469,
+    roll: 0.75,
+    pitch: 1,
+    yaw: 0.089,
+  },
+} as const
+
+export const defaultMotionProfile = {
+  translation: {
+    startSpeed: 300,
+    maxSpeed: 4000,
+    accTimeSec: 0.05,
+    decTimeSec: 0.05,
+  },
+  rotation: {
+    startSpeed: 0.5,
+    maxSpeed: 6,
+    accTimeSec: 0.05,
+    decTimeSec: 0.05,
+  },
+}
+
+export const defaultSoftLimits = {
+  x: { min: -1000000000, max: 1000000000 },
+  y: { min: -1000000000, max: 1000000000 },
+  z: { min: -1000000000, max: 1000000000 },
+  roll: { min: -100000, max: 100000 },
+  pitch: { min: -100000, max: 100000 },
+  yaw: { min: -7000, max: 7000 },
+}
+
+export const defaultLeftSoftLimits = {
+  x: { min: -1000000000, max: 1000000000 },
+  y: { min: -1000000000, max: 1000000000 },
+  z: { min: -1000000000, max: 1000000000 },
+  roll: { min: -5000, max: 95000 },
+  pitch: { min: -30000, max: 30000 },
+  yaw: { min: -7000, max: 7000 },
+}
+
+export const defaultRightSoftLimits = {
+  x: { min: -1000000000, max: 1000000000 },
+  y: { min: -1000000000, max: 1000000000 },
+  z: { min: -1000000000, max: 1000000000 },
+  roll: { min: -95000, max: 5000 },
+  pitch: { min: -30000, max: 30000 },
+  yaw: { min: -7000, max: 7000 },
+}
+
+export const defaultRelativeSoftLimits = {
+  left: {
+    x: { min: -25000, max: 25000 },
+    y: { min: -37500, max: 37500 },
+    z: { min: -37500, max: 37500 },
+    roll: { min: -5000, max: 95000 },
+    pitch: { min: -30000, max: 30000 },
+    yaw: { min: -7000, max: 7000 },
+  },
+  right: {
+    x: { min: -25000, max: 25000 },
+    y: { min: -37500, max: 37500 },
+    z: { min: -37500, max: 37500 },
+    roll: { min: -95000, max: 5000 },
+    pitch: { min: -30000, max: 30000 },
+    yaw: { min: -7000, max: 7000 },
+  },
+}
+
+export const defaultRotationWorkLimits = {
+  enabled: true,
+  left: {
+    roll: { min: -5, max: 95 },
+    pitch: { min: -30, max: 30 },
+    yaw: { min: -7, max: 7 },
+  },
+  right: {
+    roll: { min: -95, max: 5 },
+    pitch: { min: -30, max: 30 },
+    yaw: { min: -7, max: 7 },
+  },
+}
+
+export const defaultKinematics = {
+  source: 'QSerialTest/config.ini',
+  axisOrder: ['x', 'y', 'z', 'roll', 'pitch', 'yaw'],
+  leftAxisMap: [0, 1, 3, 5, 4, 2],
+  rightAxisMap: [8, 6, 11, 14, 7, 13],
+  leftPhysicalAxis: [0, 1, 3, 5, 4, 2],
+  rightPhysicalAxis: [2, 0, 5, 8, 1, 7],
+  axisUnitSpec: ['mm', 'mm', 'mm', 'deg', 'deg', 'deg'],
+  leftPulsePerUnit: [5000, 5000, 10000, 1666.666667, 2500, 3333.333],
+  rightPulsePerUnit: [5000, 10000, 5000, 1666.666667, 2500, 333.3333],
+  leftDirectionSign: [-1, 1, -1, 1, -1, -1],
+  rightDirectionSign: [-1, -1, -1, 1, 1, 1],
+  leftSignedPulsePerUnit: [-5000, 5000, -10000, 1666.666667, -2500, -3333.333],
+  rightSignedPulsePerUnit: [-5000, -10000, -5000, 1666.666667, 2500, 333.3333],
+  syncActionPulseCoeff: true,
+  updatedAt: '2026-04-17T00:00:00',
+}
+
+export const logChannels: LogChannel[] = [
+  '[HAL]',
+  '[BACKEND]',
+  '[CAMERA]',
+  '[FORCE]',
+  '[SAFETY]',
+  '[ZMQ]',
+  '[POLICY]',
+  '[LEROBOT]',
+  '[GRIPPER]',
+]
+
+export const channelColor: Record<LogChannel, string> = {
+  '[HAL]': '#0d7c8a',
+  '[BACKEND]': '#4b5563',
+  '[CAMERA]': '#168a4a',
+  '[FORCE]': '#b77900',
+  '[SAFETY]': '#d83a52',
+  '[ZMQ]': '#7353ba',
+  '[POLICY]': '#2f6fed',
+  '[LEROBOT]': '#c86a12',
+  '[GRIPPER]': '#667085',
+}
+
+export const defaultDiagnostics: DiagnosticItem[] = [
+  {
+    key: 'hal-health',
+    label: 'C++ HAL 连接',
+    method: 'GET /health',
+    metric: '<10ms',
+    status: 'ok',
+    remediation: '显示重连按钮，提示启动 HalServer.exe',
+  },
+  {
+    key: 'ltdmc',
+    label: 'LTDMC DLL 加载',
+    method: 'HAL /health.ltdmc_ok',
+    metric: 'true',
+    status: 'pending',
+    remediation: '检查 LTDMC.dll 路径、驱动和 Windows 控制卡',
+    suspect: true,
+  },
+  {
+    key: 'omega7',
+    label: 'Omega.7 主手',
+    method: 'HAL /health.omega7_ok',
+    metric: '两台均 true',
+    status: 'pending',
+    remediation: '检查 USB、SDK 和两台主手枚举结果',
+    suspect: true,
+  },
+  {
+    key: 'ati-left',
+    label: 'ATI Nano-17 左',
+    method: 'NI-DAQmx Dev5/ai0:5',
+    metric: '200 Hz',
+    status: 'warn',
+    remediation: '确认 NI-DAQmx、Dev5/ai0:5、DIFF 接线和 FT32918.cal',
+    suspect: true,
+  },
+  {
+    key: 'ati-right',
+    label: 'ATI Nano-17 右',
+    method: 'NI-DAQmx Dev3/ai0:5',
+    metric: '200 Hz',
+    status: 'warn',
+    remediation: '确认 NI-DAQmx、Dev3/ai0:5、DIFF 接线和 FT38799.cal',
+    suspect: true,
+  },
+  {
+    key: 'cam-global',
+    label: '相机 全局',
+    method: '最近帧时间戳年龄',
+    metric: '<100ms',
+    status: 'ok',
+    remediation: '重新枚举设备或降低分辨率',
+  },
+  {
+    key: 'gripper',
+    label: 'RS485 夹爪',
+    method: 'pyserial 握手',
+    metric: '两路 OK',
+    status: 'pending',
+    remediation: '确认 COM 端口、波特率和线序',
+    suspect: true,
+  },
+  {
+    key: 'wsl-policy',
+    label: 'WSL2 PolicyServer',
+    method: 'ZMQ PING/PONG',
+    metric: '<50ms',
+    status: 'pending',
+    remediation: '检查 wsl --status、conda 环境和端口映射',
+    suspect: true,
+  },
+]
+
+export const defaultConfig: AppConfig = {
+  hal: {
+    baseUrl: 'http://localhost:8091',
+    wsUrl: 'ws://localhost:8091/ws/telemetry',
+    axisCount: 12,
+    apiConfirmed: false,
+  },
+  cameras: {
+    global: 'IMX335 / index 1',
+    globalIdentity: 'USB\\VID_0ABD&PID_8050&MI_00\\7&1396F44D&0&0000',
+    wristLeft: 'IMX335 / index 0',
+    wristLeftIdentity: 'USB\\VID_0ABD&PID_8050&MI_00\\7&398F0A3&0&0000',
+    wristRight: 'IMX335 / index 2',
+    wristRightIdentity: 'USB\\VID_0ABD&PID_8050&MI_00\\8&3724732E&0&0000',
+    previewResolution: '640x480',
+    globalResolution: '640x480',
+    wristLeftResolution: '640x480',
+    wristRightResolution: '640x480',
+    fps: 30,
+    tuningDefaultsVersion: 'auto_awb_exposure_20260616',
+    tuning: {
+      global: {
+        autoExposure: true,
+        exposure: -5.5,
+        gain: 0,
+        autoWhiteBalance: true,
+      },
+      wrist_left: {
+        autoExposure: true,
+        exposure: -6,
+        gain: 0,
+        autoWhiteBalance: true,
+      },
+      wrist_right: {
+        autoExposure: true,
+        exposure: -6,
+        gain: 0,
+        autoWhiteBalance: true,
+      },
+    },
+  },
+  force: {
+    source: 'hkvl_serial',
+    leftIp: 'Dev5/ai0:5',
+    rightIp: 'Dev3/ai0:5',
+    port: 49152,
+    sampleHz: 200,
+    recordWindowSamples: 0,
+    tareSamples: 0,
+    certificateConfirmed: false,
+    calibrationEnabled: true,
+    leftCalibrationPath: 'C:/Program Files (x86)/ATI Industrial Automation/ATIDAQFT.NET/FT32918.cal',
+    rightCalibrationPath: 'C:/Program Files (x86)/ATI Industrial Automation/ATIDAQFT.NET/FT38799.cal',
+    inputMode: 'DIFF',
+    voltageMin: -10,
+    voltageMax: 10,
+    lowpassEnabled: true,
+    lowpassCutoffHz: 10,
+    swapHands: false,
+    serial: {
+      protocol: 'hkvl_active_v1',
+      leftPort: 'COM15',
+      rightPort: 'COM14',
+      baudrate: 1_000_000,
+      expectedSampleHz: 1000,
+    },
+    axisSign: {
+      left: [1, 1, -1, -1, -1, 1],
+      right: [1, -1, 1, -1, 1, -1],
+    },
+    compliance: {
+      enabled: false,
+      left: {
+        mappingConfirmed: false,
+        matrix: [1, 0, 0, 1],
+        deadbandN: [0, 0],
+        gainUmPerNs: [0, 0],
+        maxStepUm: [0, 0],
+        maxOffsetUm: [0, 0],
+      },
+      right: {
+        mappingConfirmed: false,
+        matrix: [1, 0, 0, 1],
+        deadbandN: [0, 0],
+        gainUmPerNs: [0, 0],
+        maxStepUm: [0, 0],
+        maxOffsetUm: [0, 0],
+      },
+    },
+  },
+  motion: {
+    leftCardNo: 1,
+    rightCardNo: 0,
+    motionThreadHz: 1000,
+    jogStepUm: 50,
+    jogStepDeg: 0.05,
+    yawSoftLimitDeg: 7,
+    positionSource: 'dmc_get_position',
+    workOriginStrategyVersion: 'icf_work_origin_20260521_rotation_limit_v2',
+    homeReferenceVersion: 'icf_home_reference_20260602_v1',
+    origin: {
+      valid: true,
+      leftValid: true,
+      rightValid: true,
+      leftPulse: [100000, 0, -35179, 64833, 64839, -2947],
+      rightPulse: [-233, -19221, 593101, 4427, -81110, -180],
+      updatedAt: 1778586070000,
+      previousValid: false,
+      previousLeftPulse: [0, 0, 0, 0, 0, 0],
+      previousRightPulse: [0, 0, 0, 0, 0, 0],
+      previousUpdatedAt: 0,
+    },
+    homeReference: {
+      valid: true,
+      leftValid: true,
+      rightValid: true,
+      leftPulse: [100000, 0, -35179, 64833, 64839, -2947],
+      rightPulse: [-233, -19221, 593101, 4427, -81110, -180],
+      updatedAt: 1778586070000,
+    },
+    workOriginOffset: {
+      valid: true,
+      leftValid: true,
+      rightValid: true,
+      leftPulseDelta: [0, 0, 0, 0, 0, 0],
+      rightPulseDelta: [0, 0, 0, 0, 0, 0],
+      updatedAt: 1778586070000,
+    },
+    relativeSoftLimits: structuredClone(defaultRelativeSoftLimits),
+    leftProfile: structuredClone(defaultMotionProfile),
+    rightProfile: structuredClone(defaultMotionProfile),
+    leftSoftLimits: structuredClone(defaultLeftSoftLimits),
+    rightSoftLimits: structuredClone(defaultRightSoftLimits),
+    rotationWorkLimits: structuredClone(defaultRotationWorkLimits),
+    kinematics: structuredClone(defaultKinematics),
+  },
+  gripper: {
+    leftPort: 'COM8',
+    rightPort: 'COM9',
+    baudrate: 115200,
+    leftSlaveId: 10,
+    rightSlaveId: 9,
+    strokeMm: 26,
+    targetLeftMm: 13,
+    targetRightMm: 13,
+    leftEnabled: false,
+    rightEnabled: false,
+    commandForceLimitN: 8,
+    commandSpeed: 10,
+    commandTorque: 1,
+    icfTargetProtectionEnabled: true,
+    icfTargetMinGapMm: 1.02,
+    sampleHz: 30,
+    sampleStaleMs: 500,
+    sampleEnableOnNegative: true,
+    workerCommandTimeoutSec: 2,
+    forceFeedbackAvailable: false,
+  },
+  safety: {
+    fxyWarnN: 2,
+    fxyStopN: 30,
+    fzWarnN: 3,
+    fzStopN: 30,
+    momentWarnNm: 0.02,
+    momentStopNm: 1,
+    yawSoftLimitDeg: 7,
+    watchdogMs: 50,
+  },
+  zmq: {
+    observationPush: 'tcp://127.0.0.1:8082',
+    actionPull: 'tcp://127.0.0.1:8083',
+    timeoutMs: 50,
+  },
+  storage: {
+    datasetRoot: '~/.appstation/datasets',
+    recordFps: 30,
+    videoCrf: 23,
+    pushToHub: false,
+  },
+  auto: {
+    allowHardwareDispatch: false,
+    translationStepUm: 200,
+    rotationStepDeg: 0.2,
+    translationVelocityUmS: 1000,
+    rotationVelocityDegS: 0.5,
+  },
+  picoVision: {
+    ip: '10.90.129.166',
+    adbPort: 5555,
+    videoPort: 12345,
+    commandPort: 13579,
+    gateway: '10.90.0.1',
+    ifIndex: 13,
+    rotation: 'ccw90',
+    cameraSource: 'global',
+  },
+  teleop: {
+    controlMode: 'incremental_position',
+    nativeLoopHz: 100,
+    nativeTranslationDeadzoneM: 0.002,
+    nativeTranslationFullScaleM: 0.04,
+    nativeRotationDeadzoneDeg: 2,
+    nativeRotationFullScaleDeg: 30,
+    nativeVelocitySmoothingMs: 40,
+    kalmanFilterEnabled: false,
+    kalmanBeta: 0.05,
+    kalmanMinVariance: 1e-12,
+    kalmanMaxVariance: 100,
+    kalmanDtMinSec: 0.001,
+    kalmanDtMaxSec: 0.05,
+    kalmanTranslationPositionVariance: 1e-8,
+    kalmanTranslationVelocityVariance: 1e-4,
+    kalmanTranslationMeasurementVariance: 1e-8,
+    kalmanTranslationProcessPositionVariance: 1e-10,
+    kalmanTranslationProcessVelocityVariance: 1e-8,
+    kalmanRotationPositionVariance: 0.25,
+    kalmanRotationVelocityVariance: 4,
+    kalmanRotationMeasurementVariance: 0.04,
+    kalmanRotationProcessPositionVariance: 1e-4,
+    kalmanRotationProcessVelocityVariance: 1e-3,
+    kalmanTranslationIntentVelocityThreshold: 0.0005,
+    kalmanRotationIntentVelocityThreshold: 0.5,
+    coarse: 1,
+    medium: 0.35,
+    fine: 0.08,
+    inputIntervalMs: 10,
+    commandIntervalMs: 10,
+    leftOpenId: 0,
+    rightOpenId: 1,
+    leftConnected: false,
+    rightConnected: false,
+    leftGravityCompensation: true,
+    rightGravityCompensation: true,
+    leftForceFeedback: true,
+    rightForceFeedback: true,
+    leftGravityScale: 0.45,
+    rightGravityScale: 1.0,
+    strategyVersion: 'e2e_omega7_native_v32_card0_yaw_20260804',
+    mappingMode: 'direct',
+    swapHands: false,
+    swapTeleopChannels: true,
+    leftTranslationScale: 1,
+    rightTranslationScale: 1,
+    leftRotationScale: 1,
+    rightRotationScale: 1,
+    homeBeforeStart: true,
+    leftAxisOutputScale: [0.6, 0.5, 0.375, 0.6, 0.08, 0.1],
+    rightAxisOutputScale: [0.6, 0.5, 0.375, 0.6, 0.08, 0.001],
+    translationStepUm: 5000,
+    rotationStepDeg: 0.2,
+    translationStepLimitPulse: 4000,
+    rotationStepLimitPulse: 1250,
+    translationPulseDeadband: 2,
+    rotationPulseDeadband: 2,
+    translationDeadzone: 0.00002,
+    rotationDeadzone: 0.03,
+    incrementalTranslationMinEffectiveDelta: 0.000025,
+    incrementalTranslationReverseDeadzone: 0.00005,
+    translationStartVelocityUmS: 600,
+    translationMaxVelocityUmS: 8000,
+    rotationStartVelocityDegS: 1,
+    rotationMaxVelocityDegS: 12,
+    motionProfileAccSec: 0.05,
+    motionProfileDecSec: 0.05,
+    continuousIncrementMode: true,
+    translationInputEpsilon: 0.00002,
+    rotationInputEpsilon: 0.03,
+    translationMinActivePulse: 3,
+    rotationMinActivePulse: 3,
+    continuousMicroConfirmTicks: 0,
+    diagLog: false,
+    leftEnabledAxes: [true, true, true, true, true, true],
+    rightEnabledAxes: [true, true, true, true, true, true],
+    softLimitUnitSpec: ['um', 'um', 'um', 'deg', 'deg', 'deg'],
+    leftSoftLimitMin: [-25000, -37500, -37500, -5, -30, -7],
+    leftSoftLimitMax: [25000, 37500, 37500, 95, 30, 7],
+    rightSoftLimitMin: [-25000, -37500, -37500, -95, -30, -7],
+    rightSoftLimitMax: [25000, 37500, 37500, 5, 30, 7],
+    leftImpulseCoeff: [-5000000, -5000000, -10000000, 1667, 2500, -333.3333],
+    rightImpulseCoeff: [-5000000, 10000000, -5000000, 1667, -2500, 3333.333],
+    leftDirectionSign: [1, -1, -1, 1, -1, -1],
+    rightDirectionSign: [1, 1, -1, 1, 1, 1],
+    syncImpulseCoeffFromKinematics: false,
+    requireClutch: false,
+    stabilityMode: 'off',
+    tcpFallbackPort: 12345,
+    gripperTeleop: {
+      enabled: true,
+      loopHz: 100,
+      leftGapMinMm: 0.0,
+      leftGapMaxMm: 25.0,
+      rightGapMinMm: 0.0,
+      rightGapMaxMm: 25.0,
+      leftGapInvert: false,
+      rightGapInvert: false,
+      openThreshold: 0.30,
+      closeThreshold: 0.70,
+      gripSpeed: 255,
+      gripTorque: 1,
+      positionDeadbandCounts: 1,
+      minCommandIntervalMs: 20,
+      autoGapCalibration: true,
+      autoGapMinSpanMm: 2.0,
+      autoGapMarginMm: 1.0,
+      releaseSpeed: 255,
+      releaseTorque: 1,
+      leftSourceHand: 'PhysicalLeft',
+      rightSourceHand: 'PhysicalRight',
+      objectDetectMargin: 10,
+      buttonFallback: true,
+      diagLog: false,
+    },
+  },
+  wsl: {
+    distro: 'Ubuntu-22.04',
+    condaEnv: 'lerobot',
+    pythonPath: '/home/user/miniconda3/envs/lerobot/bin/python',
+    pendingWindowsValidation: true,
+  },
+}

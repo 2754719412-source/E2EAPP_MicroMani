@@ -1,0 +1,307 @@
+{
+  "boundary": "仅验证生产前端与 Node 协议替身，未运行或连接真实 backend/HAL；停止时间是替身的独立过期检测，不是实机停止时间。",
+  "scenarios": [
+    {
+      "kind": "main-thread-paused",
+      "actualRendererFault": true,
+      "acceptedBeforeFault": 2,
+      "acceptedAfterFault": 2,
+      "fakeBackendStopAfterFaultMs": 1957,
+      "oldSessionNotRenewed": true,
+      "pageErrors": [],
+      "events": [
+        {
+          "event": "challenge",
+          "at": 1777.5428,
+          "challengeId": "nonce-1"
+        },
+        {
+          "event": "response-received",
+          "at": 1865.4707,
+          "data": {
+            "sessionId": "main-thread-paused-session",
+            "challengeId": "nonce-1"
+          }
+        },
+        {
+          "event": "fake-hal-lease-confirmed",
+          "at": 1865.7876,
+          "challengeId": "nonce-1"
+        },
+        {
+          "event": "challenge",
+          "at": 2377.9028,
+          "challengeId": "nonce-2"
+        },
+        {
+          "event": "response-received",
+          "at": 2381.6273,
+          "data": {
+            "sessionId": "main-thread-paused-session",
+            "challengeId": "nonce-2"
+          }
+        },
+        {
+          "event": "fake-hal-lease-confirmed",
+          "at": 2382.104,
+          "challengeId": "nonce-2"
+        },
+        {
+          "event": "actual-renderer-main-thread-paused",
+          "at": 2568.3596
+        },
+        {
+          "event": "challenge",
+          "at": 2886.5495,
+          "challengeId": "nonce-3"
+        },
+        {
+          "event": "fake-backend-stop",
+          "at": 4425.2126,
+          "reason": "last valid response expired"
+        },
+        {
+          "event": "renderer-resumed",
+          "at": 5381.5255
+        }
+      ]
+    },
+    {
+      "kind": "renderer-crashed",
+      "actualRendererFault": true,
+      "acceptedBeforeFault": 2,
+      "acceptedAfterFault": 2,
+      "fakeBackendStopAfterFaultMs": 1940,
+      "oldSessionNotRenewed": true,
+      "pageErrors": [],
+      "events": [
+        {
+          "event": "challenge",
+          "at": 6009.6224,
+          "challengeId": "nonce-1"
+        },
+        {
+          "event": "response-received",
+          "at": 6024.5676,
+          "data": {
+            "sessionId": "renderer-crashed-session",
+            "challengeId": "nonce-1"
+          }
+        },
+        {
+          "event": "fake-hal-lease-confirmed",
+          "at": 6024.9469,
+          "challengeId": "nonce-1"
+        },
+        {
+          "event": "challenge",
+          "at": 6534.5599,
+          "challengeId": "nonce-2"
+        },
+        {
+          "event": "response-received",
+          "at": 6536.8161,
+          "data": {
+            "sessionId": "renderer-crashed-session",
+            "challengeId": "nonce-2"
+          }
+        },
+        {
+          "event": "fake-hal-lease-confirmed",
+          "at": 6537.0041,
+          "challengeId": "nonce-2"
+        },
+        {
+          "event": "challenge",
+          "at": 7043.3711,
+          "challengeId": "nonce-3"
+        },
+        {
+          "event": "fake-backend-stop",
+          "at": 8577.8929,
+          "reason": "last valid response expired"
+        },
+        {
+          "event": "actual-renderer-crashed",
+          "at": 14497.479
+        }
+      ]
+    },
+    {
+      "kind": "unhandled-rejection",
+      "actualRendererFault": true,
+      "acceptedBeforeFault": 2,
+      "acceptedAfterFault": 2,
+      "fakeBackendStopAfterFaultMs": 5,
+      "oldSessionNotRenewed": true,
+      "pageErrors": [
+        "隔离测试：全局未处理拒绝"
+      ],
+      "events": [
+        {
+          "event": "challenge",
+          "at": 15017.4621,
+          "challengeId": "nonce-1"
+        },
+        {
+          "event": "response-received",
+          "at": 15044.6516,
+          "data": {
+            "sessionId": "unhandled-rejection-session",
+            "challengeId": "nonce-1"
+          }
+        },
+        {
+          "event": "fake-hal-lease-confirmed",
+          "at": 15045.3775,
+          "challengeId": "nonce-1"
+        },
+        {
+          "event": "challenge",
+          "at": 15552.453,
+          "challengeId": "nonce-2"
+        },
+        {
+          "event": "response-received",
+          "at": 15556.3886,
+          "data": {
+            "sessionId": "unhandled-rejection-session",
+            "challengeId": "nonce-2"
+          }
+        },
+        {
+          "event": "fake-hal-lease-confirmed",
+          "at": 15556.6373,
+          "challengeId": "nonce-2"
+        },
+        {
+          "event": "fake-backend-stop",
+          "at": 15672.2298,
+          "reason": "socket closed"
+        }
+      ]
+    }
+  ],
+  "blockedHttp": [
+    {
+      "method": "GET",
+      "path": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "path": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/global/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/wrist_left/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/wrist_right/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "path": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/global/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/global/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/wrist_left/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/wrist_right/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/global/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/wrist_left/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/settings/snapshots"
+    },
+    {
+      "method": "GET",
+      "path": "/api/hardware/status"
+    },
+    {
+      "method": "GET",
+      "path": "/favicon.svg"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/global/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/wrist_left/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/global/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/wrist_left/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/global/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/wrist_left/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/global/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/wrist_left/stream"
+    },
+    {
+      "method": "GET",
+      "path": "/api/cameras/wrist_right/stream"
+    }
+  ]
+}

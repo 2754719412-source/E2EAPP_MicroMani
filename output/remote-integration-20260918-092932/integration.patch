@@ -1,0 +1,3168 @@
+diff --git a/.github/pull_request_template.md b/.github/pull_request_template.md
+new file mode 100644
+--- /dev/null
++++ b/.github/pull_request_template.md
+@@ -0,0 +1,36 @@
++## 变更摘要
++
++<!-- 说明改了什么，以及为什么需要改。 -->
++
++## 架构契约核对
++
++- [ ] 数据集/Policy 遵守 `appstation.dual_arm.operator_sides.v2`，HAL 保持硬件侧顺序。
++- [ ] backend 是唯一转换边界，没有重复交换，也没有交换相机角色。
++- [ ] state、action、pulses、force、单位和 metadata 保持一致。
++- [ ] 缺少或未知契约的数据有明确拒绝/迁移策略，原数据默认保留。
++- [ ] HKVL 为默认，显式 NI-DAQ 参数保留，没有自动 fallback。
++- [ ] 本地控制租约、急停代际、新鲜度和执行侧保护仍有效。
++- [ ] capability 仅声明实际实现，不以版本号或 UI 提示代替能力。
++
++## 验证
++
++<!-- 填写实际命令和结果，包括失败、跳过及原因；不要填未执行的验证。 -->
++
++- Backend：
++- Frontend typecheck/Vitest/build：
++- HAL 隔离编译（列出 SDK/DDS 开关）：
++- 本次差异检查：
++
++## 部署与回退
++
++- HalServer.exe / JodellGripperWorker.exe 的配套构建与部署状态：
++- native Fast-DDS binding 是否需要重建：
++- 外部 act_deploy.py 仓库、固定版本与接口兼容性：
++- 配置/数据兼容及回退点：
++
++## 未验证范围
++
++<!-- 明确真实 HAL、DDS、串口、相机、运动设备、数据落盘和外部模型程序的覆盖。 -->
++
++- [ ] 未提交 runtime 配置、凭据、SDK/DLL、模型权重、运行二进制或临时产物。
++- [ ] 没有将离线测试表述为实机验证。
+diff --git a/AGENTS.md b/AGENTS.md
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -68,3 +68,12 @@
+ - 相关检查通过后，无新改动或未解决疑点不反复扩大测试。缺少依赖、测试跳过、已有失败和未测路径如实报告。
+ - 长任务及时报告新发现；交接保留目标、已确认约束、已修改文件、已验证结果、剩余工作及真实阻碍，不写密钥或整段日志。
+ - 交付先说结果，再列必要的文件入口、实际验证和限制。不得把“改了提示词”表述成已提高模型智力、性能或实机可靠性。
++
++## 6. 数据与上传契约
++
++- 数据集和 Policy API 使用 `appstation.dual_arm.operator_sides.v2`，顺序为操作者左（硬件右）、操作者右（硬件左）；HAL 与前端原始遥测保持硬件侧顺序。
++- backend 复用 `backend/core/data_contract.py` 作为模型数据与 HAL 之间的转换边界；通用硬件控制接口不再次交换。相机角色、原点和 kinematics 不随数值数组机械交换。
++- 新 native 数据写入完整契约；缺少、未知或不兼容契约的数据不能直接续录、作为数值策略输入或归一化。迁移默认保留原数据。
++- 默认来源为 `hkvl_serial`，保留显式 NI-DAQ 配置，不自动切换。HAL capability 只声明实际实现，不能由版本号推断。
++- HAL 变更正式部署前须同步构建 HalServer.exe 与 JodellGripperWorker.exe；离线骨架不作为实机程序发布。PR 必须填写测试、部署和未验证范围。
++- 完整要求见 [上传契约](docs/github-upload-contract.md)；实际覆盖和本轮未迁入功能见 [数据契约与部署说明](docs/data-contract-and-deployment.md)。不将文档要求表述为已实现或已验收。
+diff --git a/backend/app.py b/backend/app.py
+--- a/backend/app.py
++++ b/backend/app.py
+@@ -23,6 +23,12 @@
+ 
+ from backend.app_factory import create_services
+ from backend.core.config import SettingsService
++from backend.core.data_contract import (
++    data_contract_metadata,
++    dataset_side_to_hardware_side,
++    hardware_to_dataset_motion,
++    validate_data_contract,
++)
+ from backend.core.force_config import hal_force_config_payload
+ from backend.core.logging import LOG_SCHEMA_VERSION, LogService, now_ms, stable_config_hash
+ from backend.core.motion_safety import MotionSafetyToken
+@@ -60,6 +66,25 @@
+ AXIS_NAMES = ("X", "Y", "Z", "Roll", "Pitch", "Yaw")
+ BACKEND_STARTED_AT = time.time()
+ TELEOP_GRAVITY_SCALE_DEFAULTS = {"left": 0.45, "right": 1.0}
++REQUIRED_HAL_CAPABILITIES = ("force_calibration_state_v1",)
++
++
++def hal_capability_status(health: Any) -> dict[str, Any]:
++    """仅诊断自检能力；缺失字段或版本号不能被当作已经实现该能力。"""
++    reported = getattr(health, "capabilities", None)
++    capabilities = [item for item in reported if isinstance(item, str)] if isinstance(reported, list) else []
++    missing = [item for item in REQUIRED_HAL_CAPABILITIES if item not in capabilities]
++    return {
++        "compatible": not missing,
++        "required": list(REQUIRED_HAL_CAPABILITIES),
++        "reported": capabilities,
++        "missing": missing,
++        "message": (
++            "HAL capability check passed"
++            if not missing
++            else "HAL 未报告力校准状态能力；请核实对应实现与配套构建，版本号不能代替能力声明"
++        ),
++    }
+ 
+ 
+ def teleop_gravity_scale(teleop: dict[str, Any], side: str) -> float:
+@@ -827,7 +852,7 @@
+             "ok": True,
+             "backend": "running",
+             "mode": hal_health.mode,
+-            "hal": hal_health.__dict__,
++            "hal": {**hal_health.__dict__, "capabilityCheck": hal_capability_status(hal_health)},
+             "hardware": hardware_status,
+             "runtime": runtime_status,
+             "ts": now_ms(),
+@@ -1319,6 +1344,7 @@
+                 if isinstance(raw_pulses, list) and len(raw_pulses) == 12:
+                     pulses = [float(value) for value in raw_pulses]
+                     joint_positions = relative_motion_positions(config, joint_positions, pulses)
++                    pulses = hardware_to_dataset_motion(pulses)
+                 telemetry.motion_positions = list(joint_positions)
+             except RuntimeError as exc:
+                 logs.error("[POLICY]", f"policy observation failed: {exc}")
+@@ -1337,8 +1363,9 @@
+             {
+                 "state": lerobot_state_from_ui(joint_positions, grippers),
+                 "pulses": pulses if pulses is not None else [0.0] * 12,
+-                "force_left": [float(value) for value in force_left],
+-                "force_right": [float(value) for value in force_right],
++                "force_left": [float(value) for value in force_right],
++                "force_right": [float(value) for value in force_left],
++                "dataContract": data_contract_metadata(),
+             }
+         )
+ 
+@@ -1351,6 +1378,13 @@
+                 status_code=400,
+                 detail={"code": "BAD_POLICY_ACTION", "message": "action must be a 14-element list"},
+             )
++        try:
++            validate_data_contract(payload.get("dataContract"))
++        except ValueError as exc:
++            raise HTTPException(
++                status_code=409,
++                detail={"code": "POLICY_DATA_CONTRACT_MISMATCH", "message": str(exc)},
++            ) from exc
+         dry_run = bool(payload.get("dryRun", True))
+         config = await get_config_async()
+         current_state = lerobot_state_from_ui(list(telemetry.motion_positions), _policy_gripper_positions(config))
+@@ -1368,7 +1402,7 @@
+         except RuntimeError as exc:
+             raise HTTPException(status_code=409, detail={"code": "POLICY_ACTION_BLOCKED", "message": str(exc)}) from exc
+         if dry_run:
+-            return envelope({"dryRun": True, "sent": False, "plan": plan})
++            return envelope({"dryRun": True, "sent": False, "plan": plan, "dataContract": data_contract_metadata()})
+         raw_controlled_sides = payload.get("controlledSides")
+         controlled_sides = (
+             [side for side in raw_controlled_sides if side in {"left", "right"}]
+@@ -1386,25 +1420,27 @@
+                 for side in controlled_sides:
+                     commands.safety.check(safety_token)
+                     motion_plan = plan["motion"][side]
+-                    await commands.enable_motion_side(side)
++                    hardware_side = dataset_side_to_hardware_side(side)
++                    await commands.enable_motion_side(hardware_side)
+                     commands.safety.check(safety_token)
+                     results["motion"][side] = await hal.command(
+                         "motion.teleop_target_update",
+-                        _policy_motion_payload(side, motion_plan, config),
++                        _policy_motion_payload(hardware_side, motion_plan, config),
+                     )
+                 for side, target_key in (("left", "leftMm"), ("right", "rightMm")):
+                     if side not in controlled_sides:
+                         continue
+-                    if not bool(config.get("gripper", {}).get(f"{side}Enabled", False)):
++                    hardware_side = dataset_side_to_hardware_side(side)
++                    if not bool(config.get("gripper", {}).get(f"{hardware_side}Enabled", False)):
+                         continue
+-                    gripper_side = cast(SideName, side)
++                    gripper_side = cast(SideName, hardware_side)
+                     request = GripperCommandRequest(
+                         side=gripper_side,
+                         command="target",
+                         targetMm=plan["grippers"][target_key],
+                     )
+                     commands.safety.check(safety_token)
+-                    results["grippers"][gripper_side] = await commands.gripper_command(request)
++                    results["grippers"][side] = await commands.gripper_command(request)
+         except ControlLeaseUnavailable as exc:
+             raise HTTPException(status_code=409, detail={"code": "CONTROL_LEASE_UNAVAILABLE", "message": str(exc)}) from exc
+         except RuntimeError as exc:
+@@ -1413,7 +1449,13 @@
+                 status_code=503,
+                 detail={"code": "POLICY_ACTION_UNAVAILABLE", "message": str(exc)},
+             ) from exc
+-        return envelope({"dryRun": False, "sent": True, "plan": plan, "results": results})
++        return envelope({
++            "dryRun": False,
++            "sent": True,
++            "plan": plan,
++            "results": results,
++            "dataContract": data_contract_metadata(),
++        })
+ 
+     def _real_hardware_mode(config: dict[str, Any]) -> bool:
+         mode = os.environ.get("APPSTATION_HAL_MODE") or config.get("hal", {}).get("mode", "real")
+@@ -1754,6 +1796,35 @@
+             media_type="multipart/x-mixed-replace; boundary=frame",
+             headers={"Cache-Control": "no-store"},
+         )
++
++    @app.post("/api/cameras/wrists/identify")
++    async def identify_wrist_cameras() -> ApiEnvelope:
++        record_status = await asyncio.to_thread(recorder.status)
++        if recorder.camera_configuration_busy() or record_status.get("active") or record_status.get("recording"):
++            raise HTTPException(status_code=409, detail={"message": "请先结束录制会话，再识别相机"})
++        try:
++            config = await get_config_async()
++            devices = await asyncio.to_thread(hardware.cameras.identify_wrists, config)
++            return envelope({"devices": devices})
++        except ValueError as exc:
++            raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
++
++    @app.post("/api/cameras/wrists/bind")
++    async def bind_wrist_cameras(payload: dict[str, str]) -> ApiEnvelope:
++        record_status = await asyncio.to_thread(recorder.status)
++        if recorder.camera_configuration_busy() or record_status.get("active") or record_status.get("recording"):
++            raise HTTPException(status_code=409, detail={"message": "请先结束录制会话，再更改相机绑定"})
++        try:
++            config = await get_config_async()
++            cameras = await asyncio.to_thread(
++                hardware.cameras.wrist_binding, config, payload.get("left", ""), payload.get("right", "")
++            )
++            config["cameras"] = cameras
++            saved = await asyncio.to_thread(settings.save_config, config)
++            probe = await asyncio.to_thread(hardware.cameras.reconnect, saved)
++            return envelope({"cameras": saved["cameras"], "connected": probe.ok, "message": probe.message})
++        except ValueError as exc:
++            raise HTTPException(status_code=400, detail={"message": str(exc)}) from exc
+ 
+     # 枚举系统相机设备。
+     @app.get("/api/cameras/enumerate")
+diff --git a/backend/core/config.py b/backend/core/config.py
+--- a/backend/core/config.py
++++ b/backend/core/config.py
+@@ -925,6 +925,11 @@
+                 teleop["syncImpulseCoeffFromKinematics"] = False
+         cameras = config.get("cameras", {})
+         if isinstance(cameras, dict):
++            # 新绑定的稳定身份优先于历史 index 标签，重载时不能被默认迁移覆盖。
++            has_explicit_camera_identity = any(
++                cameras.get(key) and cameras[key] != ICF_CAMERA_DEFAULTS[key]
++                for key in ("globalIdentity", "wristLeftIdentity", "wristRightIdentity")
++            )
+             has_legacy_reversed_wrist_cameras = (
+                 cameras.get("global") == "AR0234 / index 2"
+                 and cameras.get("wristLeft") == "IMX258 / index 1"
+@@ -945,7 +950,7 @@
+                 and cameras.get("wristLeft") == "IMX335 / index 2"
+                 and cameras.get("wristRight") == "IMX335 / index 0"
+             )
+-            if (
++            if not has_explicit_camera_identity and (
+                 has_legacy_reversed_wrist_cameras
+                 or has_legacy_cyclic_camera_roles
+                 or has_previous_imx258_camera_defaults
+diff --git a/backend/core/data_contract.py b/backend/core/data_contract.py
+new file mode 100644
+--- /dev/null
++++ b/backend/core/data_contract.py
+@@ -0,0 +1,122 @@
++"""Numeric side-order contract shared by recording and policy boundaries."""
++
++from __future__ import annotations
++
++from copy import deepcopy
++from typing import Any
++
++from backend.core.operator_view import hardware_side_for_operator_side, operator_side_for_hardware_side
++
++DATA_CONTRACT_VERSION = "appstation.dual_arm.operator_sides.v2"
++DATASET_SIDE_ORDER = "operator_left_then_operator_right"
++DATASET_CONTRACT_METADATA: dict[str, Any] = {
++    "version": DATA_CONTRACT_VERSION,
++    "sideOrder": DATASET_SIDE_ORDER,
++    "hardwareSideForDatasetSide": {"left": "right", "right": "left"},
++    "stateOrder": [
++        "operator_left.x_um",
++        "operator_left.y_um",
++        "operator_left.z_um",
++        "operator_left.roll_mdeg",
++        "operator_left.pitch_mdeg",
++        "operator_left.yaw_mdeg",
++        "operator_left.gripper_gap_mm",
++        "operator_right.x_um",
++        "operator_right.y_um",
++        "operator_right.z_um",
++        "operator_right.roll_mdeg",
++        "operator_right.pitch_mdeg",
++        "operator_right.yaw_mdeg",
++        "operator_right.gripper_gap_mm",
++    ],
++    "actionOrder": [
++        "operator_left.x_um",
++        "operator_left.y_um",
++        "operator_left.z_um",
++        "operator_left.roll_mdeg",
++        "operator_left.pitch_mdeg",
++        "operator_left.yaw_mdeg",
++        "operator_left.gripper_gap_mm",
++        "operator_right.x_um",
++        "operator_right.y_um",
++        "operator_right.z_um",
++        "operator_right.roll_mdeg",
++        "operator_right.pitch_mdeg",
++        "operator_right.yaw_mdeg",
++        "operator_right.gripper_gap_mm",
++    ],
++    "pulsesOrder": [
++        "operator_left.x_pulse",
++        "operator_left.y_pulse",
++        "operator_left.z_pulse",
++        "operator_left.roll_pulse",
++        "operator_left.pitch_pulse",
++        "operator_left.yaw_pulse",
++        "operator_right.x_pulse",
++        "operator_right.y_pulse",
++        "operator_right.z_pulse",
++        "operator_right.roll_pulse",
++        "operator_right.pitch_pulse",
++        "operator_right.yaw_pulse",
++    ],
++    "forceOrder": ["operator_left", "operator_right"],
++    "forceSideSemantics": "observation.force_left/right use dataset operator side names",
++    "units": {"translation": "um", "rotation": "mdeg", "gripper": "mm", "force": "SI"},
++}
++
++
++def data_contract_metadata() -> dict[str, Any]:
++    return deepcopy(DATASET_CONTRACT_METADATA)
++
++
++def validate_data_contract(metadata: Any) -> None:
++    if not isinstance(metadata, dict):
++        raise ValueError("data contract metadata is missing; manual migration or confirmation is required")
++    if metadata.get("version") != DATA_CONTRACT_VERSION:
++        version = metadata.get("version")
++        if version is None:
++            raise ValueError("data contract version is missing; manual migration or confirmation is required")
++        raise ValueError(f"unsupported data contract version: {version}")
++    for key in (
++        "sideOrder",
++        "hardwareSideForDatasetSide",
++        "stateOrder",
++        "actionOrder",
++        "pulsesOrder",
++        "forceOrder",
++        "forceSideSemantics",
++        "units",
++    ):
++        if metadata.get(key) != DATASET_CONTRACT_METADATA[key]:
++            raise ValueError(f"data contract {key} does not match {DATA_CONTRACT_VERSION}")
++
++
++def hardware_to_dataset_motion(values: list[float]) -> list[float]:
++    padded = (list(values) + [0.0] * 12)[:12]
++    return padded[6:12] + padded[0:6]
++
++
++def dataset_to_hardware_motion(values: list[float]) -> list[float]:
++    return hardware_to_dataset_motion(values)
++
++
++def hardware_to_dataset_grippers(values: list[float]) -> list[float]:
++    padded = (list(values) + [0.0] * 2)[:2]
++    return [float(padded[1]), float(padded[0])]
++
++
++def dataset_to_hardware_state(values: list[float]) -> list[float]:
++    padded = (list(values) + [0.0] * 14)[:14]
++    return [*padded[7:13], padded[13], *padded[0:6], padded[6]]
++
++
++def hardware_to_dataset_state(values: list[float]) -> list[float]:
++    return dataset_to_hardware_state(values)
++
++
++def dataset_side_to_hardware_side(side: str) -> str:
++    return hardware_side_for_operator_side(side)  # type: ignore[arg-type]
++
++
++def hardware_side_to_dataset_side(side: str) -> str:
++    return operator_side_for_hardware_side(side)  # type: ignore[arg-type]
+diff --git a/backend/core/units.py b/backend/core/units.py
+--- a/backend/core/units.py
++++ b/backend/core/units.py
+@@ -39,15 +39,19 @@
+     return [float(value) / 1000.0 if idx in ROTATION_AXES else float(value) for idx, value in enumerate(values)]
+ 
+ 
+-def motion_pulse_per_unit(config: dict[str, Any] | None = None) -> tuple[float, ...]:
+-    """Return signed pulse-per-unit for all 12 axes from runtime kinematics config."""
++def motion_pulse_per_unit(
++    config: dict[str, Any] | None = None,
++    *,
++    side_order: str = "hardware",
++) -> tuple[float, ...]:
++    """Return signed pulse-per-unit in hardware or operator/dataset side order."""
+     motion = config.get("motion", {}) if isinstance(config, dict) else {}
+     kinematics = motion.get("kinematics", {}) if isinstance(motion, dict) else {}
+     if not isinstance(kinematics, dict):
+         kinematics = ICF_KINEMATICS_DEFAULTS
+     left = _side_pulse_per_unit("left", kinematics)
+     right = _side_pulse_per_unit("right", kinematics)
+-    return left + right
++    return left + right if side_order == "hardware" else right + left
+ 
+ 
+ def pulses_to_ui_state(pulses: list[float], config: dict[str, Any] | None = None) -> list[float]:
+@@ -58,6 +62,13 @@
+         pulse_to_ui(float(pulse), idx, pulse_per_unit[idx])
+         for idx, pulse in enumerate(values)
+     ]
++
++
++def dataset_pulses_to_ui_state(pulses: list[float], config: dict[str, Any] | None = None) -> list[float]:
++    """Convert dataset/operator-order pulses using the matching hardware calibration."""
++    values = (list(pulses) + [0.0] * 12)[:12]
++    pulse_per_unit = motion_pulse_per_unit(config, side_order="dataset")
++    return [pulse_to_ui(float(pulse), idx, pulse_per_unit[idx]) for idx, pulse in enumerate(values)]
+ 
+ 
+ def _side_pulse_per_unit(side: str, kinematics: dict[str, Any]) -> tuple[float, ...]:
+diff --git a/backend/drivers/camera_opencv.py b/backend/drivers/camera_opencv.py
+--- a/backend/drivers/camera_opencv.py
++++ b/backend/drivers/camera_opencv.py
+@@ -167,6 +167,112 @@
+         return sb.ToString();
+     }
+ 
++    [ComImport, Guid("28F54685-06FD-11D2-B27A-00A0C9223196"),
++     InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
++    interface IKsControl
++    {
++        [PreserveSig]
++        int KsProperty(IntPtr property, int propertySize, IntPtr data, int dataSize, out int returned);
++        [PreserveSig]
++        int KsMethod(IntPtr property, int propertySize, IntPtr data, int dataSize, out int returned);
++        [PreserveSig]
++        int KsEvent(IntPtr property, int propertySize, IntPtr data, int dataSize, out int returned);
++    }
++
++    public static string SetFixedFrameRate(string devicePath)
++    {
++        var type = Type.GetTypeFromCLSID(new Guid("62BE5D10-60EB-11D0-BD3B-00A0C911CE86"));
++        var devEnum = (ICreateDevEnum)Activator.CreateInstance(type);
++        IEnumMoniker enumerator = null;
++        try
++        {
++            Guid category = new Guid("860BB310-5D01-11D0-BD3B-00A0C911CE86");
++            if (devEnum.CreateClassEnumerator(ref category, out enumerator, 0) != 0)
++                throw new InvalidOperationException("Camera enumeration failed");
++            var monikers = new IMoniker[1];
++            while (enumerator.Next(1, monikers, IntPtr.Zero) == 0)
++            {
++                try
++                {
++                    if (!String.Equals(ReadBag(monikers[0], "DevicePath"), devicePath,
++                                       StringComparison.OrdinalIgnoreCase)) continue;
++                    object filter;
++                    Guid iid = new Guid("56A86895-0AD4-11CE-B03A-0020AF0BA770");
++                    monikers[0].BindToObject(null, null, ref iid, out filter);
++                    try
++                    {
++                        var control = (IKsControl)filter;
++                        EnableAutoExposure(control);
++                        return DisableLowLightCompensation(control);
++                    }
++                    finally { Marshal.ReleaseComObject(filter); }
++                }
++                finally { Marshal.ReleaseComObject(monikers[0]); }
++            }
++            throw new InvalidOperationException("Camera device path not found");
++        }
++        finally
++        {
++            if (enumerator != null) Marshal.ReleaseComObject(enumerator);
++            Marshal.ReleaseComObject(devEnum);
++        }
++    }
++
++    static void EnableAutoExposure(IKsControl control)
++    {
++        // 自动曝光优先级属性仅在曝光已为 Auto 时有效。
++        IntPtr data = Marshal.AllocCoTaskMem(40);
++        try
++        {
++            for (int i = 0; i < 40; i += 4) Marshal.WriteInt32(data, i, 0);
++            ControlHeader(data, 4, 1); // KSPROPERTY_CAMERACONTROL_EXPOSURE, GET
++            int returned;
++            Marshal.ThrowExceptionForHR(control.KsProperty(data, 40, data, 40, out returned));
++            if ((Marshal.ReadInt32(data, 28) & 1) == 0)
++            {
++                ControlHeader(data, 4, 2);
++                Marshal.WriteInt32(data, 28, 1); // KSPROPERTY_CAMERACONTROL_FLAGS_AUTO
++                Marshal.ThrowExceptionForHR(control.KsProperty(data, 40, data, 40, out returned));
++            }
++        }
++        finally { Marshal.FreeCoTaskMem(data); }
++    }
++
++    static string DisableLowLightCompensation(IKsControl control)
++    {
++        // KSPROPERTY_CAMERACONTROL_S is 40 bytes with 8-byte alignment on Windows.
++        IntPtr data = Marshal.AllocCoTaskMem(40);
++        try
++        {
++            for (int i = 0; i < 40; i += 4) Marshal.WriteInt32(data, i, 0);
++            ControlHeader(data, 19, 1);
++            int returned;
++            Marshal.ThrowExceptionForHR(control.KsProperty(data, 40, data, 40, out returned));
++            int before = Marshal.ReadInt32(data, 24);
++            if (before != 0)
++            {
++                ControlHeader(data, 19, 2);
++                Marshal.WriteInt32(data, 24, 0);
++                Marshal.WriteInt32(data, 28, 2); // KSPROPERTY_CAMERACONTROL_FLAGS_MANUAL
++                Marshal.ThrowExceptionForHR(control.KsProperty(data, 40, data, 40, out returned));
++            }
++            // Get may overwrite the property header, so rebuild it for each call.
++            ControlHeader(data, 19, 1);
++            Marshal.ThrowExceptionForHR(control.KsProperty(data, 40, data, 40, out returned));
++            if (Marshal.ReadInt32(data, 24) != 0)
++                throw new InvalidOperationException("Low-light compensation remained enabled");
++            return "fixed_frame_rate=1 previous_priority=" + before;
++        }
++        finally { Marshal.FreeCoTaskMem(data); }
++    }
++
++    static void ControlHeader(IntPtr data, int property, int operation)
++    {
++        Marshal.StructureToPtr(new Guid("C6E13370-30AC-11D0-A18C-00A0C9118956"), data, false);
++        Marshal.WriteInt32(data, 16, property);
++        Marshal.WriteInt32(data, 20, operation);
++    }
++
+     static string ReadBag(IMoniker moniker, string name)
+     {
+         object bagObj;
+@@ -189,7 +295,31 @@
+ }
+ '@
+ Add-Type -TypeDefinition $code -Language CSharp
+-[AppstationDirectShowCameraEnum]::List()
++$listing = [AppstationDirectShowCameraEnum]::List()
++foreach ($line in ($listing -split "\r?\n")) {
++    Write-Output $line
++    if (-not $line.StartsWith("DevicePath=")) { continue }
++    $devicePath = $line.Substring("DevicePath=".Length)
++    if ([string]::IsNullOrWhiteSpace($devicePath)) { continue }
++    try {
++        $instanceId = if ($devicePath.StartsWith('\\?\')) { $devicePath.Substring(4) } else { $devicePath }
++        $instanceId = ($instanceId -split '#\{', 2)[0]
++        $instanceId = $instanceId -replace '#', '\'
++        $parentProperty = Get-PnpDeviceProperty `
++            -InstanceId $instanceId `
++            -KeyName 'DEVPKEY_Device_Parent' `
++            -ErrorAction Stop
++        $parentId = $parentProperty.Data
++        Write-Output ("ParentId=" + $parentId)
++        $locationProperty = Get-PnpDeviceProperty `
++            -InstanceId $parentId `
++            -KeyName 'DEVPKEY_Device_LocationPaths' `
++            -ErrorAction Stop
++        $locationPath = $locationProperty.Data | Select-Object -First 1
++        Write-Output ("LocationPath=" + $locationPath)
++    }
++    catch { }
++}
+ """
+ 
+ 
+@@ -207,6 +337,8 @@
+                 identity.get("name", ""),
+                 identity.get("devicePath", ""),
+                 identity.get("displayName", ""),
++                identity.get("parentId", ""),
++                identity.get("locationPath", ""),
+             ]
+         )
+     )
+@@ -616,6 +748,9 @@
+                 }
+             else:
+                 actual = self._apply_tuning(cv2, capture, profile)
++                if capture is current and camera in {"wrist_left", "wrist_right"} and profile["autoExposure"]:
++                    # 已打开的 direct capture 不经过重开分支，也需同步关闭低光降帧。
++                    self._disable_low_light_compensation(index)
+             self._clear_probe_cache()
+         self._log("info", f"{camera} tuning applied on index {index}: {profile}")
+         return {
+@@ -653,6 +788,68 @@
+             for index in list(indices):
+                 self._drop_capture(index)
+             self._clear_probe_cache()
++
++    def wrist_candidates(self, config: dict[str, Any]) -> list[dict[str, Any]]:
++        self._identity_cache = None
++        identities = self._camera_identities_by_index()
++        global_identity = str(config["cameras"].get("globalIdentity", "")).strip()
++        if not global_identity:
++            raise ValueError("请先设置全局相机身份，再识别腕部相机")
++        global_matches = [
++            device for device in identities.values()
++            if not self._is_directshow_software_source(device) and _identity_matches(global_identity, device)
++        ]
++        if len(global_matches) != 1:
++            raise ValueError("无法唯一确认全局相机，请检查全局相机连接和身份配置后重新扫描")
++        devices = []
++        for index, device in identities.items():
++            if self._is_directshow_software_source(device) or not device.get("devicePath"):
++                continue
++            if _identity_matches(global_identity, device):
++                continue
++            parent = device.get("parentId", "")
++            serial = parent.rsplit("\\", 1)[-1]
++            identity = parent if parent and serial and "&" not in serial else device.get("locationPath", "")
++            if not identity:
++                continue
++            devices.append({
++                "index": index, "devicePath": device["devicePath"], "identity": identity,
++                "name": device.get("name", "USB Camera"),
++            })
++        return devices
++
++    def identify_wrists(self, config: dict[str, Any]) -> list[dict[str, Any]]:
++        devices = self.wrist_candidates(config)
++        for device in devices:
++            with self._capture_lock:
++                already_open = device["index"] in self._captures
++            preview_config = {**config, "cameras": {
++                **config["cameras"], "wristLeftIdentity": device["devicePath"], "wristRightIdentity": "",
++                "wristRight": "index -1",
++            }}
++            try:
++                jpeg = self.snapshot(preview_config, "wrist_left")
++                device["preview"] = "data:image/jpeg;base64," + base64.b64encode(jpeg).decode("ascii")
++            except RuntimeError as exc:
++                device["error"] = str(exc)
++            finally:
++                if not already_open:
++                    with self._capture_lock:
++                        self._drop_capture(device["index"])
++        return devices
++
++    def wrist_binding(self, config: dict[str, Any], left: str, right: str) -> dict[str, Any]:
++        devices = {device["devicePath"]: device for device in self.wrist_candidates(config)}
++        if (
++            left == right or left not in devices or right not in devices
++            or devices[left]["identity"] == devices[right]["identity"]
++        ):
++            raise ValueError("请选择两台不同且仍在线的相机；设备变化后请重新扫描")
++        cameras = dict(config["cameras"])
++        for key, path in (("wristLeft", left), ("wristRight", right)):
++            cameras[key] = f"IMX335 / index {devices[path]['index']}"
++            cameras[f"{key}Identity"] = devices[path]["identity"]
++        return cameras
+ 
+     def enumerate_devices(self, config: dict[str, Any], max_index: int = 3) -> list[dict[str, Any]]:
+         try:
+@@ -800,10 +997,14 @@
+             )
+             for role, config_key in CAMERA_DESCRIPTOR_KEYS.items()
+         }
+-        resolved.update(self._resolve_indices_by_identity(cameras))
++        identity_resolved = self._resolve_indices_by_identity(cameras)
++        for role, identity_key in CAMERA_IDENTITY_KEYS.items():
++            if str(cameras.get(identity_key, "")).strip():
++                resolved[role] = identity_resolved.get(role, -1)
+         resolved = self._remap_software_sources(resolved, max_index)
+         wrist_indices = {resolved["wrist_left"], resolved["wrist_right"]}
+-        if resolved["global"] < 0 or resolved["global"] in wrist_indices:
++        global_has_identity = bool(str(cameras.get(CAMERA_IDENTITY_KEYS["global"], "")).strip())
++        if not global_has_identity and (resolved["global"] < 0 or resolved["global"] in wrist_indices):
+             readable = self._discover_readable_indices(cv2, *CAMERA_CAPTURE_SIZES["global"], fps, max_index)
+             remaining = [index for index in readable if index not in wrist_indices]
+             if remaining:
+@@ -918,6 +1119,8 @@
+                 "name": current.get("FriendlyName", ""),
+                 "devicePath": current.get("DevicePath", ""),
+                 "displayName": current.get("DisplayName", ""),
++                "parentId": current.get("ParentId", ""),
++                "locationPath": current.get("LocationPath", ""),
+             }
+ 
+         for line in output.splitlines():
+@@ -976,6 +1179,8 @@
+         backend_label = ""
+         worker_fallback = False
+         profile = self._camera_tuning(config, camera) if config is not None and camera is not None else None
++        if camera in {"wrist_left", "wrist_right"} and profile and profile["autoExposure"]:
++            self._disable_low_light_compensation(index)
+         backend_candidates = _backend_candidates(cv2)
+         if self._process_capture_enabled(cv2, backend_candidates):
+             capture = self._start_process_capture(cv2, index, width, height, fps, camera, profile, backend_candidates)
+@@ -1101,6 +1306,28 @@
+         self._log("info", f"{camera or 'camera'} opened index {index} via {backend_label} {width}x{height}@{fps:g}")
+         return capture
+ 
++    def _disable_low_light_compensation(self, index: int) -> None:
++        if sys.platform != "win32":
++            return
++        device_path = self._camera_identities_by_index().get(index, {}).get("devicePath", "")
++        if not device_path:
++            return
++        # Reapply on every open: USB power cycles can restore variable frame rate.
++        script = DIRECTSHOW_CAMERA_ENUM_SCRIPT.split("$listing =", 1)[0]
++        script += "\n$ErrorActionPreference = 'Stop'\n"
++        script += "[AppstationDirectShowCameraEnum]::SetFixedFrameRate('" + device_path.replace("'", "''") + "')"
++        try:
++            result = subprocess.run(
++                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
++                capture_output=True, text=True, timeout=8, creationflags=subprocess.CREATE_NO_WINDOW,
++            )
++            if result.returncode != 0 or "fixed_frame_rate=1" not in result.stdout:
++                self._log("warning", f"camera index {index}: low-light compensation could not be disabled")
++            else:
++                self._log("info", f"camera index {index}: low-light compensation disabled; verify measured frame rate")
++        except (OSError, subprocess.TimeoutExpired) as exc:
++            self._log("warning", f"camera index {index}: fixed frame rate setup failed: {exc}")
++
+     def _process_capture_enabled(self, cv2: Any, backend_candidates: list[tuple[int, str]]) -> bool:
+         mode = os.environ.get("APPSTATION_CAMERA_CAPTURE_MODE", "").strip().lower()
+         if mode in {"thread", "direct", "inprocess", "in-process", "0", "false", "off"}:
+diff --git a/backend/hal_client/client.py b/backend/hal_client/client.py
+--- a/backend/hal_client/client.py
++++ b/backend/hal_client/client.py
+@@ -30,6 +30,7 @@
+     connected: bool = True
+     mode: str = "real"
+     message: str | None = None
++    capabilities: list[str] | None = None
+ 
+ 
+ class HalClient:
+@@ -246,6 +247,11 @@
+             connected=True,
+             mode="real",
+             message=payload.get("message") if isinstance(payload.get("message"), str) else None,
++            capabilities=(
++                [str(value) for value in payload["capabilities"]]
++                if isinstance(payload.get("capabilities"), list)
++                else None
++            ),
+         )
+ 
+     async def command(self, name: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+diff --git a/backend/hal_client/dds_client.py b/backend/hal_client/dds_client.py
+--- a/backend/hal_client/dds_client.py
++++ b/backend/hal_client/dds_client.py
+@@ -122,6 +122,11 @@
+             connected=True,
+             mode="real",
+             message=payload.get("message") if isinstance(payload.get("message"), str) else None,
++            capabilities=(
++                [str(value) for value in payload["capabilities"]]
++                if isinstance(payload.get("capabilities"), list)
++                else None
++            ),
+         )
+ 
+     async def command(self, name: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+diff --git a/backend/services/dataset_recorder.py b/backend/services/dataset_recorder.py
+--- a/backend/services/dataset_recorder.py
++++ b/backend/services/dataset_recorder.py
+@@ -31,6 +31,13 @@
+ from typing import Any
+ 
+ from backend.core.config import SettingsService
++from backend.core.data_contract import (
++    data_contract_metadata,
++    hardware_to_dataset_grippers,
++    hardware_to_dataset_motion,
++    hardware_to_dataset_state,
++    validate_data_contract,
++)
+ from backend.core.defaults import ICF_KINEMATICS_DEFAULTS, ICF_TELEOP_DEFAULTS
+ from backend.core.force_config import hal_force_config_payload
+ from backend.core.logging import LogService, now_ms, stable_config_hash
+@@ -342,6 +349,7 @@
+             motion_pulses = [float(value) for value in raw_pulses]
+             recorder._remember_motion_pulses(motion_pulses)
+         motion_positions = recorder._recording_motion_positions(config, motion_positions, motion_pulses)
++        recording_motion_pulses = hardware_to_dataset_motion(motion_pulses)
+         force_values = recorder._force_values_from_sample(force_sample.value)
+         if force_values is not None:
+             force_left, force_right = force_values
+@@ -365,9 +373,9 @@
+             "frame_index": frame_index,
+             "episode_index": recorder._episode_index,
+             "observation.state": observation_state,
+-            "observation.pulses": motion_pulses,
+-            "observation.force_left": force_left,
+-            "observation.force_right": force_right,
++            "observation.pulses": recording_motion_pulses,
++            "observation.force_left": force_right,
++            "observation.force_right": force_left,
+             "action": recorder._latest_action_vector(observation_state, config, target_monotonic_s),
+             "images": image_payload,
+         }
+@@ -553,6 +561,9 @@
+             dataset_root = self._dataset_root(config)
+             dataset_dir = dataset_root / next_dataset_id
+             await asyncio.to_thread(dataset_root.mkdir, parents=True, exist_ok=True)
++            contract_error = self._dataset_contract_error(dataset_dir)
++            if contract_error:
++                raise RuntimeError(contract_error)
+ 
+             async with self._lock:
+                 self._recording_config_snapshot = deepcopy(config)
+@@ -920,6 +931,10 @@
+         """录制会话存在时禁止修改硬件零点记录，保持 episode 坐标系可追溯。"""
+         return bool(getattr(self, "_session_starting", False) or self._session_active or self._recording)
+ 
++    def camera_configuration_busy(self) -> bool:
++        """录制启动、采样或写线程收尾期间禁止重开和重绑相机。"""
++        return self.origin_mutation_locked() or getattr(self, "_writer_thread", None) is not None
++
+     def list_datasets(self) -> list[dict[str, Any]]:
+         """扫描数据集根目录，返回按更新时间排序的本地数据集摘要。"""
+         root = self._dataset_root(self.settings.get_config())
+@@ -932,6 +947,7 @@
+                 continue
+             app_info = self._read_json(dataset_dir / "meta" / "appstation_info.json")
+             native_format = self._is_native_dataset(dataset_dir, info)
++            contract_error = self._dataset_contract_error(dataset_dir)
+             episodes = self._read_episodes(dataset_dir)
+             if not episodes and native_format:
+                 episodes = self._native_episodes_from_meta(dataset_dir, info)
+@@ -953,6 +969,11 @@
+                         app_info.get("format")
+                         or info.get("format")
+                         or ("lerobot-v3-native" if native_format else "lerobot-v3-native-required")
++                    ),
++                    "dataContract": (
++                        app_info.get("dataContract")
++                        or info.get("dataContract")
++                        or {"status": "unknown", "message": contract_error}
+                     ),
+                     "episodes": [
+                         self._episode_for_api(dataset_dir, dataset_dir.name, episode, include_samples=False)
+@@ -1079,6 +1100,7 @@
+         info = self._read_json(dataset_dir / "meta" / "info.json")
+         if not info:
+             raise FileNotFoundError(dataset_id)
++        self._require_dataset_contract(dataset_dir)
+         episodes = self._visible_episodes_for_dataset(dataset_dir, info)
+         status_counts: dict[str, int] = {}
+         warnings: list[str] = []
+@@ -1120,6 +1142,7 @@
+         info = self._read_json(dataset_dir / "meta" / "info.json")
+         if not info:
+             raise FileNotFoundError(dataset_id)
++        self._require_dataset_contract(dataset_dir)
+         episode = next(
+             (
+                 item
+@@ -1866,8 +1889,10 @@
+                 value["ok"] = bool(left_status.get("healthy")) and bool(right_status.get("healthy"))
+                 if not value["ok"]:
+                     value["message"] = "HKVL force sample is stale or unhealthy"
++            elif source == "nidaq":
++                value = self.hardware.force.sample(config)
+             else:
+-                value = self.hardware.force.sample(config)
++                value = {"ok": False, "message": f"unsupported force source: {source}"}
+             ok = bool(getattr(value, "ok", True) if not isinstance(value, dict) else value.get("ok", True))
+             raw_message = getattr(value, "message", "") if not isinstance(value, dict) else value.get("message", "")
+             message = "" if ok else str(raw_message)
+@@ -2826,6 +2851,7 @@
+             "name": str(info.get("name") or self._dataset_name),
+             "status": str(info.get("status", "local")) if info else "local",
+             "format": "lerobot-v3-native",
++            "dataContract": data_contract_metadata(),
+             "codebase_version": "v3.0",
+             "nativeLeRobotAvailable": True,
+             "useVideos": self._native_use_videos,
+@@ -2853,11 +2879,18 @@
+             },
+         }
+         self._write_json(path, payload)
++        info_path = dataset_dir / "meta" / "info.json"
++        info = self._read_json(info_path)
++        if info:
++            info["dataContract"] = data_contract_metadata()
++            self._write_json(info_path, info)
+ 
+     def _force_metadata(self, config: dict[str, Any]) -> dict[str, Any]:
+         force = config.get("force", {}) if isinstance(config.get("force"), dict) else {}
+         source = str(force.get("source", "hkvl_serial")).lower()
+         if source != "hkvl_serial":
++            if source != "nidaq":
++                return {"source": source, "message": f"unsupported force source: {source}"}
+             return {
+                 "source": "nidaq",
+                 "leftIp": force.get("leftIp"),
+@@ -2888,6 +2921,9 @@
+                 "left": list(left.get("sensorTareBias", [0.0] * 6)),
+                 "right": list(right.get("sensorTareBias", [0.0] * 6)),
+             },
++            "calibration": deepcopy(
++                latest.get("calibration", {}) if isinstance(latest, dict) else {}
++            ),
+             "mapping": {
+                 side: list(force.get("compliance", {}).get(side, {}).get("matrix", []))
+                 for side in ("left", "right")
+@@ -2957,6 +2993,9 @@
+             raise RuntimeError("record dataset is not initialized")
+         LeRobotDataset, _np = imports
+         dataset_dir = self._dataset_dir
++        contract_error = self._dataset_contract_error(dataset_dir)
++        if contract_error:
++            raise RuntimeError(contract_error)
+         repo_id = f"local/{self._dataset_id}"
+         self._native_use_videos = self._native_use_videos_requested()
+         try:
+@@ -3155,6 +3194,26 @@
+         app_info = self._read_json(dataset_dir / "meta" / "appstation_info.json")
+         return str(app_info.get("format", "")) == "lerobot-v3-native"
+ 
++    def _dataset_contract_error(self, dataset_dir: Path) -> str:
++        """Reject native datasets whose numeric side order cannot be proven."""
++        info = self._read_json(dataset_dir / "meta" / "info.json")
++        app_info = self._read_json(dataset_dir / "meta" / "appstation_info.json")
++        if not info and not app_info:
++            return ""
++        if not self._is_native_dataset(dataset_dir, info):
++            return ""
++        try:
++            validate_data_contract(app_info.get("dataContract") or info.get("dataContract"))
++        except ValueError as exc:
++            return f"dataset numeric channel order is not compatible: {exc}"
++        return ""
++
++    def _require_dataset_contract(self, dataset_dir: Path) -> None:
++        """Reject native reads when the numeric side order is missing or incompatible."""
++        contract_error = self._dataset_contract_error(dataset_dir)
++        if contract_error:
++            raise RuntimeError(contract_error)
++
+     def _open_native_dataset_for_read(self, dataset_id: str, dataset_dir: Path, LeRobotDataset: Any) -> Any:
+         """以兼容不同 LeRobot 版本的方式打开数据集用于预览读取。"""
+         try:
+@@ -3384,6 +3443,7 @@
+         max_samples: int = 300,
+     ) -> list[dict[str, Any]]:
+         """为 episode 生成预览样本，native 数据集和 fallback jsonl 分别处理。"""
++        self._require_dataset_contract(dataset_dir)
+         native_episode = bool(episode.get("native", False))
+         native_dataset = self._is_native_dataset(dataset_dir, self._read_json(dataset_dir / "meta" / "info.json"))
+         if native_episode or native_dataset:
+@@ -3650,9 +3710,9 @@
+ 
+     def _compose_observation_state(self, motion_positions: list[float], gripper_positions: list[Any]) -> list[float]:
+         # 将运动状态和夹爪位置组合成 LeRobot v3 的 state。
+-        """把 12 维运动位姿和左右夹爪值拼成 14 维 LeRobot state。"""
+-        motion = (list(motion_positions) + [0.0] * 12)[:12]
+-        gripper = [self._float_or_zero(value) for value in (list(gripper_positions) + [0.0, 0.0])[:2]]
++        """按操作者左（硬件右）、操作者右（硬件左）拼成 14 维 state。"""
++        motion = hardware_to_dataset_motion(motion_positions)
++        gripper = [self._float_or_zero(value) for value in hardware_to_dataset_grippers(gripper_positions)]
+         return [
+             motion[0],
+             motion[1],
+@@ -3855,17 +3915,21 @@
+         """根据 observation、teleop 增量和夹爪目标生成 14 维 action。"""
+         base = (list(observation_state) + [0.0] * 14)[:14] if observation_state is not None else [0.0] * 14
+         config = config or {}
+-        vector = self._latest_action_delta_vector(target_monotonic_s)
++        vector = hardware_to_dataset_state(self._latest_action_delta_vector(target_monotonic_s))
+         action = [base[index] + vector[index] for index in range(14)]
+         native_gripper_targets = self._latest_native_gripper_targets(config)
+         if native_gripper_targets is not None:
+-            action[6], action[13] = native_gripper_targets
++            action[6], action[13] = hardware_to_dataset_grippers(list(native_gripper_targets))
+             return action
+         if not self._using_real_hal_native_teleop(config):
+             gripper = config.get("gripper", {}) if isinstance(config.get("gripper"), dict) else {}
+             if gripper:
+-                action[6] = self._float_or_zero(gripper.get("targetLeftMm", base[6]))
+-                action[13] = self._float_or_zero(gripper.get("targetRightMm", base[13]))
++                action[6], action[13] = hardware_to_dataset_grippers(
++                    [
++                        self._float_or_zero(gripper.get("targetLeftMm", base[13])),
++                        self._float_or_zero(gripper.get("targetRightMm", base[6])),
++                    ]
++                )
+         return action
+ 
+     def _latest_native_gripper_targets(self, config: dict[str, Any]) -> tuple[float, float] | None:
+diff --git a/backend/services/policy_bridge.py b/backend/services/policy_bridge.py
+--- a/backend/services/policy_bridge.py
++++ b/backend/services/policy_bridge.py
+@@ -7,7 +7,9 @@
+ 
+ from typing import Any
+ 
++from backend.core.data_contract import hardware_to_dataset_grippers, hardware_to_dataset_motion
+ from backend.core.motion_limits import effective_limit_arrays
++from backend.core.operator_view import hardware_side_for_operator_side
+ from backend.core.units import ui_to_lerobot_state
+ 
+ AXES = ("X", "Y", "Z", "Roll", "Pitch", "Yaw")
+@@ -18,8 +20,8 @@
+ 
+ 
+ def lerobot_state_from_ui(joint_positions: list[float], gripper_positions: list[float]) -> list[float]:
+-    motion = ui_to_lerobot_state((list(joint_positions) + [0.0] * 12)[:12])
+-    grippers = (list(gripper_positions) + [0.0] * 2)[:2]
++    motion = ui_to_lerobot_state(hardware_to_dataset_motion(joint_positions))
++    grippers = hardware_to_dataset_grippers(gripper_positions)
+     return motion[:6] + [float(grippers[0])] + motion[6:12] + [float(grippers[1])]
+ 
+ 
+@@ -65,13 +67,14 @@
+             deltas[AXES[axis_index]] = _clamp(raw_delta, max_translation_um)
+         else:
+             deltas[AXES[axis_index]] = _clamp(raw_delta / 1000.0, max_rotation_deg)
+-    soft_limit_min, soft_limit_max = effective_limit_arrays(config, side)
++    hardware_side = hardware_side_for_operator_side(side)  # policy side is dataset/operator side
++    soft_limit_min, soft_limit_max = effective_limit_arrays(config, hardware_side)
+     teleop = config.get("teleop", {}) if isinstance(config.get("teleop"), dict) else {}
+     return {
+         "deltas": deltas,
+         "softLimitMin": soft_limit_min,
+         "softLimitMax": soft_limit_max,
+-        "enabledAxes": _axis_array(teleop.get(f"{side}EnabledAxes"), True),
++        "enabledAxes": _axis_array(teleop.get(f"{hardware_side}EnabledAxes"), True),
+     }
+ 
+ 
+diff --git a/backend/tests/test_camera_fixed_fps.py b/backend/tests/test_camera_fixed_fps.py
+new file mode 100644
+--- /dev/null
++++ b/backend/tests/test_camera_fixed_fps.py
+@@ -0,0 +1,93 @@
++import subprocess
++from types import SimpleNamespace
++
++import pytest
++
++from backend.drivers import camera_opencv
++
++
++def test_fixed_fps_targets_exact_device_and_reapplies(monkeypatch):
++    driver = camera_opencv.OpenCVCameraDriver()
++    path = "\\\\?\\usb#camera'left"
++    monkeypatch.setattr(camera_opencv.sys, 'platform', 'win32')
++    monkeypatch.setattr(subprocess, 'CREATE_NO_WINDOW', 0, raising=False)
++    monkeypatch.setattr(driver, '_camera_identities_by_index', lambda: {2: {'devicePath': path}})
++    calls = []
++
++    def run(args, **kwargs):
++        calls.append((args, kwargs))
++        return SimpleNamespace(returncode=0, stdout='fixed_frame_rate=1 previous_priority=1')
++
++    monkeypatch.setattr(subprocess, 'run', run)
++    driver._disable_low_light_compensation(2)
++    driver._disable_low_light_compensation(2)
++    assert len(calls) == 2
++    assert calls[0][0][-1].endswith("::SetFixedFrameRate('\\\\?\\usb#camera''left')")
++    assert '$listing =' not in calls[0][0][-1]
++    assert calls[0][1]['timeout'] == 8
++
++
++@pytest.mark.parametrize('failure', ['unsupported', 'timeout'])
++def test_fixed_fps_failure_warns_without_blocking_capture(monkeypatch, failure):
++    driver = camera_opencv.OpenCVCameraDriver()
++    monkeypatch.setattr(camera_opencv.sys, 'platform', 'win32')
++    monkeypatch.setattr(subprocess, 'CREATE_NO_WINDOW', 0, raising=False)
++    monkeypatch.setattr(driver, '_camera_identities_by_index', lambda: {2: {'devicePath': 'camera'}})
++    logs = []
++    monkeypatch.setattr(driver, '_log', lambda level, message: logs.append((level, message)))
++
++    def run(*args, **kwargs):
++        if failure == 'timeout':
++            raise subprocess.TimeoutExpired('powershell', 8)
++        return SimpleNamespace(returncode=1, stdout='')
++
++    monkeypatch.setattr(subprocess, 'run', run)
++    driver._disable_low_light_compensation(2)
++    assert logs and logs[0][0] == 'warning'
++
++
++def test_fixed_fps_does_not_touch_missing_device(monkeypatch):
++    driver = camera_opencv.OpenCVCameraDriver()
++    monkeypatch.setattr(camera_opencv.sys, 'platform', 'win32')
++    monkeypatch.setattr(driver, '_camera_identities_by_index', lambda: {})
++    monkeypatch.setattr(subprocess, 'run', lambda *a, **k: pytest.fail('must not open another camera'))
++    driver._disable_low_light_compensation(2)
++
++
++@pytest.mark.parametrize('role,auto,expected', [
++    ('wrist_left', True, [2]), ('wrist_right', True, [2]),
++    ('wrist_left', False, []), ('global', True, []),
++])
++def test_open_applies_fixed_fps_only_to_auto_exposed_wrists(monkeypatch, role, auto, expected):
++    driver = camera_opencv.OpenCVCameraDriver()
++    calls = []
++    monkeypatch.setattr(driver, '_disable_low_light_compensation', calls.append)
++    monkeypatch.setattr(driver, '_process_capture_enabled', lambda *args: False)
++    monkeypatch.setattr(camera_opencv, '_backend_candidates', lambda cv2: [])
++    config = {'cameras': {'tuning': {role: {'autoExposure': auto}}}}
++    driver._get_capture(object(), 2, 640, 480, 30, role, config)
++    assert calls == expected
++
++
++@pytest.mark.parametrize('role,auto,fixed_fps', [
++    ('wrist_left', True, True), ('wrist_right', True, True),
++    ('wrist_left', False, False), ('global', True, False),
++])
++def test_tuning_existing_direct_capture_reapplies_fixed_fps_after_exposure(monkeypatch, role, auto, fixed_fps):
++    driver = camera_opencv.OpenCVCameraDriver()
++    capture = object()
++    driver._captures[2] = capture
++    calls = []
++    monkeypatch.setattr(camera_opencv, 'import_module', lambda name: object())
++    monkeypatch.setattr(driver, '_resolved_indices', lambda *args: {role: 2})
++    monkeypatch.setattr(driver, '_capture_size', lambda *args: (640, 480))
++    monkeypatch.setattr(driver, '_get_capture', lambda *args: capture)
++    monkeypatch.setattr(driver, '_apply_tuning', lambda cv2, cap, profile: (
++        calls.append(('autoExposure', profile['autoExposure'])) or {}
++    ))
++    monkeypatch.setattr(driver, '_disable_low_light_compensation', lambda index: calls.append(('fixed_fps', index)))
++
++    driver.apply_tuning({'cameras': {'tuning': {role: {'autoExposure': auto}}}}, role)
++
++    assert calls == [('autoExposure', auto)] + ([('fixed_fps', 2)] if fixed_fps else [])
++    assert driver._captures[2] is capture
+diff --git a/backend/tests/test_camera_identification.py b/backend/tests/test_camera_identification.py
+new file mode 100644
+--- /dev/null
++++ b/backend/tests/test_camera_identification.py
+@@ -0,0 +1,244 @@
++import pytest
++
++from backend.core.defaults import default_config
++from backend.drivers.camera_opencv import OpenCVCameraDriver
++
++
++@pytest.fixture(autouse=True)
++def offline_environment(monkeypatch):
++    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
++    monkeypatch.setenv("APPSTATION_DISABLE_CAMERA_PROBE", "1")
++
++
++def test_wrist_candidates_exclude_global_and_virtual_and_use_stable_identity(monkeypatch):
++    driver = OpenCVCameraDriver()
++    monkeypatch.setattr(driver, "_camera_identities_by_index", lambda: {
++        4: {"parentId": "USB\\VID_TEST\\20250606105", "devicePath": "global"},
++        2: {"parentId": "USB\\VID_TEST\\7&generated", "locationPath": "PCIROOT(0)#USB(2)",
++            "devicePath": "left", "name": "USB Camera"},
++        0: {"parentId": "USB\\VID_TEST\\unique-right", "devicePath": "right"},
++        3: {"displayName": "@device:sw:virtual", "devicePath": ""},
++    })
++    config = default_config()
++    config["cameras"]["globalIdentity"] = "20250606105"
++    devices = driver.wrist_candidates(config)
++    assert [d["index"] for d in devices] == [2, 0]
++    assert devices[0]["identity"] == "PCIROOT(0)#USB(2)"
++    assert devices[1]["identity"] == "USB\\VID_TEST\\unique-right"
++
++
++@pytest.mark.parametrize("identity", ["", "missing", "USB Camera"])
++def test_candidates_require_a_unique_online_global_identity(monkeypatch, identity):
++    driver = OpenCVCameraDriver()
++    config = default_config()
++    config["cameras"]["globalIdentity"] = identity
++    monkeypatch.setattr(driver, "_camera_identities_by_index", lambda: {
++        0: {"name": "USB Camera", "devicePath": "first", "parentId": "serial-a"},
++        1: {"name": "USB Camera", "devicePath": "second", "parentId": "serial-b"},
++    })
++    with pytest.raises(ValueError):
++        driver.wrist_candidates(config)
++
++
++def test_binding_rejects_two_interfaces_with_the_same_stable_identity(monkeypatch):
++    driver = OpenCVCameraDriver()
++    monkeypatch.setattr(driver, "wrist_candidates", lambda config: [
++        {"devicePath": "first", "identity": "same-camera", "index": 0},
++        {"devicePath": "second", "identity": "same-camera", "index": 1},
++    ])
++    with pytest.raises(ValueError):
++        driver.wrist_binding(default_config(), "first", "second")
++
++
++def test_binding_rejects_duplicate_missing_or_replaced_candidates(monkeypatch):
++    driver = OpenCVCameraDriver()
++    monkeypatch.setattr(driver, "wrist_candidates", lambda config: [
++        {"devicePath": "left", "identity": "port-left", "index": 2},
++        {"devicePath": "right", "identity": "port-right", "index": 0},
++    ])
++    config = default_config()
++    for left, right in [("left", "left"), ("left", "removed")]:
++        with pytest.raises(ValueError):
++            driver.wrist_binding(config, left, right)
++    result = driver.wrist_binding(config, "left", "right")
++    assert result["wristLeftIdentity"] == "port-left"
++    assert result["wristRightIdentity"] == "port-right"
++    assert result["globalIdentity"] == config["cameras"]["globalIdentity"]
++
++
++def test_saved_parent_serial_and_usb_location_resolve_after_reenumeration(monkeypatch):
++    config = default_config()
++    config["cameras"].update({
++        "globalIdentity": "global-serial",
++        "wristLeftIdentity": "PCIROOT(0)#USB(3)",
++        "wristRightIdentity": "USB\\VID_TEST\\right-serial",
++    })
++    driver = OpenCVCameraDriver()
++    monkeypatch.setattr(driver, "_camera_identities_by_index", lambda: {
++        2: {"devicePath": "new-global", "parentId": "USB\\VID_TEST\\global-serial"},
++        3: {"devicePath": "new-left", "parentId": "USB\\VID_TEST\\7&generated", "locationPath": "PCIROOT(0)#USB(3)"},
++        0: {"devicePath": "new-right", "parentId": "USB\\VID_TEST\\right-serial"},
++    })
++    assert driver._resolved_indices(object(), config, 30) == {"global": 2, "wrist_left": 3, "wrist_right": 0}
++
++
++def test_missing_bound_camera_does_not_fall_back_to_another_device(monkeypatch):
++    config = default_config()
++    config["cameras"].update({
++        "global": "IMX335 / index 0", "globalIdentity": "missing-global",
++        "wristLeft": "IMX335 / index 1", "wristLeftIdentity": "left",
++        "wristRight": "IMX335 / index 2", "wristRightIdentity": "right",
++    })
++    driver = OpenCVCameraDriver()
++    monkeypatch.setattr(driver, "_camera_identities_by_index", lambda: {
++        0: {"devicePath": "left"}, 1: {"devicePath": "unrelated"}, 2: {"devicePath": "right"},
++    })
++    monkeypatch.setattr(driver, "_discover_readable_indices", lambda *args: pytest.fail("must not open fallback devices"))
++    assert driver._resolved_indices(object(), config, 30) == {"global": -1, "wrist_left": 0, "wrist_right": 2}
++
++
++def test_legacy_camera_labels_without_custom_identity_still_migrate(tmp_path):
++    from backend.core.config import SettingsService
++    from backend.core.logging import LogService
++
++    settings = SettingsService(tmp_path, LogService())
++    config = default_config()
++    config["cameras"].update({"wristLeft": "IMX335 / index 2", "wristRight": "IMX335 / index 0"})
++    settings.save_config(config)
++    cameras = settings.get_config()["cameras"]
++    expected = default_config()["cameras"]
++    for field in ("global", "wristLeft", "wristRight", "globalIdentity", "wristLeftIdentity", "wristRightIdentity"):
++        assert cameras[field] == expected[field]
++
++
++def test_explicit_identity_binding_survives_reload_with_legacy_camera_labels(tmp_path):
++    from backend.core.config import SettingsService
++    from backend.core.logging import LogService
++
++    settings = SettingsService(tmp_path, LogService())
++    config = default_config()
++    config["cameras"].update({
++        "wristLeft": "IMX335 / index 2", "wristRight": "IMX335 / index 0",
++        "wristLeftIdentity": "USB\\VID_TEST\\left-serial", "wristRightIdentity": "PCIROOT(0)#USB(4)",
++    })
++    settings.save_config(config)
++    assert SettingsService(tmp_path, LogService()).get_config()["cameras"] == config["cameras"]
++
++
++def test_identification_api_and_binding_save(tmp_path, monkeypatch):
++    from fastapi.testclient import TestClient
++
++    from backend.app import create_app
++    from backend.drivers.camera_opencv import CameraProbeResult
++
++    app = create_app(tmp_path)
++    client = TestClient(app)
++    driver = app.state.hardware.cameras
++    monkeypatch.setattr(driver, "identify_wrists", lambda config: [{"devicePath": "left", "preview": "image"}])
++    monkeypatch.setattr(driver, "wrist_candidates", lambda config: [
++        {"devicePath": "left", "identity": "port-left", "index": 2},
++        {"devicePath": "right", "identity": "port-right", "index": 0},
++    ])
++    reconnects = []
++    monkeypatch.setattr(driver, "reconnect", lambda config: (
++        reconnects.append(config["cameras"]) or CameraProbeResult(True, "connected", [])
++    ))
++    original = client.get("/api/settings").json()
++    assert client.post("/api/cameras/wrists/identify").json()["data"]["devices"][0]["preview"] == "image"
++    assert client.post("/api/cameras/wrists/bind", json={"left": "left", "right": "left"}).status_code == 400
++    assert client.get("/api/settings").json()["cameras"] == original["cameras"]
++    response = client.post("/api/cameras/wrists/bind", json={"left": "left", "right": "right"})
++    assert response.status_code == 200
++    saved = client.get("/api/settings").json()
++    assert saved["cameras"]["wristLeftIdentity"] == "port-left"
++    assert saved["cameras"]["wristRightIdentity"] == "port-right"
++    assert saved["cameras"]["globalIdentity"] == original["cameras"]["globalIdentity"]
++    assert len(reconnects) == 1
++
++
++def test_scan_keeps_config_and_reports_individual_preview_failure(monkeypatch):
++    from copy import deepcopy
++
++    driver = OpenCVCameraDriver()
++    config = default_config()
++    original = deepcopy(config)
++    monkeypatch.setattr(driver, "wrist_candidates", lambda config: [
++        {"index": 0, "devicePath": "left"}, {"index": 2, "devicePath": "right"},
++    ])
++
++    def snapshot(candidate, role):
++        assert role == "wrist_left"
++        if candidate["cameras"]["wristLeftIdentity"] == "right":
++            raise RuntimeError("camera unavailable")
++        return b"jpeg"
++
++    monkeypatch.setattr(driver, "snapshot", snapshot)
++    result = driver.identify_wrists(config)
++    assert result[0]["preview"].startswith("data:image/jpeg;base64,")
++    assert result[1]["error"] == "camera unavailable"
++    assert config == original
++
++
++def test_recording_blocks_identify_and_bind(tmp_path, monkeypatch):
++    from fastapi.testclient import TestClient
++
++    from backend.app import create_app
++    from backend.services.dataset_recorder import DatasetRecorderService
++
++    monkeypatch.setattr(DatasetRecorderService, "status", lambda self: {"active": True})
++    client = TestClient(create_app(tmp_path))
++    assert client.post("/api/cameras/wrists/identify").status_code == 409
++    assert client.post("/api/cameras/wrists/bind", json={"left": "left", "right": "right"}).status_code == 409
++
++
++@pytest.mark.parametrize("busy_field,busy_value", [("_session_starting", True), ("_writer_thread", object())])
++def test_startup_and_writer_finalization_block_camera_changes(tmp_path, monkeypatch, busy_field, busy_value):
++    from fastapi.testclient import TestClient
++
++    from backend.app import create_app
++
++    app = create_app(tmp_path)
++    recorder = app.state.recorder
++    monkeypatch.setattr(recorder, "status", lambda: {"active": False, "recording": False})
++    monkeypatch.setattr(recorder, busy_field, busy_value)
++    monkeypatch.setattr(app.state.hardware.cameras, "identify_wrists", lambda config: pytest.fail("must not open cameras"))
++    monkeypatch.setattr(app.state.hardware.cameras, "wrist_binding", lambda *args: pytest.fail("must not bind cameras"))
++    client = TestClient(app)
++    assert client.post("/api/cameras/wrists/identify").status_code == 409
++    assert client.post("/api/cameras/wrists/bind", json={"left": "left", "right": "right"}).status_code == 409
++
++
++def test_scan_releases_temporary_camera_before_opening_next(monkeypatch):
++    driver = OpenCVCameraDriver()
++    monkeypatch.setattr(driver, "wrist_candidates", lambda config: [
++        {"index": 0, "devicePath": "first"}, {"index": 2, "devicePath": "second"},
++    ])
++    opened = []
++    released = []
++
++    def snapshot(config, role):
++        assert not opened, "previous temporary camera still occupies USB bandwidth"
++        index = 0 if config["cameras"]["wristLeftIdentity"] == "first" else 2
++        opened.append(index)
++        return b"jpeg"
++
++    def drop(index):
++        released.append(index)
++        opened.remove(index)
++
++    monkeypatch.setattr(driver, "snapshot", snapshot)
++    monkeypatch.setattr(driver, "_drop_capture", drop)
++    result = driver.identify_wrists(default_config())
++    assert all("preview" in device for device in result)
++    assert released == [0, 2]
++
++
++def test_scan_preserves_existing_preview_capture(monkeypatch):
++    driver = OpenCVCameraDriver()
++    existing = object()
++    driver._captures[2] = existing
++    monkeypatch.setattr(driver, "wrist_candidates", lambda config: [{"index": 2, "devicePath": "existing"}])
++    monkeypatch.setattr(driver, "snapshot", lambda config, role: b"jpeg")
++    result = driver.identify_wrists(default_config())
++    assert "preview" in result[0]
++    assert driver._captures[2] is existing
+diff --git a/backend/tests/test_control_stop_races.py b/backend/tests/test_control_stop_races.py
+--- a/backend/tests/test_control_stop_races.py
++++ b/backend/tests/test_control_stop_races.py
+@@ -7,6 +7,7 @@
+ import pytest
+ 
+ from backend.core.defaults import default_config
++from backend.core.data_contract import data_contract_metadata
+ from backend.core.logging import LogService
+ from backend.core.motion_safety import MotionSafetyGate
+ from backend.core.schemas import ManualAxisMoveRequest
+@@ -342,7 +343,9 @@
+         commands.enable_motion_side = delayed_enable
+         commands.hal.command = AsyncMock(return_value={"ok": True})
+         endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/api/policy/action")
+-        pending = asyncio.create_task(endpoint({"action": [0.0] * 14, "dryRun": False}))
++        pending = asyncio.create_task(endpoint({
++            "action": [0.0] * 14, "dryRun": False, "dataContract": data_contract_metadata(),
++        }))
+         await asyncio.wait_for(entered.wait(), 2)
+         await commands.emergency_stop()
+         await commands.acknowledge_safety()
+diff --git a/backend/tests/test_data_contract.py b/backend/tests/test_data_contract.py
+new file mode 100644
+--- /dev/null
++++ b/backend/tests/test_data_contract.py
+@@ -0,0 +1,154 @@
++from __future__ import annotations
++
++import asyncio
++import json
++from pathlib import Path
++from types import SimpleNamespace
++from unittest.mock import AsyncMock, Mock
++
++import pytest
++
++from backend.core.data_contract import (
++    DATA_CONTRACT_VERSION,
++    data_contract_metadata,
++    dataset_to_hardware_state,
++    hardware_to_dataset_motion,
++    hardware_to_dataset_state,
++    validate_data_contract,
++)
++from backend.core.defaults import default_config
++from backend.core.motion_safety import MotionSafetyGate
++from backend.core.units import dataset_pulses_to_ui_state, motion_pulse_per_unit
++from backend.services.dataset_recorder import DatasetRecorderService
++
++
++def test_data_contract_round_trips_motion_state_action_and_grippers() -> None:
++    hardware_state = [1, 2, 3, 100, 200, 300, 7, 4, 5, 6, -400, -500, -600, 8]
++
++    dataset_state = hardware_to_dataset_state(hardware_state)
++
++    assert dataset_state == [4, 5, 6, -400, -500, -600, 8, 1, 2, 3, 100, 200, 300, 7]
++    assert dataset_to_hardware_state(dataset_state) == hardware_state
++    assert hardware_to_dataset_motion(list(range(12))) == [6, 7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5]
++
++
++def test_dataset_pulses_use_matching_side_specific_kinematics() -> None:
++    config = default_config()
++    config["motion"]["kinematics"]["leftSignedPulsePerUnit"] = [-2, -3, -4, 5, 6, 7]
++    config["motion"]["kinematics"]["rightSignedPulsePerUnit"] = [-11, -13, -17, 19, 23, 29]
++
++    assert motion_pulse_per_unit(config, side_order="dataset") == (
++        -11,
++        -13,
++        -17,
++        19,
++        23,
++        29,
++        -2,
++        -3,
++        -4,
++        5,
++        6,
++        7,
++    )
++    assert dataset_pulses_to_ui_state([0, -13, 0, 0, 0, 0] + [0] * 6, config)[1] == 1000.0
++
++
++@pytest.mark.parametrize(
++    "metadata",
++    [None, {"version": "unknown"}, {"version": DATA_CONTRACT_VERSION, "sideOrder": "left_then_right"}],
++)
++def test_unknown_or_incomplete_data_contract_is_rejected(metadata: object) -> None:
++    with pytest.raises(ValueError):
++        validate_data_contract(metadata)
++
++
++def test_native_dataset_without_contract_is_not_resumeable(tmp_path: Path) -> None:
++    dataset_dir = tmp_path / "dataset"
++    (dataset_dir / "meta").mkdir(parents=True)
++    (dataset_dir / "meta" / "info.json").write_text(
++        json.dumps({"format": "lerobot-v3-native"}), encoding="utf-8"
++    )
++    recorder = object.__new__(DatasetRecorderService)
++
++    assert "manual migration" in recorder._dataset_contract_error(dataset_dir)
++
++
++def test_native_dataset_with_unknown_contract_is_not_resumeable(tmp_path: Path) -> None:
++    dataset_dir = tmp_path / "dataset"
++    (dataset_dir / "meta").mkdir(parents=True)
++    (dataset_dir / "meta" / "info.json").write_text(
++        json.dumps({"format": "lerobot-v3-native", "dataContract": {"version": "future.v9"}}),
++        encoding="utf-8",
++    )
++    recorder = object.__new__(DatasetRecorderService)
++
++    assert "unsupported data contract version" in recorder._dataset_contract_error(dataset_dir)
++
++
++def test_native_dataset_with_current_contract_can_resume(tmp_path: Path) -> None:
++    dataset_dir = tmp_path / "dataset"
++    (dataset_dir / "meta").mkdir(parents=True)
++    (dataset_dir / "meta" / "info.json").write_text(
++        json.dumps({"format": "lerobot-v3-native", "dataContract": data_contract_metadata()}),
++        encoding="utf-8",
++    )
++    recorder = object.__new__(DatasetRecorderService)
++
++    assert recorder._dataset_contract_error(dataset_dir) == ""
++
++
++@pytest.mark.parametrize("metadata", [None, {"version": "future.v9"}, {"version": DATA_CONTRACT_VERSION}])
++def test_session_rejects_unknown_native_contract_before_starting_writer(tmp_path, monkeypatch, metadata) -> None:
++    dataset_dir = tmp_path / "dataset"
++    (dataset_dir / "meta").mkdir(parents=True)
++    info_path = dataset_dir / "meta" / "info.json"
++    info_path.write_text(json.dumps({"format": "lerobot-v3-native", "dataContract": metadata}), encoding="utf-8")
++    original = info_path.read_bytes()
++    config = default_config()
++    config["storage"]["datasetRoot"] = str(tmp_path)
++    recorder = object.__new__(DatasetRecorderService)
++    recorder.safety = MotionSafetyGate()
++    recorder._lock = asyncio.Lock()
++    recorder._session_active = False
++    recorder._session_starting = False
++    recorder.settings = SimpleNamespace(get_config=lambda: config)
++    recorder.validate_start_origin = AsyncMock()
++    writer = Mock(side_effect=AssertionError("不应启动写线程"))
++    monkeypatch.setattr("backend.services.dataset_recorder.LeRobotWriterThread", writer)
++
++    with pytest.raises(RuntimeError, match="dataset numeric channel order is not compatible"):
++        asyncio.run(recorder.start_session("dataset", "unit task"))
++
++    recorder.validate_start_origin.assert_awaited_once()
++    writer.assert_not_called()
++    assert recorder._session_starting is False
++    assert info_path.read_bytes() == original
++
++
++def test_native_writer_resumes_current_contract_without_recreating_dataset(tmp_path) -> None:
++    dataset_dir = tmp_path / "dataset"
++    (dataset_dir / "meta").mkdir(parents=True)
++    (dataset_dir / "meta" / "info.json").write_text(
++        json.dumps({"format": "lerobot-v3-native", "dataContract": data_contract_metadata(), "fps": 25}),
++        encoding="utf-8",
++    )
++    (dataset_dir / "meta" / "episodes.jsonl").write_text('{"id":"episode_000000"}\n', encoding="utf-8")
++    resumed = object()
++    native = SimpleNamespace(resume=Mock(return_value=resumed), create=Mock(side_effect=AssertionError("不应重建已有数据集")))
++    recorder = object.__new__(DatasetRecorderService)
++    recorder._dataset_dir = dataset_dir
++    recorder._dataset_id = "dataset"
++    recorder._record_fps_hz = 30
++    recorder._recording_config = default_config
++    recorder._native_recording_requested = lambda: True
++    recorder._native_preflight = lambda: ""
++    recorder._native_imports = lambda: (native, None)
++    recorder._native_use_videos_requested = lambda: False
++    recorder._native_writer_kwargs = lambda: {}
++    recorder._configure_native_chunk_settings = lambda _dataset: None
++
++    assert recorder._open_native_dataset_for_writer() is resumed
++    native.resume.assert_called_once_with(repo_id="local/dataset", root=dataset_dir)
++    native.create.assert_not_called()
++    assert recorder._record_fps_hz == 25
+diff --git a/backend/tests/test_dataset_recorder.py b/backend/tests/test_dataset_recorder.py
+--- a/backend/tests/test_dataset_recorder.py
++++ b/backend/tests/test_dataset_recorder.py
+@@ -18,6 +18,7 @@
+ import pytest
+ 
+ from backend.core.defaults import default_config
++from backend.core.data_contract import data_contract_metadata
+ from backend.core.motion_safety import MotionSafetyGate
+ from backend.services import dataset_recorder as dataset_recorder_module
+ from backend.services.dataset_recorder import (
+@@ -89,7 +90,7 @@
+     source = (Path(__file__).resolve().parents[1] / "services" / "dataset_recorder.py").read_text(encoding="utf-8")
+ 
+     assert "PULSE_FEATURE_NAMES" in source
+-    assert '"observation.pulses": motion_pulses' in source
++    assert '"observation.pulses": recording_motion_pulses' in source
+     assert '"observation.pulses": self._np_float32(frame["observation.pulses"])' in source
+     assert '"observation.pulses": {"dtype": "float32", "shape": (12,)' in source
+ 
+@@ -135,7 +136,10 @@
+ 
+     frame = FrameAssembler(recorder).assemble(default_config(), 1.0, 0)
+ 
+-    assert frame["observation.pulses"] == [float(value) for value in range(10, 22)]
++    assert frame["observation.pulses"] == [
++        *[float(value) for value in range(16, 22)],
++        *[float(value) for value in range(10, 16)],
++    ]
+ 
+ 
+ def test_dataset_recorder_persists_episode_origin_and_config_snapshot() -> None:
+@@ -174,11 +178,17 @@
+     recorder._force_sample_hz = 200.0
+     dataset_dir = tmp_path / "dataset"
+     config = default_config()
++    (dataset_dir / "meta").mkdir(parents=True)
++    (dataset_dir / "meta" / "info.json").write_text('{"fps":30}', encoding="utf-8")
+ 
+     recorder._write_appstation_info(dataset_dir, config)
+ 
+     payload = json.loads((dataset_dir / "meta" / "appstation_info.json").read_text(encoding="utf-8"))
+     motion = payload["hardware"]["motion"]
++    assert payload["dataContract"] == data_contract_metadata()
++    native_info = json.loads((dataset_dir / "meta" / "info.json").read_text(encoding="utf-8"))
++    assert native_info["dataContract"] == data_contract_metadata()
++    assert native_info["fps"] == 30
+     assert motion["kinematics"]["rightSignedPulsePerUnit"][5] == 333.3333
+     assert motion["teleop"]["rightImpulseCoeff"][5] == 3333.333
+ 
+@@ -566,6 +576,52 @@
+     asyncio.run(run_case())
+ 
+ 
++def test_camera_configuration_stays_busy_until_finish_writer_cleanup_completes() -> None:
++    async def run_case() -> None:
++        recorder = object.__new__(DatasetRecorderService)
++        recorder._lock = asyncio.Lock()
++        recorder._session_starting = True
++        recorder._session_active = False
++        recorder._recording = False
++        recorder._writer_thread = None
++        assert recorder.camera_configuration_busy() is True
++
++        recorder._session_starting = False
++        recorder._session_active = True
++        recorder._writer_thread = object()
++        recorder._loop_task = None
++        recorder.telemetry = SimpleNamespace(recording=False, frame_count=0)
++        recorder.logs = SimpleNamespace(info=lambda *_args: None, error=lambda *_args: None)
++        entered_cleanup = asyncio.Event()
++        release_cleanup = asyncio.Event()
++
++        async def noop(*_args: object) -> None:
++            pass
++
++        async def finish_writer() -> None:
++            entered_cleanup.set()
++            await release_cleanup.wait()
++            recorder._writer_thread = None
++
++        recorder.teleop = SimpleNamespace(stop=noop)
++        recorder._stop_assembler_task = noop
++        recorder._stop_sampler_tasks = noop
++        recorder._finalize_native_dataset = noop
++        recorder._stop_writer_task = finish_writer
++        recorder.status = lambda: {"active": recorder._session_active}
++        task = asyncio.create_task(recorder.finish_session())
++        await entered_cleanup.wait()
++        try:
++            assert recorder.origin_mutation_locked() is False
++            assert recorder.camera_configuration_busy() is True
++        finally:
++            release_cleanup.set()
++            await task
++        assert recorder.camera_configuration_busy() is False
++
++    asyncio.run(run_case())
++
++
+ def test_finish_session_continues_cleanup_when_sampler_threads_do_not_stop() -> None:
+     async def run_case() -> None:
+         calls: list[str] = []
+@@ -1808,7 +1864,8 @@
+     monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
+ 
+     result = recorder._sample_force_source_sync(
+-        {"hal": {"mode": "real"}, "force": {"source": "nidaq"}}, 1.0
++        {"hal": {"mode": "real"}, "force": {"source": "nidaq"}},
++        1.0,
+     )
+ 
+     assert result.value == {"ok": True, "left": [1.0] * 6, "right": [2.0] * 6}
+@@ -1872,6 +1929,23 @@
+                 "sensorTareBias": [0.2] * 6,
+             },
+         },
++        "calibration": {
++            "state": "ready",
++            "progress": 100,
++            "completedAtUnixMs": 1770000000000,
++            "sides": {
++                "left": {
++                    "preMean": [1.0] * 6,
++                    "prePeakToPeak": [0.01] * 6,
++                    "residualMean": [0.001] * 6,
++                },
++                "right": {
++                    "preMean": [2.0] * 6,
++                    "prePeakToPeak": [0.02] * 6,
++                    "residualMean": [0.002] * 6,
++                },
++            },
++        },
+         "compliance": {
+             "enabled": True,
+             "left": {
+@@ -1902,6 +1976,9 @@
+     assert force["tareBias"]["right"] == [-0.2, -0.2, -0.2, 0.2, 0.2, 0.2]
+     assert force["sensorTareBias"]["left"] == [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+     assert force["sensorTareBias"]["right"] == [0.2] * 6
++    assert force["calibration"]["state"] == "ready"
++    assert force["calibration"]["completedAtUnixMs"] == 1770000000000
++    assert force["calibration"]["sides"]["left"]["residualMean"] == [0.001] * 6
+     assert force["compliance"] == config["force"]["compliance"]
+     assert force["runtimeCompliance"]["left"]["actualUm"] == [0.8, -1.5]
+     assert force["runtimeCompliance"]["left"]["clipReason"] == ["motion_limit", ""]
+@@ -1924,11 +2001,11 @@
+         [4.5, 5.5],
+     )
+ 
+-    assert state == [1, 2, 3, 100.0, 200.0, 300.0, 4.5, 7, 8, 9, 400.0, 500.0, 600.0, 5.5]
++    assert state == [7, 8, 9, 400.0, 500.0, 600.0, 5.5, 1, 2, 3, 100.0, 200.0, 300.0, 4.5]
+     assert recorder._latest_action_vector(
+         state,
+         {"gripper": {"targetLeftMm": 6.0, "targetRightMm": 7.0}},
+-    ) == [11, 2, 3, 600.0, 200.0, 300.0, 6.0, -13, 8, 9, 400.0, 500.0, 500.0, 7.0]
++    ) == [-13, 8, 9, 400.0, 500.0, 500.0, 7.0, 11, 2, 3, 600.0, 200.0, 300.0, 6.0]
+ 
+ 
+ def test_dataset_recorder_uses_native_gripper_targets_for_action() -> None:
+@@ -1950,7 +2027,7 @@
+     assert recorder._latest_action_vector(
+         [0.0] * 14,
+         {"gripper": {"targetLeftMm": 1.0, "targetRightMm": 2.0}},
+-    )[6::7] == [8.0, 9.0]
++    )[6::7] == [9.0, 8.0]
+ 
+ 
+ def test_dataset_recorder_real_hal_native_action_ignores_config_targets_when_native_targets_missing(
+@@ -2113,14 +2190,14 @@
+     recorder.teleop = FakeTeleop()
+ 
+     assert recorder._latest_action_vector([0.0] * 14, {}, 10.0) == [
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
+         1.0,
+-        0.0,
+-        0.0,
+-        0.0,
+-        0.0,
+-        0.0,
+-        0.0,
+-        0.0,
+         0.0,
+         0.0,
+         0.0,
+@@ -2156,14 +2233,14 @@
+     recorder.teleop = FakeTeleop()
+ 
+     assert recorder._latest_action_vector([0.0] * 14, {}, 10.0) == [
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
++        0.0,
+         2.0,
+-        0.0,
+-        0.0,
+-        0.0,
+-        0.0,
+-        0.0,
+-        0.0,
+-        0.0,
+         0.0,
+         0.0,
+         0.0,
+@@ -2203,17 +2280,17 @@
+     recorder.teleop = FakeTeleop()
+ 
+     assert recorder._latest_action_vector([0.0] * 14, {}, 10.0) == [
++        10.0,
++        0.0,
++        0.0,
++        250.0,
++        0.0,
++        0.0,
++        0.0,
+         5.0,
+         0.0,
+         0.0,
+         500.0,
+-        0.0,
+-        0.0,
+-        0.0,
+-        10.0,
+-        0.0,
+-        0.0,
+-        250.0,
+         0.0,
+         0.0,
+         0.0,
+@@ -2247,3 +2324,114 @@
+ 
+     assert relative[:4] == [1800.0, -2000.0, 1000.0, 1.0]
+     assert relative[6] == 42.0
++
++
++def test_frame_assembler_swaps_all_left_right_numeric_channels_but_not_cameras() -> None:
++    class FakeTeleop:
++        def status(self) -> dict[str, object]:
++            return {
++                "lastAction": {
++                    "monotonic_s": 10.0,
++                    "deltaVector": [10.0, 0.0, 0.0, 0.5, 0.0, 0.0, -20.0, 0.0, 0.0, 0.0, 0.0, -0.1],
++                }
++            }
++
++    recorder = object.__new__(DatasetRecorderService)
++    recorder.teleop = FakeTeleop()
++    recorder.telemetry = SimpleNamespace(
++        motion_positions=[0.0] * 12,
++        force_left=[0.0] * 6,
++        force_right=[0.0] * 6,
++        gripper_positions=[0.0, 0.0],
++    )
++    recorder._last_motion_pulses = [0.0] * 12
++    recorder._record_fps_hz = 30
++    recorder._episode_index = 0
++    recorder._recording_motion_positions = lambda _config, positions, _pulses: list(positions)
++    recorder._force_values_from_sample = lambda _sample: (
++        [31.0, 32.0, 33.0, 34.0, 35.0, 36.0],
++        [41.0, 42.0, 43.0, 44.0, 45.0, 46.0],
++    )
++
++    def aligned_sample(source: str, target_s: float) -> TimedSample:
++        if source == "hal":
++            return TimedSample(
++                source,
++                target_s,
++                {
++                    "positions": [1, 2, 3, 0.1, 0.2, 0.3, 7, 8, 9, 0.4, 0.5, 0.6],
++                    "pulses": [float(value) for value in range(101, 113)],
++                },
++            )
++        if source == "force":
++            return TimedSample(source, target_s, object())
++        if source == "gripper":
++            return TimedSample(source, target_s, [4.5, 5.5])
++        if source.startswith("camera_"):
++            return TimedSample(source, target_s, f"image-{source}")
++        return TimedSample(source, target_s, None)
++
++    recorder._aligned_sample = aligned_sample
++
++    frame = FrameAssembler(recorder).assemble(
++        {
++            "hal": {"mode": "simulation"},
++            "gripper": {"targetLeftMm": 6.0, "targetRightMm": 7.0},
++        },
++        10.0,
++        0,
++    )
++
++    assert frame["observation.state"] == [
++        7,
++        8,
++        9,
++        400.0,
++        500.0,
++        600.0,
++        5.5,
++        1,
++        2,
++        3,
++        100.0,
++        200.0,
++        300.0,
++        4.5,
++    ]
++    assert frame["action"] == [
++        -13,
++        8,
++        9,
++        400.0,
++        500.0,
++        500.0,
++        7.0,
++        11,
++        2,
++        3,
++        600.0,
++        200.0,
++        300.0,
++        6.0,
++    ]
++    assert frame["observation.pulses"] == [
++        107.0,
++        108.0,
++        109.0,
++        110.0,
++        111.0,
++        112.0,
++        101.0,
++        102.0,
++        103.0,
++        104.0,
++        105.0,
++        106.0,
++    ]
++    assert frame["observation.force_left"] == [41.0, 42.0, 43.0, 44.0, 45.0, 46.0]
++    assert frame["observation.force_right"] == [31.0, 32.0, 33.0, 34.0, 35.0, 36.0]
++    assert frame["images"] == {
++        "observation.images.global": "image-camera_global",
++        "observation.images.wrist_left": "image-camera_wrist_left",
++        "observation.images.wrist_right": "image-camera_wrist_right",
++    }
+diff --git a/backend/tests/test_hal_health_capabilities.py b/backend/tests/test_hal_health_capabilities.py
+new file mode 100644
+--- /dev/null
++++ b/backend/tests/test_hal_health_capabilities.py
+@@ -0,0 +1,70 @@
++from __future__ import annotations
++
++import asyncio
++import json
++from typing import Any
++
++import pytest
++
++from backend.core.logging import LogService
++from backend.hal_client.client import RealHalClient
++from backend.hal_client.dds_client import DdsHalClient
++from backend.hal_client.dds_types import TOPIC_HAL_HEALTH, JsonEnvelope
++from backend.tests.test_hal_dds_client import FakeDdsTransport
++
++
++@pytest.mark.parametrize("transport_kind", ["http", "dds"])
++@pytest.mark.parametrize(
++    ("metadata", "expected"),
++    [
++        ({}, None),
++        ({"capabilities": []}, []),
++        ({"capabilities": ["force_calibration_state_v1"]}, ["force_calibration_state_v1"]),
++        ({"capabilities": "force_calibration_state_v1"}, None),
++    ],
++)
++def test_health_preserves_reported_capabilities_without_inference(
++    monkeypatch: pytest.MonkeyPatch,
++    transport_kind: str,
++    metadata: dict[str, Any],
++    expected: list[str] | None,
++) -> None:
++    # 版本号不能替代能力声明；旧版本缺字段与新版本空列表都不能虚报校准能力。
++    payload = {
++        "ltdmc_ok": True,
++        "omega7_ok": False,
++        "version": "hal-real/0.2",
++        "uptime_s": 7.5,
++        **metadata,
++    }
++    logs = LogService(emit_startup=False)
++    if transport_kind == "http":
++        client = RealHalClient("http://127.0.0.1:8091", 500, logs)
++
++        async def request(method: str, path: str) -> dict[str, Any]:
++            assert (method, path) == ("GET", "/health")
++            return payload
++
++        monkeypatch.setattr(client, "_request", request)
++    else:
++        transport = FakeDdsTransport()
++        transport.latest[TOPIC_HAL_HEALTH] = JsonEnvelope(
++            stamp_unix_ms=123,
++            stamp_monotonic_ms=456,
++            source="hal",
++            payload_json=json.dumps(payload),
++        )
++        client = DdsHalClient(logs, transport=transport)
++
++    try:
++        health = asyncio.run(client.health())
++    finally:
++        if isinstance(client, DdsHalClient):
++            client.close()
++
++    assert health.connected is True
++    assert health.version == "hal-real/0.2"
++    assert health.ltdmc_ok is True
++    assert health.omega7_ok is False
++    assert health.uptime_s == 7.5
++    assert health.capabilities == expected
+diff --git a/backend/tests/test_normalize_origin.py b/backend/tests/test_normalize_origin.py
+--- a/backend/tests/test_normalize_origin.py
++++ b/backend/tests/test_normalize_origin.py
+@@ -11,6 +11,7 @@
+ 
+ import pytest
+ 
++from backend.core.data_contract import data_contract_metadata
+ from backend.core.defaults import default_config
+ 
+ 
+@@ -30,18 +31,18 @@
+         "observation.state": [999.0] * 14,
+         "action": [1000.0] * 14,
+         "observation.pulses": [
++            0.0,
++            0.0,
++            0.0,
++            0.0,
++            0.0,
++            0.0,
+             100.0,
+             200.0,
+             300.0,
+             1666.666667,
+             -2500.0,
+             -3333.333,
+-            0.0,
+-            0.0,
+-            0.0,
+-            0.0,
+-            0.0,
+-            0.0,
+         ],
+     }
+     target_origin = {
+@@ -58,19 +59,26 @@
+         0.0,
+         0.0,
+         0.0,
++        0.0,
++        0.0,
++        0.0,
++        999.0,
++        0.0,
++        0.0,
++        0.0,
+         1000.0,
+         1000.0,
+         1000.0,
+         999.0,
+-        -0.0,
+-        -0.0,
+-        -0.0,
+-        0.0,
+-        0.0,
+-        0.0,
+-        999.0,
+     ]
+     assert result["action"] == [
++        1.0,
++        1.0,
++        1.0,
++        1.0,
++        1.0,
++        1.0,
++        1000.0,
+         1.0,
+         1.0,
+         1.0,
+@@ -78,14 +86,36 @@
+         1001.0,
+         1001.0,
+         1000.0,
+-        1.0,
+-        1.0,
+-        1.0,
+-        1.0,
+-        1.0,
+-        1.0,
+-        1000.0,
+     ]
++
++
++def test_normalize_frame_with_same_hardware_origin_is_idempotent_for_dataset_order() -> None:
++    module = load_normalize_origin_module()
++    config = default_config()
++    frame = {
++        # Dataset order is operator-left (hardware-right) then operator-right (hardware-left).
++        "observation.pulses": [0.0, 10000.0, 0.0, 0.0, 0.0, 0.0] + [0.0] * 6,
++        "observation.state": [0.0] * 14,
++        "action": [0.0] * 14,
++        "observation.force_left": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
++        "observation.force_right": [-1.0, -2.0, -3.0, -4.0, -5.0, -6.0],
++    }
++    target_origin = {
++        "leftValid": True,
++        "rightValid": True,
++        "leftPulse": [0.0] * 6,
++        "rightPulse": [0.0, 10000.0, 0.0, 0.0, 0.0, 0.0],
++    }
++
++    result = module.normalize_frame_to_origin(frame, target_origin, config)
++
++    assert result["needs_manual_review"] is False
++    assert result["changed"] is False
++    assert result["observation.state"] == frame["observation.state"]
++    assert result["action"] == frame["action"]
++    assert result["observation.pulses"] == frame["observation.pulses"]
++    assert result["observation.force_left"] == frame["observation.force_left"]
++    assert result["observation.force_right"] == frame["observation.force_right"]
+ 
+ 
+ def test_normalize_origin_dataset_dry_run_and_apply_rewrite_parquet(tmp_path: Path) -> None:
+@@ -112,12 +142,15 @@
+         "motionOrigin": origin,
+         "motionCalibration": {"configHash": "same"},
+     }
++    (dataset_dir / "meta" / "appstation_info.json").write_text(
++        json.dumps({"dataContract": data_contract_metadata()}), encoding="utf-8"
++    )
+     (dataset_dir / "meta" / "episodes.jsonl").write_text(json.dumps(episode) + "\n", encoding="utf-8")
+     table = pa.table(
+         {
+             "episode_index": pa.array([0]),
+             "observation.pulses": pa.array(
+-                [[100.0, 200.0, 300.0, 1666.666667, -2500.0, -3333.333, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
++                [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 100.0, 200.0, 300.0, 1666.666667, -2500.0, -3333.333]],
+                 type=pa.list_(pa.float32()),
+             ),
+             "observation.state": pa.array([[999.0] * 14], type=pa.list_(pa.float32())),
+@@ -141,6 +174,15 @@
+         0.0,
+         0.0,
+         0.0,
++        0.0,
++        0.0,
++        0.0,
++        999.0,
++    ]
++    assert rewritten.column("observation.state").to_pylist()[0][7:14] == [
++        0.0,
++        0.0,
++        0.0,
+         1000.0,
+         1000.0,
+         1000.0,
+diff --git a/backend/tests/test_policy_bridge.py b/backend/tests/test_policy_bridge.py
+--- a/backend/tests/test_policy_bridge.py
++++ b/backend/tests/test_policy_bridge.py
+@@ -5,11 +5,36 @@
+ 
+ from __future__ import annotations
+ 
++import asyncio
++
++import pytest
+ from fastapi.testclient import TestClient
+ 
+ from backend.app import create_app
++from backend.core.data_contract import data_contract_metadata
+ from backend.core.defaults import default_config
++from backend.core.motion_limits import effective_limit_arrays
++from backend.services.dataset_recorder import DatasetRecorderService
+ from backend.services.policy_bridge import build_policy_action_plan, lerobot_state_from_ui
++from backend.tests.test_control_watchdog import confirm_mock_browser_lease
++
++
++@pytest.fixture
++def authorized_policy_client(tmp_path, monkeypatch):
++    """通过真实租约应答及显式确认准备 Test HAL，不绕过控制保护。"""
++    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
++    client = TestClient(create_app(tmp_path))
++    client.app.state.telemetry.hardware = None
++    watchdog = client.app.state.control_watchdog
++    session = asyncio.run(confirm_mock_browser_lease(watchdog))
++    client.headers["X-Control-Session"] = session
++    response = client.post("/api/motion/safety/acknowledge")
++    assert response.status_code == 200, response.text
++    try:
++        yield client
++    finally:
++        asyncio.run(watchdog.close())
++        client.app.state.telemetry.shutdown()
+ 
+ 
+ def test_lerobot_state_from_ui_inserts_grippers_and_converts_rotation_to_mdeg() -> None:
+@@ -18,7 +43,44 @@
+         [7, 8],
+     )
+ 
+-    assert state == [1, 2, 3, 100, -200, 300, 7, 4, 5, 6, -400, 500, -600, 8]
++    assert state == [4, 5, 6, -400, 500, -600, 8, 1, 2, 3, 100, -200, 300, 7]
++
++
++def test_policy_hold_position_keeps_dataset_sides_and_grippers() -> None:
++    positions = [1, 2, 3, 0.1, -0.2, 0.3, 4, 5, 6, -0.4, 0.5, -0.6]
++    grippers = [7, 8]
++    current = lerobot_state_from_ui(positions, grippers)
++    recorder = object.__new__(DatasetRecorderService)
++    recorded_hold = recorder._compose_observation_state(positions, grippers)
++
++    plan = build_policy_action_plan(
++        current,
++        recorded_hold,
++        default_config(),
++        max_translation_um=500.0,
++        max_rotation_deg=0.2,
++        max_gripper_mm=1.0,
++    )
++
++    assert plan["motion"]["left"]["deltas"] == {axis: 0.0 for axis in ("X", "Y", "Z", "Roll", "Pitch", "Yaw")}
++    assert plan["motion"]["right"]["deltas"] == {axis: 0.0 for axis in ("X", "Y", "Z", "Roll", "Pitch", "Yaw")}
++    assert plan["grippers"] == {"leftMm": 8.0, "rightMm": 7.0}
++
++
++def test_policy_plan_uses_corresponding_hardware_side_limits_and_enabled_axes() -> None:
++    config = default_config()
++    config["teleop"]["leftEnabledAxes"] = [True, False, True, False, True, False]
++    config["teleop"]["rightEnabledAxes"] = [False, True, False, True, False, True]
++    plan = build_policy_action_plan(
++        [0.0] * 14, [0.0] * 14, config,
++        max_translation_um=500.0, max_rotation_deg=0.2, max_gripper_mm=1.0,
++    )
++
++    for operator_side, hardware_side in (("left", "right"), ("right", "left")):
++        lower, upper = effective_limit_arrays(config, hardware_side)
++        assert plan["motion"][operator_side]["softLimitMin"] == lower
++        assert plan["motion"][operator_side]["softLimitMax"] == upper
++        assert plan["motion"][operator_side]["enabledAxes"] == config["teleop"][f"{hardware_side}EnabledAxes"]
+ 
+ 
+ def test_build_policy_action_plan_clamps_motion_and_gripper_steps() -> None:
+@@ -83,10 +145,10 @@
+ 
+     assert response.status_code == 200
+     payload = response.json()["data"]
+-    assert payload["state"] == [1, 2, 3, 100, -200, 300, 7, 4, 5, 6, -400, 500, -600, 8]
++    assert payload["state"] == [4, 5, 6, -400, 500, -600, 8, 1, 2, 3, 100, -200, 300, 7]
+     assert payload["pulses"] == [0.0] * 12
+-    assert payload["force_left"] == [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+-    assert payload["force_right"] == [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6]
++    assert payload["force_left"] == [-0.1, -0.2, -0.3, -0.4, -0.5, -0.6]
++    assert payload["force_right"] == [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+ 
+ 
+ def test_policy_action_endpoint_is_dry_run_by_default(tmp_path, monkeypatch) -> None:
+@@ -95,7 +157,10 @@
+     client.app.state.telemetry.motion_positions = [0.0] * 12
+     client.app.state.telemetry.gripper_positions = [13.0, 13.0]
+ 
+-    response = client.post("/api/policy/action", json={"action": [1000.0] * 14})
++    response = client.post(
++        "/api/policy/action",
++        json={"action": [1000.0] * 14, "dataContract": data_contract_metadata()},
++    )
+ 
+     assert response.status_code == 200
+     payload = response.json()["data"]
+@@ -104,9 +169,8 @@
+     assert payload["plan"]["motion"]["left"]["deltas"]["X"] == 500.0
+ 
+ 
+-def test_policy_action_endpoint_can_send_through_test_hal(tmp_path, monkeypatch) -> None:
+-    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+-    client = TestClient(create_app(tmp_path))
++def test_policy_action_endpoint_can_send_through_test_hal(authorized_policy_client) -> None:
++    client = authorized_policy_client
+     client.app.state.telemetry.motion_positions = [0.0] * 12
+     client.app.state.telemetry.gripper_positions = [13.0, 13.0]
+     config = client.get("/api/settings").json()
+@@ -114,7 +178,10 @@
+     config["gripper"]["rightEnabled"] = True
+     assert client.put("/api/settings", json=config).status_code == 200
+ 
+-    response = client.post("/api/policy/action", json={"action": [10.0] * 14, "dryRun": False})
++    response = client.post(
++        "/api/policy/action",
++        json={"action": [10.0] * 14, "dryRun": False, "dataContract": data_contract_metadata()},
++    )
+ 
+     assert response.status_code == 200
+     payload = response.json()["data"]
+@@ -124,13 +191,15 @@
+     assert set(payload["results"]["grippers"]) == {"left", "right"}
+ 
+ 
+-def test_policy_action_endpoint_skips_disabled_grippers_when_sending_motion(tmp_path, monkeypatch) -> None:
+-    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+-    client = TestClient(create_app(tmp_path))
+-    client.app.state.telemetry.motion_positions = [0.0] * 12
+-    client.app.state.telemetry.gripper_positions = [13.0, 13.0]
+-
+-    response = client.post("/api/policy/action", json={"action": [10.0] * 14, "dryRun": False})
++def test_policy_action_endpoint_skips_disabled_grippers_when_sending_motion(authorized_policy_client) -> None:
++    client = authorized_policy_client
++    client.app.state.telemetry.motion_positions = [0.0] * 12
++    client.app.state.telemetry.gripper_positions = [13.0, 13.0]
++
++    response = client.post(
++        "/api/policy/action",
++        json={"action": [10.0] * 14, "dryRun": False, "dataContract": data_contract_metadata()},
++    )
+ 
+     assert response.status_code == 200
+     payload = response.json()["data"]
+@@ -140,9 +209,8 @@
+     assert payload["results"]["grippers"] == {}
+ 
+ 
+-def test_policy_action_endpoint_can_limit_control_to_left_side(tmp_path, monkeypatch) -> None:
+-    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+-    client = TestClient(create_app(tmp_path))
++def test_policy_action_endpoint_can_limit_control_to_left_side(authorized_policy_client) -> None:
++    client = authorized_policy_client
+     client.app.state.telemetry.motion_positions = [0.0] * 12
+     client.app.state.telemetry.gripper_positions = [13.0, 13.0]
+     config = client.get("/api/settings").json()
+@@ -152,7 +220,12 @@
+ 
+     response = client.post(
+         "/api/policy/action",
+-        json={"action": [10.0] * 14, "dryRun": False, "controlledSides": ["left"]},
++        json={
++            "action": [10.0] * 14,
++            "dryRun": False,
++            "controlledSides": ["left"],
++            "dataContract": data_contract_metadata(),
++        },
+     )
+ 
+     assert response.status_code == 200
+@@ -160,3 +233,14 @@
+     assert payload["sent"] is True
+     assert set(payload["results"]["motion"]) == {"left"}
+     assert set(payload["results"]["grippers"]) == {"left"}
++    assert payload["results"]["motion"]["left"]["payload"]["side"] == "right"
++
++
++def test_policy_action_rejects_missing_data_contract(tmp_path, monkeypatch) -> None:
++    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
++    client = TestClient(create_app(tmp_path))
++
++    response = client.post("/api/policy/action", json={"action": [0.0] * 14})
++
++    assert response.status_code == 409
++    assert response.json()["detail"]["code"] == "POLICY_DATA_CONTRACT_MISMATCH"
+diff --git a/backend/tests/test_policy_contract_api.py b/backend/tests/test_policy_contract_api.py
+new file mode 100644
+--- /dev/null
++++ b/backend/tests/test_policy_contract_api.py
+@@ -0,0 +1,131 @@
++from __future__ import annotations
++
++import asyncio
++from types import SimpleNamespace
++from unittest.mock import AsyncMock
++
++import pytest
++from fastapi import HTTPException
++from fastapi.testclient import TestClient
++
++from backend.app import create_app, hal_capability_status, relative_motion_positions
++from backend.core.data_contract import data_contract_metadata, hardware_to_dataset_motion
++from backend.services.policy_bridge import lerobot_state_from_ui
++from backend.tests.test_control_watchdog import confirm_mock_browser_lease
++
++
++@pytest.fixture
++def app(tmp_path, monkeypatch):
++    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
++    monkeypatch.setenv("APPSTATION_DISABLE_CAMERA_PROBE", "1")
++    return create_app(tmp_path)
++
++
++def test_policy_observation_and_hold_share_operator_contract(app):
++    telemetry = app.state.telemetry
++    telemetry.motion_positions = [1, 2, 3, 0.1, 0.2, 0.3, 7, 8, 9, 0.4, 0.5, 0.6]
++    telemetry.gripper_positions = [4.5, 5.5]
++    telemetry.force_left = [1.0] * 6
++    telemetry.force_right = [2.0] * 6
++    client = TestClient(app)
++
++    observed = client.get("/api/policy/observation").json()["data"]
++    assert observed["state"] == [7, 8, 9, 400, 500, 600, 5.5, 1, 2, 3, 100, 200, 300, 4.5]
++    assert observed["force_left"] == [2.0] * 6
++    assert observed["force_right"] == [1.0] * 6
++    response = client.post("/api/policy/action", json={
++        "action": observed["state"], "dataContract": observed["dataContract"], "dryRun": True,
++    })
++    assert response.status_code == 200
++    result = response.json()["data"]
++    assert result["dataContract"] == data_contract_metadata()
++    assert result["sent"] is False
++    for side in ("left", "right"):
++        assert all(value == 0 for value in result["plan"]["motion"][side]["deltas"].values())
++    assert result["plan"]["grippers"] == {"leftMm": 5.5, "rightMm": 4.5}
++
++
++def test_policy_observation_converts_pulses_after_hardware_origin_math(app, monkeypatch):
++    # 使用假 HAL 的原始脉冲验证换算顺序，不连接设备。
++    monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
++    positions = [0.0] * 12
++    pulses = [100.0 * (index + 1) for index in range(12)]
++    app.state.hal.motion_state = AsyncMock(return_value={"positions": positions, "pulses": pulses})
++    app.state.telemetry.gripper_positions = [4.5, 5.5]
++    config = app.state.settings.get_config()
++    expected_positions = relative_motion_positions(config, positions, pulses)
++    result = TestClient(app).get("/api/policy/observation").json()["data"]
++    assert result["pulses"] == hardware_to_dataset_motion(pulses)
++    assert result["state"] == lerobot_state_from_ui(expected_positions, [4.5, 5.5])
++    assert app.state.telemetry.motion_positions == expected_positions
++
++
++@pytest.mark.parametrize("contract", [None, {}, {"version": "unknown"}])
++def test_policy_rejects_unknown_contract_before_dispatch(app, contract):
++    app.state.commands.enable_motion_side = AsyncMock()
++    app.state.hal.command = AsyncMock()
++    response = TestClient(app).post("/api/policy/action", json={
++        "action": [0.0] * 14, "dataContract": contract, "dryRun": False,
++    })
++    assert response.status_code == 409
++    assert response.json()["detail"]["code"] == "POLICY_DATA_CONTRACT_MISMATCH"
++    app.state.commands.enable_motion_side.assert_not_called()
++    app.state.hal.command.assert_not_called()
++
++
++def test_policy_operator_left_dispatches_only_hardware_right_under_existing_lease(app):
++    async def exercise():
++        await confirm_mock_browser_lease(app.state.control_watchdog)
++        config = app.state.settings.get_config()
++        config["gripper"]["leftEnabled"] = True
++        config["gripper"]["rightEnabled"] = True
++        app.state.settings.save_config(config)
++        app.state.telemetry.motion_positions = [0.0] * 12
++        app.state.telemetry.gripper_positions = [4.5, 5.5]
++        commands = app.state.commands
++        commands.enable_motion_side = AsyncMock()
++        commands.gripper_command = AsyncMock(return_value={"ok": True})
++        app.state.hal.command = AsyncMock(return_value={"ok": True})
++        action = lerobot_state_from_ui([0.0] * 12, [4.5, 5.5])
++        action[0] = 3.0
++        action[6] = 6.0
++        endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/api/policy/action")
++        result = await endpoint({
++            "action": action, "dataContract": data_contract_metadata(),
++            "dryRun": False, "controlledSides": ["left"],
++        })
++        commands.enable_motion_side.assert_awaited_once_with("right")
++        app.state.hal.command.assert_awaited_once()
++        name, payload = app.state.hal.command.call_args.args
++        assert name == "motion.teleop_target_update"
++        assert payload["side"] == "right"
++        assert payload["deltas"]["X"] == 3.0
++        request = commands.gripper_command.call_args.args[0]
++        assert request.side == "right"
++        assert request.targetMm == 6.0
++        assert set(result.data["results"]["motion"]) == {"left"}
++        assert set(result.data["results"]["grippers"]) == {"left"}
++
++    asyncio.run(exercise())
++
++
++def test_policy_contract_does_not_bypass_local_control_lease(app):
++    async def exercise():
++        endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/api/policy/action")
++        app.state.hal.command = AsyncMock()
++        with pytest.raises(HTTPException) as blocked:
++            await endpoint({"action": [0.0] * 14, "dataContract": data_contract_metadata(), "dryRun": False})
++        assert blocked.value.detail["code"] == "CONTROL_LEASE_UNAVAILABLE"
++        app.state.hal.command.assert_not_called()
++
++    asyncio.run(exercise())
++
++
++def test_hal_version_does_not_imply_unimplemented_calibration_capability():
++    unsupported = hal_capability_status(SimpleNamespace(version="hal-real/0.2", capabilities=[]))
++    assert unsupported["compatible"] is False
++    assert unsupported["missing"] == ["force_calibration_state_v1"]
++    assert hal_capability_status(SimpleNamespace(version="hal-real/0.1"))["compatible"] is False
++    supported = hal_capability_status(SimpleNamespace(capabilities=["force_calibration_state_v1"]))
++    assert supported["compatible"] is True
++    assert supported["missing"] == []
+diff --git a/docs/data-contract-and-deployment.md b/docs/data-contract-and-deployment.md
+new file mode 100644
+--- /dev/null
++++ b/docs/data-contract-and-deployment.md
+@@ -0,0 +1,58 @@
++# 数值通道契约与部署说明
++
++## 数值通道
++
++当前契约为 `appstation.dual_arm.operator_sides.v2`，`sideOrder` 为 `operator_left_then_operator_right`。定义、校验和转换集中在 `backend/core/data_contract.py`。
++
++| 边界 | 顺序及含义 |
++| --- | --- |
++| HAL、原始遥测、前端内部状态 | 硬件左 6 轴在前，硬件右 6 轴在后 |
++| LeRobot state/action | 操作者左（硬件右）6 轴及夹爪在前，操作者右（硬件左）6 轴及夹爪在后，共 14 维 |
++| LeRobot pulses | 操作者左（硬件右）6 轴在前，操作者右（硬件左）6 轴在后，共 12 维 |
++| LeRobot force_left/right | 使用数据集/操作者侧名称，force_left 来自硬件右传感器 |
++| 原点、kinematics、串口/卡号、HAL force sides | 保持真实硬件侧命名，不机械交换标定对象 |
++| 相机 | global、wrist_left、wrist_right 保持原角色，不随数值通道交换 |
++
++平移为 μm，界面旋转为 degree，LeRobot 旋转为 mdeg（degree × 1000），夹爪为 mm，力值为 SI。脉冲先按对应硬件侧的标定和原点换算，再转换为数据集顺序。
++
++`/api/policy/observation` 返回操作者侧 state、pulses、force 和完整 `dataContract`。`/api/policy/action` 要求携带匹配的完整 `dataContract`；`controlledSides` 表示操作者侧，backend 在向 HAL 发指令前转回硬件侧。缺少或不匹配契约返回 409，不发送动作。
++
++通用 `PolicyService.manual_axis_move` 仍使用硬件侧，不能再次交换。外部模型程序应发送操作者侧数组，不能自行增加左右交换。现有控制租约、急停代际、限位和最终执行检查继续生效。
++
++## native 数据兼容
++
++新 native 数据集将完整契约写入 `meta/appstation_info.json` 与 `meta/info.json`。已识别的 native 旧集缺少、未知或不匹配契约时，禁止直接续录；不能仅凭 shape 相同认定左右语义兼容。
++
++本轮没有自动迁移用户旧数据。人工迁移前需保留原目录，同时核对 state、action、pulses、force 和相关元信息，相机角色不变。`scripts/normalize_origin.py` 根据声明的契约处理脉冲和原点，默认 dry-run；只有显式 `--apply` 才写入。
++
++本轮按用户指定范围迁入远端已有实现：native 续录、Policy action 和归一化有契约检查。legacy 数值预览、上传等入口的额外检查，以及部分读取拒绝的 API 错误提示，未作为本轮新增修复。上传契约中的要求是后续提交约束，不代表这些历史入口已经全部覆盖。
++
++## HKVL 与能力诊断
++
++默认来源继续为 `hkvl_serial`，保留用户显式选择的 `nidaq` 和 NI 通道/标定参数，不做自动故障切换。源码默认不覆盖其他机器的已保存配置。
++
++HAL health 使用版本 `hal-real/0.2`，通过 HTTP/DDS 返回实际 `capabilities`；旧程序没有字段时，Python 客户端保留 `None`。backend `/api/health` 的 `hal.capabilityCheck` 展示校准状态能力诊断，不增加录制/运动入口的强制版本门控。
++
++**本轮未迁入双阶段 Tare、校准状态机和 ACK 自检门控。** 因此本地原生能力列表为空，不声明 `force_calibration_state_v1`；诊断会显示该能力缺失。仅更新版本号或重新编译不能证明已经实现该能力。既有 Tare、ACK、控制租约和安全代际逻辑保持原实现。
++
++## 相机识别和曝光
++
++视觉设置页可以扫描腕相机候选、查看预览并选择两个不同设备后保存。后端绑定接口负责持久化，前端同步已保存状态并刷新相机流，不重复提交整份配置。录制启动、活跃或写线程收尾时拒绝识别/绑定。
++
++本轮保留本机相机默认和已保存绑定，不导入远端针对作者设备路径的自动迁移。Windows 自动曝光优先级设置用于尝试禁止暗光动态降帧，不能替代实际 FPS 测量；设备是否支持该属性需要实机验证。
++
++旧配置迁移仅在没有自定义身份时按历史标签处理。显式绑定的稳定身份优先，不能因为相机重新枚举后的 index 恰好与旧默认相同，就在保存或重载时被默认身份覆盖。
++
++## 构建与部署
++
++修改 HAL 源码、头文件或协议后，应从同一份源码构建配套的 `HalServer.exe` 和 `JodellGripperWorker.exe`。若修改后端 native Fast-DDS 源，还需重建对应 DLL。
++
++先在隔离目录完成构建和测试，再按现场流程部署候选文件；不覆盖运行中的程序。没有 SDK 的开发机可以显式关闭 `APPSTATION_ENABLE_VENDOR_SDKS` 和 `APPSTATION_ENABLE_DDS` 做骨架编译，但产物不作为实机发布程序，也不能声称验证了设备或 DDS。
++
++本机 VS2022 为 Professional；现有脚本中的 Community 路径和现场 Fast-DDS 路径需在部署时核实。本轮未迁入远端启动器时间戳判断或启停行为变化，未部署生产 HAL。
++
++外部 `act_deploy.py` 不在仓库。部署前需确认其固定版本、依赖、参数协议及完整 `dataContract` 传递方式，不能假设旧外部程序自动兼容新接口。此次未修改或运行外部程序。
++
++## 本轮记录
++
++2026-09-18 的整合范围、实际验证、备份和未覆盖项见 `frontend/output/ui-redesign/SESSION_SUMMARY.md` 第十三节。离线通过不等于实机采样、运动或录制已验证。
+diff --git a/docs/github-upload-contract.md b/docs/github-upload-contract.md
+new file mode 100644
+--- /dev/null
++++ b/docs/github-upload-contract.md
+@@ -0,0 +1,36 @@
++# GitHub 上传与后续提交契约
++
++本文件与根目录 `AGENTS.md`、`docs/data-contract-and-deployment.md` 配合使用。以下是后续修改和提交应遵守的约束；当前实现覆盖范围及未迁入功能以部署说明和实际代码为准，不能把文档要求当成验收结果。
++
++## 数据边界
++
++- 数据集和 Policy API 使用 `appstation.dual_arm.operator_sides.v2`：操作者左（硬件右）在前，操作者右（硬件左）在后。
++- HAL、原始遥测、原点、kinematics、物理端口和卡号保持硬件侧语义。
++- backend 是模型通道与 HAL 指令之间唯一转换层，复用 `backend/core/data_contract.py`；外部程序和 HAL 不重复交换。
++- state/action 为含夹爪的 14 维，pulses 为 12 维。同步核对 force、单位和元信息；不能只交换一种数组。
++- 相机角色独立，global、wrist_left、wrist_right 不交换。
++
++## 数据兼容与安全
++
++- 新 native 数据集写入完整契约，缺少、未知或不兼容契约的数据不得直接续录、作为数值策略输入或归一化。
++- 修改读取/预览/上传消费者时应明确并校验其契约要求，不猜测无标记数据的顺序。历史未覆盖入口见部署说明，不把本轮 native 续录验证扩大为所有消费入口已经验证。
++- 迁移默认保留原数据；测试使用临时数据，不对用户真实数据集执行归一化 `--apply`。
++- 默认来源为 HKVL，保留显式 NI-DAQ 配置，不自动 fallback。
++- 保留控制者、租约、新鲜度、急停代际、限位、力锁存、夹爪和动作幅度保护。不能为兼容旧程序而放宽。
++
++## 原生程序与外部依赖
++
++- 修改 HAL 后，正式部署前必须同步构建并部署同源的 HalServer.exe 和 JodellGripperWorker.exe；native DDS binding 变更时同步重建。
++- capability 只上报已实现能力。当前本地 `hal-real/0.2` 未包含双阶段校准，不声明 `force_calibration_state_v1`。
++- 在隔离目录构建；明确 SDK/DDS 开关、编译目标和产物类型。无 SDK 骨架不是可部署的实机版本。
++- PR 需写明外部 act_deploy.py 的仓库和固定版本、依赖及参数契约；没有信息时标记未验证，不猜测兼容。
++- 不提交本机 runtime 配置、凭据、SDK/DLL、模型权重、运行二进制或临时产物。
++
++## 提交前核对
++
++1. 确认 branch、HEAD、工作区和未跟踪源码；保留不属于本次工作的改动。
++2. 核对 import、类型、依赖锁文件、构建清单与测试夹具是否完整。
++3. 运行受影响测试和必要的类型检查、隔离编译；记录实际命令、结果、跳过与失败原因。
++4. 对本次差异执行 `git diff --check`，检查没有混入机器专属配置或敏感文件。
++5. PR 填写部署、回退和未验证范围；明确真实 HAL、DDS、串口、相机、运动、数据落盘和外部模型程序是否验证。
++6. 按功能组织可独立审阅的提交。离线或 mock 通过不等于实机安全与性能已验证。
+diff --git a/frontend/output/ui-redesign/SESSION_SUMMARY.md b/frontend/output/ui-redesign/SESSION_SUMMARY.md
+--- a/frontend/output/ui-redesign/SESSION_SUMMARY.md
++++ b/frontend/output/ui-redesign/SESSION_SUMMARY.md
+@@ -264,3 +264,52 @@
+ 生效与验证边界：前端产物已重新构建，本机当前配置已保存；下次通过正常启动器启动时按 HKVL 来源配置运行。本机 `backend/runtime/config.json` 属于 Git 忽略文件，源码默认值更新不等同于自动覆盖其他机器已经保存的显式 NI-DAQ 配置。HAL 源码默认值已修改并完成相关离线测试，但未重新构建或部署正式 `HalServer.exe`；直接运行旧二进制且不提供来源配置时，不能据此断言其内置默认值已更新。
+ 
+ 本轮没有启动 HAL 服务、连接设备、下发控制命令或进行实机采样验收。原生测试没有调用 `start()` / `initialize()`；仅在未运行的 runtime 上测试配置、样本与保护状态，并关闭 vendor/DDS 编译宏，没有覆盖现有 HAL 运行二进制。离线通过不代表已确认 HKVL 现场采样、左右绑定或通信稳定性。
++
++## 十三、2026-09-18：按图片范围整合远端改动
++
++用户最终限定：本轮只整合截图列出的九项。来源为 `ccoxo/E2EAPP_MicroMani` 的 `codex/hal-native-teleop-v2` 分支 `aabe6734b2ad39945641fe8a53e107c8d3409b76`，本地 HEAD 仍为 `6d898c9df4a3b13b415e3dabd75591ed2aabc2ac`。采取逐项移植，保留本机已有未提交修改；没有执行整分支覆盖、Git 提交或 push。
++
++| 图片项目 | 本轮结果与本地适配 |
++| --- | --- |
++| 数据集与 Policy 顺序 | 新增共享 `backend/core/data_contract.py`。录制 state/action/pulses/force 和 Policy API 使用 `appstation.dual_arm.operator_sides.v2`；HAL、内部遥测、原点与标定保持硬件侧，backend 负责边界转换，相机角色不随数值通道交换 |
++| 保持位置动作 | 录制状态与在线 observation 使用一致的侧别、14 维布局和旋转单位。原值作为 action 时差值为零；操作者侧选择在下发时映射到对应硬件侧，沿用原安全门槛和限位检查 |
++| 原点归一化 | `scripts/normalize_origin.py` 校验契约，将硬件侧原点映射到数据集顺序，再使用对应硬件侧的换算系数；同原点保持值不变。默认 dry-run，未处理用户真实数据 |
++| native 旧集续录 | 已识别的 native 数据集缺少、未知或不匹配契约时拒绝续录；新集向两份 meta 信息写入完整契约。兼容数据集走 resume，保留本地录制启动、原点、安全代际和中断保留逻辑 |
++| HKVL 默认 | 保留第十二节已完成的 HKVL 主用、NI-DAQ 手动备用；本轮核验默认和显式 NI 配置，没有覆盖本机 runtime 配置、端口或相机身份 |
++| HAL 能力上报 | 新增统一版本头 `HalVersion.h`，health 序列化和 HTTP/DDS 客户端支持 capability 字段，`/api/health` 返回能力诊断。仅报告已实现能力，详见下面的限制 |
++| 腕相机识别 | 使用本地轻量 UI 接入视觉设置，支持候选预览、稳定身份绑定、保存及刷新；拒绝全局身份不明确或两腕指向同一设备。录制启动、会话活跃及写线程收尾时拒绝识别/绑定 |
++| 相机曝光/FPS | Windows 自动曝光时尝试关闭暗光动态降帧，覆盖初次打开和已打开 direct capture 切回 Auto 的路径；失败记录告警，实际 FPS 仍需现场测量 |
++| 上传文档 | 新增 `docs/data-contract-and-deployment.md`、`docs/github-upload-contract.md`、PR 模板，向根 `AGENTS.md` 追加架构约束；保留原协作规则，明确测试、部署、回退及未验证范围 |
++
++整合时相机回归发现：旧配置迁移仅凭 `IMX335 / index` 标签识别旧默认，会把刚保存的新腕相机身份覆盖。本轮增加自定义 identity 优先保护，并验证旧默认仍可迁移、新绑定保存与重载不被重置。这属于图片中相机绑定落地所需的兼容修复，未导入远端作者机器的身份默认值。
++
++HAL 本轮只迁入版本与实际能力上报，**未迁入双阶段 Tare、校准状态机或 ACK 自检门控**。本地版本为 `hal-real/0.2`，能力列表为空，不声明 `force_calibration_state_v1`；诊断将显示缺失，不能仅凭版本号判定该功能可用，也没有新增录制/运动入口的强制版本检查。原有 Tare、ACK、ForceRuntime、租约和执行代际逻辑保留。
++
++本轮没有扩展到此前审计列出的 legacy 预览/上传契约补漏、读取错误的 API 适配、启动器时间戳或关页停栈策略，也没有修改外部 `act_deploy.py`。该外部程序需要传递完整 `dataContract` 后才能调用更新后的 Policy action API；仓库内前端使用的 `/api/auto/action` 单轴队列不受这项接口调整影响。
++
++### 实际验证
++
++以下为本轮离线验证，不与历史结果相加，也不代表后端全套或设备验收。
++
++| 范围 | 结果 | 证据和边界 |
++| --- | --- | --- |
++| 数据契约、录制、策略、归一化、单位 | **105 passed、1 skipped** | [日志](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/recording-contract-tests.log)。跳过项需要未安装的 `pyarrow`；native 写入/续录使用替身，未安装真实 `lerobot` |
++| Policy API、本地停止竞态、默认与力配置 | **59 passed** | [日志](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/api-and-preserved-safety-tests.log)。包括缺契约拒绝、真实 mock 控制租约、目标硬件侧及保持位置零增量 |
++| 相机识别、配置保存、曝光、格式 | **31 passed** | [日志](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/camera-pytest.log)。包括显式身份保存重载、临时预览回收、录制启动/收尾拒绝；相机和系统调用均使用替身 |
++| HAL health 与 DDS Python 客户端 | **24 passed** | `test_hal_health_capabilities.py`、`test_hal_dds_client.py`；覆盖旧字段兼容及能力传递，没有真实 DDS 连接 |
++| 前端相机组件与视觉页整合 | **3 文件、10 passed** | [日志](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/camera-vitest.log)。保存只同步已落盘状态，不发送第二次整配置 PUT |
++| 前端设置与 API 生命周期 | **3 文件、18 passed** | [日志](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/frontend-settings-lifecycle-tests.log)。保留设置切换、关闭释放及控制请求行为 |
++| 前端静态检查和产物 | typecheck、生产 build、相机新增文件定向 ESLint 通过 | [构建日志](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/frontend-build.log)，非全仓 lint |
++| HAL health 离线程序 | 编译和运行通过 | [编译](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/hal-health-build/build.log)、[测试](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/hal-health-build/test.log)；DDS/vendor 均关闭，未启动 HAL |
++| Windows 相机属性助手 | C# 仅编译通过 | 未执行 COM 枚举、绑定或设备属性写入，不能证明现场驱动支持该属性 |
++| HAL 两个目标隔离构建 | core 与 `JodellGripperWorker` 通过；**`HalServer` 未通过** | VS2022 Professional，DDS/vendor 均关闭。原有 DDS OFF 分支仍无条件包含缺失的 `fastcdr/Cdr.h`；相关源码与备份一致，本轮没有扩修。见 [HalServer 日志](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/hal-skeleton-build/build.log)、[Worker 日志](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/hal-skeleton-build/worker-build.log) |
++
++本机没有完成正式 HAL 配套构建或部署。上述 Worker 仅为关闭 DDS/vendor 的隔离产物，未运行，不能代替现场程序；部署时仍需在具备完整 SDK 的环境从同一源码构建两个正式 EXE。没有启动服务、连接真实相机/串口、进行运动或真实数据录制。
++
++### 备份与撤回依据
++
++操作前已保存包含原有未提交源码、文档、本机 runtime 配置和本总结的 [备份 ZIP](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/before-integration.zip)，共 378 个文件；[原始哈希清单](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/before-manifest.json) 用于确认原值。备份不包含数据集、依赖、SDK 或运行二进制。
++
++本轮独立差异见 [integration.patch](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/integration.patch)，逐文件前后哈希见 [integration-manifest.json](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/integration-manifest.json)。撤回时按该清单恢复本轮修改文件，并核对后处理本轮新增文件，保留整合前已有的用户修改。若之后又改过同一文件，应逐项合并撤回；不能对整个工作区执行 `git reset --hard`。前端撤回后需重新 build；代码撤回不会自动迁移或删除新契约数据。
++
++最终差异为 35 个文件：修改 21 个、新增 14 个、删除 0 个。已核对本机 runtime 配置及 16 个重点保护文件 SHA-256 不变；本轮补丁反向 `--check` 通过（只检查，未撤回），新增行空白和新增文档链接检查通过。本地 HEAD 未变、没有暂存提交内容。见 [最终检查记录](/D:/E2EAPP_MicroMani/output/remote-integration-20260918-092932/final-checks.json)。
+diff --git a/frontend/src/api/index.ts b/frontend/src/api/index.ts
+--- a/frontend/src/api/index.ts
++++ b/frontend/src/api/index.ts
+@@ -298,7 +298,9 @@
+   if (mockMode) return { ok: true, path, body, ts: Date.now() }
+   if (returningOrigin) returnOriginPending = true
+   const controller = new AbortController()
+-  const timeoutMs = /\/motion\/(home_all|(left|right)\/(home|return_origin))$/.test(apiPath) ? 80_000 : 10_000
++  const timeoutMs = /\/motion\/(home_all|(left|right)\/(home|return_origin))$/.test(apiPath)
++    ? 80_000
++    : /\/cameras\/wrists\/(identify|bind)$/.test(apiPath) ? 60_000 : 10_000
+   let timer: ReturnType<typeof setTimeout> | undefined
+   const exchange = async () => {
+     const response = await fetch(`${apiBase}${apiPath}`, {
+@@ -405,6 +407,28 @@
+ /** 应用对应配置或状态。 */
+ export const applyCameraTuning = (camera: CameraTelemetry['key'], config?: AppConfig) =>
+   postCommand(`/cameras/${camera}/tuning/apply`, config)
++
++export interface WristCameraCandidate {
++  index: number
++  devicePath: string
++  identity: string
++  name: string
++  preview?: string
++  error?: string
++}
++
++export const identifyWristCameras = () =>
++  postCommand('/cameras/wrists/identify') as Promise<{
++    ok: boolean
++    data: { devices: WristCameraCandidate[] }
++  }>
++
++export const bindWristCameras = (left: string, right: string) =>
++  postCommand('/cameras/wrists/bind', { left, right }) as Promise<{
++    ok: boolean
++    data: { cameras: AppConfig['cameras']; connected: boolean; message: string }
++  }>
++
+ export interface PicoCommandResponse {
+   ok: boolean
+   data?: {
+diff --git a/frontend/src/components/WristCameraIdentification.test.tsx b/frontend/src/components/WristCameraIdentification.test.tsx
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/components/WristCameraIdentification.test.tsx
+@@ -0,0 +1,93 @@
++import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import * as api from '../api'
++import { defaultConfig } from '../data'
++import { WristCameraIdentification } from './WristCameraIdentification'
++
++const devices: api.WristCameraCandidate[] = [
++  { index: 2, devicePath: 'left-path', identity: 'left-serial', name: 'USB Camera', preview: 'data:image/jpeg;base64,bGVmdA==' },
++  { index: 0, devicePath: 'right-path', identity: 'right-serial', name: 'USB Camera', preview: 'data:image/jpeg;base64,cmlnaHQ=' },
++  { index: 3, devicePath: 'failed-path', identity: 'failed-serial', name: 'USB Camera', error: 'camera unavailable' },
++]
++const saved = { ...defaultConfig.cameras, wristLeftIdentity: 'left-serial', wristRightIdentity: 'right-serial' }
++
++beforeEach(() => {
++  vi.spyOn(api, 'identifyWristCameras').mockResolvedValue({ ok: true, data: { devices } })
++  vi.spyOn(api, 'bindWristCameras').mockResolvedValue({ ok: true, data: { cameras: saved, connected: true, message: 'connected' } })
++})
++afterEach(() => { cleanup(); vi.restoreAllMocks() })
++
++async function scan(onSaved = vi.fn()) {
++  render(<WristCameraIdentification onSaved={onSaved} />)
++  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '识别左右腕相机' })) })
++  return onSaved
++}
++
++function choose() {
++  fireEvent.change(screen.getByLabelText('左腕相机'), { target: { value: 'left-path' } })
++  fireEvent.change(screen.getByLabelText('右腕相机'), { target: { value: 'right-path' } })
++}
++
++describe('腕部相机识别', () => {
++  it('仅允许选择有画面的两台不同相机，保存后同步并刷新两个腕部预览', async () => {
++    const refresh = vi.spyOn(window, 'dispatchEvent')
++    const onSaved = await scan()
++    expect(screen.getAllByRole('img')).toHaveLength(2)
++    expect(screen.getByText('camera unavailable')).toBeInTheDocument()
++    expect(within(screen.getByLabelText('左腕相机')).queryByRole('option', { name: '相机 3 · USB Camera' })).toBeNull()
++    const save = screen.getByRole('button', { name: '保存绑定' })
++    expect(save).toBeDisabled()
++    fireEvent.change(screen.getByLabelText('左腕相机'), { target: { value: 'left-path' } })
++    fireEvent.change(screen.getByLabelText('右腕相机'), { target: { value: 'left-path' } })
++    expect(save).toBeDisabled()
++    expect(screen.getByRole('alert')).toHaveTextContent('两台不同')
++    choose()
++    await act(async () => { fireEvent.click(save) })
++    expect(api.bindWristCameras).toHaveBeenCalledExactlyOnceWith('left-path', 'right-path')
++    expect(onSaved).toHaveBeenCalledExactlyOnceWith(saved)
++    expect(screen.queryByRole('dialog')).toBeNull()
++    expect(screen.getByRole('status')).toHaveTextContent('绑定已保存并重连')
++    expect(refresh.mock.calls.map(([event]) => (event as CustomEvent).detail)).toEqual([
++      { camera: 'wrist_left' }, { camera: 'wrist_right' },
++    ])
++  })
++
++  it('后端已保存但重连失败时保留保存结果并提示，不重复保存', async () => {
++    vi.mocked(api.bindWristCameras).mockResolvedValue({ ok: true, data: { cameras: saved, connected: false, message: 'offline' } })
++    const onSaved = await scan()
++    choose()
++    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '保存绑定' })) })
++    expect(onSaved).toHaveBeenCalledExactlyOnceWith(saved)
++    expect(screen.getByRole('status')).toHaveTextContent('绑定已保存，重连未完成：offline')
++  })
++
++  it('保存拒绝时保留选择并允许重试，等待期间防重复请求', async () => {
++    let reject!: (error: Error) => void
++    vi.mocked(api.bindWristCameras).mockReturnValueOnce(new Promise((_, fail) => { reject = fail }))
++    const onSaved = await scan()
++    choose()
++    const save = screen.getByRole('button', { name: '保存绑定' })
++    fireEvent.click(save)
++    fireEvent.click(save)
++    expect(api.bindWristCameras).toHaveBeenCalledTimes(1)
++    expect(save).toBeDisabled()
++    await act(async () => { reject(new Error('请先结束录制会话')) })
++    expect(screen.getByRole('alert')).toHaveTextContent('请先结束录制会话')
++    expect(screen.getByLabelText('左腕相机')).toHaveValue('left-path')
++    expect(save).toBeEnabled()
++    expect(onSaved).not.toHaveBeenCalled()
++    await act(async () => { fireEvent.click(save) })
++    expect(onSaved).toHaveBeenCalledTimes(1)
++  })
++
++  it('扫描失败后能重试，重新扫描清除旧选择', async () => {
++    vi.mocked(api.identifyWristCameras).mockRejectedValueOnce(new Error('无法唯一确认全局相机'))
++    await scan()
++    expect(screen.getByRole('alert')).toHaveTextContent('无法唯一确认全局相机')
++    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '重新扫描' })) })
++    choose()
++    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '重新扫描' })) })
++    expect(screen.getByLabelText('左腕相机')).toHaveValue('')
++    expect(screen.getByRole('button', { name: '保存绑定' })).toBeDisabled()
++  })
++})
+diff --git a/frontend/src/components/WristCameraIdentification.tsx b/frontend/src/components/WristCameraIdentification.tsx
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/components/WristCameraIdentification.tsx
+@@ -0,0 +1,116 @@
++import { useEffect, useRef, useState } from 'react'
++import { bindWristCameras, identifyWristCameras, type WristCameraCandidate } from '../api'
++import { refreshCameraStream } from '../hooks/useLiveCameraSnapshot'
++import type { AppConfig } from '../types'
++import { UiButton, UiField, UiSelect, UiSpace, UiText } from './ui'
++
++export function WristCameraIdentification({ onSaved }: { onSaved: (cameras: AppConfig['cameras']) => void }) {
++  const [open, setOpen] = useState(false)
++  const [busy, setBusy] = useState<'scan' | 'save' | null>(null)
++  const [devices, setDevices] = useState<WristCameraCandidate[]>([])
++  const [left, setLeft] = useState('')
++  const [right, setRight] = useState('')
++  const [error, setError] = useState('')
++  const [notice, setNotice] = useState('')
++  const mounted = useRef(false)
++  const pending = useRef(false)
++  useEffect(() => {
++    mounted.current = true
++    return () => { mounted.current = false }
++  }, [])
++
++  const scan = async () => {
++    if (pending.current) return
++    pending.current = true
++    setOpen(true)
++    setBusy('scan')
++    setDevices([])
++    setLeft('')
++    setRight('')
++    setError('')
++    setNotice('')
++    try {
++      const result = await identifyWristCameras()
++      if (mounted.current) setDevices(result.data.devices)
++    } catch (cause) {
++      if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause))
++    } finally {
++      pending.current = false
++      if (mounted.current) setBusy(null)
++    }
++  }
++
++  const selectable = devices.filter((device) => device.preview && !device.error)
++  const leftDevice = selectable.find((device) => device.devicePath === left)
++  const rightDevice = selectable.find((device) => device.devicePath === right)
++  const canSave = Boolean(leftDevice && rightDevice && left !== right && leftDevice.identity !== rightDevice.identity)
++  const save = async () => {
++    if (pending.current || !canSave) return
++    pending.current = true
++    setBusy('save')
++    setError('')
++    try {
++      const result = await bindWristCameras(left, right)
++      // 接口已落盘；这里只同步已保存状态，避免再次 PUT 整份旧配置。
++      onSaved(result.data.cameras)
++      refreshCameraStream('wrist_left')
++      refreshCameraStream('wrist_right')
++      if (mounted.current) {
++        setNotice(result.data.connected ? '腕部相机绑定已保存并重连' : `绑定已保存，重连未完成：${result.data.message}`)
++        setOpen(false)
++      }
++    } catch (cause) {
++      if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause))
++    } finally {
++      pending.current = false
++      if (mounted.current) setBusy(null)
++    }
++  }
++  const options = [
++    { value: '', label: '请选择相机' },
++    ...selectable.map((device) => ({ value: device.devicePath, label: `相机 ${device.index} · ${device.name}` })),
++  ]
++
++  return (
++    <div style={{ marginBottom: 12 }}>
++      <UiSpace wrap>
++        <UiButton onClick={() => void scan()} disabled={busy !== null}>识别左右腕相机</UiButton>
++        <UiText secondary>查看候选画面后绑定左右腕；全局相机保持原绑定。</UiText>
++      </UiSpace>
++      {notice && <p role="status">{notice}</p>}
++      {open && (
++        <div className="ui-modal-mask" role="presentation">
++          <div className="ui-modal" role="dialog" aria-modal="true" aria-label="识别左右腕相机" style={{ width: 860, maxWidth: '95vw' }}>
++            <header className="ui-modal-head"><strong>识别左右腕相机</strong></header>
++            <div className="ui-modal-body">
++              <p>请根据画面选择实际安装在左腕、右腕的两台相机。识别期间请勿拔插设备。</p>
++              {busy === 'scan' && <p role="status">正在扫描并获取候选画面…</p>}
++              {error && <div className="ui-alert ui-alert-error" role="alert">{error}</div>}
++              {!busy && !error && devices.length === 0 && <p>未找到可识别的腕部相机，请检查连接和全局相机身份配置。</p>}
++              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
++                {devices.map((device) => (
++                  <section key={device.devicePath}>
++                    <strong>相机 {device.index} · {device.name}</strong>
++                    {device.preview && !device.error ? (
++                      <img src={device.preview} alt={`候选相机 ${device.index}`} style={{ display: 'block', width: '100%' }} />
++                    ) : <p role="status">{device.error || '未取得画面'}</p>}
++                  </section>
++                ))}
++              </div>
++              <UiSpace wrap align="start" style={{ marginTop: 16 }}>
++                <UiField label="左腕相机"><UiSelect value={left} options={options} disabled={busy !== null} onChange={setLeft} /></UiField>
++                <UiField label="右腕相机"><UiSelect value={right} options={options} disabled={busy !== null} onChange={setRight} /></UiField>
++              </UiSpace>
++              {left && right && !canSave && <p role="alert">左右腕必须选择两台不同的相机。</p>}
++            </div>
++            <div className="ui-modal-actions">
++              <UiButton disabled={busy !== null} onClick={() => setOpen(false)}>取消</UiButton>
++              <UiButton loading={busy === 'scan'} disabled={busy !== null} onClick={() => void scan()}>重新扫描</UiButton>
++              <UiButton variant="primary" loading={busy === 'save'} disabled={busy !== null || !canSave} onClick={() => void save()}>保存绑定</UiButton>
++            </div>
++          </div>
++        </div>
++      )}
++    </div>
++  )
++}
+diff --git a/frontend/src/views/SettingsView.cameraIdentification.test.tsx b/frontend/src/views/SettingsView.cameraIdentification.test.tsx
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/views/SettingsView.cameraIdentification.test.tsx
+@@ -0,0 +1,34 @@
++import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
++import { afterEach, expect, it, vi } from 'vitest'
++import { MemoryRouter } from 'react-router-dom'
++import * as api from '../api'
++import { defaultConfig } from '../data'
++import { useTelemetryStore } from '../stores/telemetry'
++import { SettingsView } from './SettingsView'
++
++afterEach(() => { cleanup(); vi.restoreAllMocks() })
++
++it('后端绑定结果更新设置状态，不发送第二次全配置保存；离开视觉页卸载识别界面', async () => {
++  vi.spyOn(api, 'fetchMotionOrigin').mockResolvedValue({ ok: true, data: { origin: defaultConfig.motion.origin } })
++  const put = vi.spyOn(api, 'putConfig')
++  const config = structuredClone(defaultConfig)
++  config.storage.datasetRoot = 'D:/keep-current-setting'
++  useTelemetryStore.setState({ config })
++  const cameras = { ...config.cameras, wristLeft: 'IMX335 / index 4', wristLeftIdentity: 'new-left', wristRightIdentity: 'new-right' }
++  vi.spyOn(api, 'identifyWristCameras').mockResolvedValue({ ok: true, data: { devices: [
++    { index: 4, devicePath: 'left', identity: 'new-left', name: 'USB Camera', preview: 'data:image/jpeg;base64,YQ==' },
++    { index: 2, devicePath: 'right', identity: 'new-right', name: 'USB Camera', preview: 'data:image/jpeg;base64,Yg==' },
++  ] } })
++  vi.spyOn(api, 'bindWristCameras').mockResolvedValue({ ok: true, data: { cameras, connected: true, message: 'ok' } })
++  await act(async () => { render(<MemoryRouter initialEntries={['/settings#camera-left']}><SettingsView /></MemoryRouter>) })
++  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '识别左右腕相机' })) })
++  fireEvent.change(screen.getByLabelText('左腕相机'), { target: { value: 'left' } })
++  fireEvent.change(screen.getByLabelText('右腕相机'), { target: { value: 'right' } })
++  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '保存绑定' })) })
++  expect(useTelemetryStore.getState().config.cameras).toEqual(cameras)
++  expect(useTelemetryStore.getState().config.storage.datasetRoot).toBe('D:/keep-current-setting')
++  expect(put).not.toHaveBeenCalled()
++  fireEvent.click(screen.getByRole('tab', { name: '系统连接' }))
++  expect(screen.queryByRole('button', { name: '识别左右腕相机' })).toBeNull()
++  expect(screen.queryByRole('dialog')).toBeNull()
++})
+diff --git a/frontend/src/views/SettingsView.tsx b/frontend/src/views/SettingsView.tsx
+--- a/frontend/src/views/SettingsView.tsx
++++ b/frontend/src/views/SettingsView.tsx
+@@ -32,6 +32,7 @@
+ import { MotionCard } from './settings/MotionCards'
+ import { TeleopHandCard } from './settings/TeleopHandCard'
+ import { CameraCard } from './settings/CameraCard'
++import { WristCameraIdentification } from '../components/WristCameraIdentification'
+ import { ForceSensorCard } from './settings/ForceSensorCard'
+ import { ManualControlPanel } from './settings/ManualControlPanel'
+ import { HalCard } from './settings/HalCard'
+@@ -425,6 +426,9 @@
+               相机
+               <small>预览 · 调参 · 重连</small>
+             </div>
++            <WristCameraIdentification onSaved={(savedCameras) => useTelemetryStore.setState((state) => ({
++              config: { ...state.config, cameras: savedCameras },
++            }))} />
+             <div className="hardware-settings-grid">
+               {cameraOrder.map((key) => (
+                 <CameraCard
+diff --git a/frontend/src/views/settings/CameraCard.tsx b/frontend/src/views/settings/CameraCard.tsx
+--- a/frontend/src/views/settings/CameraCard.tsx
++++ b/frontend/src/views/settings/CameraCard.tsx
+@@ -277,6 +277,9 @@
+                 onChange={(checked) => updateTuning({ autoWhiteBalance: checked })}
+               />
+             </div>
++            {cameraKey !== 'global' && tuning.autoExposure && (
++              <UiText secondary>应用自动曝光时会尝试关闭低光降帧，实际 FPS 以预览测量为准。</UiText>
++            )}
+             <div className="camera-tuning-control-row">
+               <UiText secondary className="camera-tuning-control-label">Exposure</UiText>
+               <UiSlider
+diff --git a/hal/CMakeLists.txt b/hal/CMakeLists.txt
+--- a/hal/CMakeLists.txt
++++ b/hal/CMakeLists.txt
+@@ -13,6 +13,7 @@
+ 
+ # 核心库只包含硬件访问、单位换算、teleop 映射和夹爪控制，不包含 HTTP 传输层。
+ add_library(appstation_hal_core
++  include/HalVersion.h
+   src/ForceComplianceController.cpp
+   src/ForceControlRuntime.cpp
+   src/ForceSafetyLatch.cpp
+@@ -38,6 +39,7 @@
+ 
+ # HalServer 串起 HTTP 控制、主手 DDS 发布、HAL 映射和 follower 目标执行。
+ add_executable(HalServer
++  include/HalVersion.h
+   include/HalCommandDispatcher.h
+   include/HalDdsControlServer.h
+   include/HalHttpServer.h
+diff --git a/hal/include/HalVersion.h b/hal/include/HalVersion.h
+new file mode 100644
+--- /dev/null
++++ b/hal/include/HalVersion.h
+@@ -0,0 +1,11 @@
++#pragma once
++
++#include <array>
++
++namespace appstation::hal {
++
++inline constexpr const char* kHalVersion = "hal-real/0.2";
++// 只声明实际实现的能力；当前未接入双阶段校准状态机，不能声明 force_calibration_state_v1。
++inline constexpr std::array<const char*, 0> kHalCapabilities{};
++
++}  // namespace appstation::hal
+diff --git a/hal/src/HalJson.cpp b/hal/src/HalJson.cpp
+--- a/hal/src/HalJson.cpp
++++ b/hal/src/HalJson.cpp
+@@ -4,6 +4,7 @@
+  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
+  */
+ #include "HalJson.h"
++#include "HalVersion.h"
+ 
+ #include <algorithm>
+ #include <cctype>
+@@ -62,7 +63,12 @@
+       << ",\"omega7_ok\":" << (omegaOk ? "true" : "false")
+       << ",\"version\":\"" << motionHealth.version << "\""
+       << ",\"uptime_s\":" << motionHealth.uptimeS
+-      << ",\"message\":\"" << jsonEscape(message) << "\"}";
++      << ",\"capabilities\":[";
++  for (size_t index = 0; index < kHalCapabilities.size(); ++index) {
++    if (index > 0) out << ",";
++    out << "\"" << jsonEscape(kHalCapabilities[index]) << "\"";
++  }
++  out << "],\"message\":\"" << jsonEscape(message) << "\"}";
+   return out.str();
+ }
+ 
+diff --git a/hal/src/LTDMCDriver.cpp b/hal/src/LTDMCDriver.cpp
+--- a/hal/src/LTDMCDriver.cpp
++++ b/hal/src/LTDMCDriver.cpp
+@@ -5,6 +5,7 @@
+  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
+  */
+ #include "LTDMCDriver.h"
++#include "HalVersion.h"
+ 
+ #include <algorithm>
+ #include <chrono>
+@@ -524,7 +525,7 @@
+   if (!lock.owns_lock()) {
+     return cachedHealth(uptimeS);
+   }
+-  HalHealth health{initialized_, false, "hal-real/0.1", uptimeS};
++  HalHealth health{initialized_, false, kHalVersion, uptimeS};
+   if (!lastError_.empty()) {
+     health.version += " " + lastError_;
+   }
+@@ -589,7 +590,7 @@
+ 
+ HalHealth LTDMCDriver::cachedHealth(double uptimeS) const {
+   std::scoped_lock snapshotLock(snapshotMutex_);
+-  HalHealth health{cachedInitialized_, false, "hal-real/0.1", uptimeS};
++  HalHealth health{cachedInitialized_, false, kHalVersion, uptimeS};
+   if (!cachedLastError_.empty()) {
+     health.version += " " + cachedLastError_;
+   }
+diff --git a/hal/tests/HalHealthTests.cpp b/hal/tests/HalHealthTests.cpp
+new file mode 100644
+--- /dev/null
++++ b/hal/tests/HalHealthTests.cpp
+@@ -0,0 +1,32 @@
++#include "HalJson.h"
++#include "LTDMCDriver.h"
++
++#include <iostream>
++#include <stdexcept>
++
++using namespace appstation::hal;
++
++int main() {
++  try {
++    // 不初始化控制卡或启动任何线程，只验证离线健康状态及其传输字段。
++    LTDMCDriver motion;
++    const auto health = motion.health(7.5);
++    if (health.version != "hal-real/0.2") {
++      throw std::runtime_error("HAL health version mismatch");
++    }
++    const auto payload = jsonHealth(health, false, "offline health test");
++    if (payload.find("\"capabilities\":[]") == std::string::npos
++        || payload.find("force_calibration_state_v1") != std::string::npos) {
++      throw std::runtime_error("HAL advertised an unimplemented calibration capability");
++    }
++    if (payload.find("\"ltdmc_ok\":false") == std::string::npos
++        || payload.find("\"uptime_s\":7.5") == std::string::npos) {
++      throw std::runtime_error("HAL health fields changed unexpectedly");
++    }
++    std::cout << "HalHealthTests passed\n";
++    return 0;
++  } catch (const std::exception& error) {
++    std::cerr << "HalHealthTests failed: " << error.what() << "\n";
++    return 1;
++  }
++}
+diff --git a/scripts/normalize_origin.py b/scripts/normalize_origin.py
+--- a/scripts/normalize_origin.py
++++ b/scripts/normalize_origin.py
+@@ -17,7 +17,11 @@
+     sys.path.insert(0, str(REPO_ROOT))
+ 
+ from backend.core.defaults import default_config  # noqa: E402
+-from backend.core.units import pulses_to_ui_state  # noqa: E402
++from backend.core.data_contract import (  # noqa: E402
++    hardware_to_dataset_motion,
++    validate_data_contract,
++)
++from backend.core.units import dataset_pulses_to_ui_state  # noqa: E402
+ 
+ MOTION_STATE_INDICES = (0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12)
+ 
+@@ -55,7 +59,7 @@
+ 
+     conversion_config = config or default_config()
+     relative_pulses = [float(pulses[index]) - origin_pulses[index] for index in range(12)]
+-    motion_ui = pulses_to_ui_state(relative_pulses, conversion_config)
++    motion_ui = dataset_pulses_to_ui_state(relative_pulses, conversion_config)
+     motion_state = _motion_ui_to_lerobot_state(motion_ui)
+ 
+     next_state = list(state)
+@@ -68,8 +72,14 @@
+ 
+     return {
+         "needs_manual_review": False,
++        "observation.pulses": pulses,
+         "observation.state": next_state,
+         "action": next_action,
++        **{
++            key: deepcopy(frame[key])
++            for key in ("observation.force_left", "observation.force_right")
++            if key in frame
++        },
+         "changed": _different(state, next_state) or _different(action, next_action),
+     }
+ 
+@@ -81,6 +91,7 @@
+ 
+     episodes = _read_episodes(dataset_dir)
+     app_info = _read_json(dataset_dir / "meta" / "appstation_info.json")
++    _validate_dataset_metadata(app_info, _read_json(dataset_dir / "meta" / "info.json"))
+     target = _target_origin(target_origin, episodes, app_info)
+     config = _conversion_config(app_info)
+     target_hash = _target_calibration_hash(target_origin, episodes, app_info)
+@@ -227,7 +238,8 @@
+         return None
+     if not bool(origin.get("rightValid", origin.get("valid", False))):
+         return None
+-    return left + right
++    # Origin metadata is explicitly hardware-side; dataset pulses are operator-side.
++    return hardware_to_dataset_motion(left + right)
+ 
+ 
+ def _motion_ui_to_lerobot_state(motion_ui: list[float]) -> list[float]:
+@@ -308,6 +320,14 @@
+     if isinstance(motion, dict) and isinstance(motion.get("kinematics"), dict):
+         config["motion"]["kinematics"] = deepcopy(motion["kinematics"])
+     return config
++
++
++def _validate_dataset_metadata(app_info: dict[str, Any], info: dict[str, Any]) -> None:
++    """Do not guess whether an unmarked dataset uses the old or new side order."""
++    try:
++        validate_data_contract(app_info.get("dataContract") or info.get("dataContract"))
++    except ValueError as exc:
++        raise RuntimeError(f"cannot normalize dataset: {exc}") from exc
+ 
+ 
+ def _origin_groups(episodes: list[dict[str, Any]]) -> list[dict[str, Any]]:

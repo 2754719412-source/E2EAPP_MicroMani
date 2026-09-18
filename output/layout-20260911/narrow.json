@@ -1,0 +1,155 @@
+{
+  "results": [
+    {
+      "width": 390,
+      "target": "系统连接",
+      "inputCount": 6,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [],
+      "wideElements": []
+    },
+    {
+      "width": 390,
+      "target": "安全与力觉",
+      "inputCount": 20,
+      "overflow": [],
+      "mainOverflow": 90,
+      "bodyOverflow": 0,
+      "cameraRows": [],
+      "wideElements": [
+        {
+          "element": "span.ui-tag.ui-tag-warning",
+          "width": 446,
+          "text": "left Fz stop threshold 超限后不会恢复伺服，需人工确认安全态"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "target": "运动控制",
+      "inputCount": 89,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [],
+      "wideElements": []
+    },
+    {
+      "width": 390,
+      "target": "遥操作",
+      "inputCount": 92,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [],
+      "wideElements": []
+    },
+    {
+      "width": 390,
+      "target": "视觉",
+      "inputCount": 29,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        },
+        {
+          "columns": "322px",
+          "width": 322,
+          "inputWidth": 322
+        }
+      ],
+      "wideElements": []
+    },
+    {
+      "width": 390,
+      "target": "/",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [],
+      "wideElements": []
+    },
+    {
+      "width": 390,
+      "target": "/record",
+      "inputCount": 19,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [],
+      "wideElements": []
+    },
+    {
+      "width": 390,
+      "target": "/dataset",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [],
+      "wideElements": []
+    },
+    {
+      "width": 390,
+      "target": "/model",
+      "inputCount": 0,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [],
+      "wideElements": []
+    },
+    {
+      "width": 390,
+      "target": "/fine-tune",
+      "inputCount": 2,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [],
+      "wideElements": []
+    },
+    {
+      "width": 390,
+      "target": "/auto",
+      "inputCount": 1,
+      "overflow": [],
+      "mainOverflow": 0,
+      "bodyOverflow": 0,
+      "cameraRows": [],
+      "wideElements": []
+    }
+  ],
+  "pageErrors": [
+    "Failed to fetch",
+    "Failed to fetch"
+  ]
+}

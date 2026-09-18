@@ -1,4 +1,9 @@
-﻿import { chromium } from 'playwright';
+﻿/*
+ * 阅读导航 08｜启动、部署与工具
+ * 职责：保留的录制页面浏览器诊断脚本；用于调查相机预览，非应用启动入口。
+ * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
+ */
+import { chromium } from 'playwright';
 import fs from 'node:fs';
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1592, height: 890 }, deviceScaleFactor: 1 });

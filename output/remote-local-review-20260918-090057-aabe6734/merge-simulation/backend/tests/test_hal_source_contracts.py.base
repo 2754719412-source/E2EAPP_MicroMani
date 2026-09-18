@@ -1,0 +1,2252 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_hal_motion_state_json_exposes_axis_moving_flags() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
+    body = source.split("std::string jsonMotionState", 1)[1].split(
+        "void appendDoubleArray",
+        1,
+    )[0]
+
+    assert 'out << "],\\"moving\\":[";' in body
+    assert 'state.axes[i].moving ? "true" : "false"' in body
+
+
+def test_hal_removes_orphaned_axis_diagnostics_entrypoint() -> None:
+    driver_source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    header_source = (REPO_ROOT / "hal" / "include" / "LTDMCDriver.h").read_text(encoding="utf-8")
+
+    assert "axisDiagnosticsJson" not in header_source
+    assert "axisDiagnosticsJson" not in driver_source
+
+
+def test_hal_command_dispatcher_does_not_store_unused_gripper_reference() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "HalCommandDispatcher.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    server = (REPO_ROOT / "hal" / "src" / "HalServer.cpp").read_text(encoding="utf-8")
+
+    assert "JodellGripperDriver" not in header
+    assert "JodellGripperDriver& gripper" not in source
+    assert "gripper_" not in header
+    assert "gripper_(gripper)" not in source
+    assert "(void)gripper_" not in source
+    assert "HalCommandDispatcher commandDispatcher(" in server
+    assert "nativeTeleop,\n      forceRuntime,\n      started);" in server
+
+
+def test_hal_motion_control_thread_keeps_only_polling_lifecycle() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "MotionControlThread.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "MotionControlThread.cpp").read_text(encoding="utf-8")
+    loop_body = source.split("void MotionControlThread::loop()", 1)[1]
+
+    assert "setSoftLimits" not in header
+    assert "setSoftLimits" not in source
+    assert "latestState" not in header
+    assert "latestState" not in source
+    assert "limits_" not in header
+    assert "latest_" not in header
+    assert "driver_.readState();" in loop_body
+    assert "latest_ = driver_.readState();" not in loop_body
+
+
+def test_ltdmc_driver_removes_unused_motion_simulation_entrypoints() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "LTDMCDriver.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+
+    assert "void homeSide(Side side);" not in header
+    assert "void LTDMCDriver::homeSide(Side side) {" not in source
+    assert "void homeAll(const std::array<double, 12>& workOriginPulse);" not in header
+    assert "void LTDMCDriver::homeAll(const std::array<double, 12>& workOriginPulse)" not in source
+    assert "void homeOriginSide(Side side, const std::array<double, 6>& workOriginPulse);" not in header
+    assert "void LTDMCDriver::homeOriginSide(Side side, const std::array<double, 6>& workOriginPulse)" not in source
+    assert "moveAllUi" not in header
+    assert "moveAllUi" not in source
+    assert "checkLimits" not in header
+    assert "checkLimits" not in source
+
+
+def test_ltdmc_manual_jog_keeps_single_step_hard_limits() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    body = source.split("void LTDMCDriver::moveRelativeUi(", 1)[1].split(
+        "void LTDMCDriver::homeOriginSide",
+        1,
+    )[0]
+
+    assert "const auto maxStep = rotation ? 2.0 : 5000.0;" in body
+    assert (
+        'throw std::runtime_error(rotation ? "rotation jog exceeds 2 degree" : "translation jog exceeds 5000 um");'
+        in body
+    )
+
+
+def test_hal_home_all_requires_work_origin_payload() -> None:
+    command_source = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    json_source = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
+    normalized = " ".join(command_source.split())
+
+    assert "const auto enabledAxes = jsonHomeAllEnabledAxes(bodyText);" in normalized
+    assert "motion_.homeAll(jsonWorkOriginPulse(bodyText), enabledAxes)" in normalized
+    assert "jsonBoolArray6(bodyText, \"enabledAxes\", kAllAxesEnabled)" in normalized
+    assert "motion_.enableSide(side, true, jsonBoolArray6(bodyText, \"enabledAxes\", kAllAxesEnabled))" in normalized
+    assert "motion_.homeSide(side, jsonBoolArray6(bodyText, \"enabledAxes\", kAllAxesEnabled))" in normalized
+    assert "home_all requires leftPulse[6] work origin payload" in json_source
+    assert "home_all requires rightPulse[6] work origin payload" in json_source
+    assert "home_origin_side requires pulse[6] work origin payload" in json_source
+
+
+def test_hal_hardware_home_logs_per_axis_diagnostics() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    body = source.split("void LTDMCDriver::homeSide(Side side, const std::array<bool, 6>& enabledAxes)", 1)[
+        1
+    ].split("void LTDMCDriver::homeAll", 1)[0]
+
+    assert "constexpr unsigned short kHomeDirection" in source
+    assert '" event=" << event' in source
+    assert '"home_start"' in body
+    assert '"home_done"' in body
+    for field in (
+        "side=",
+        "card=",
+        "semanticAxis=",
+        "physicalAxis=",
+        "homeDir=",
+        "beforePulse=",
+        "beforeUi=",
+        "enabledAxes=",
+        "afterPulse=",
+        "afterUi=",
+        "deltaPulse=",
+        "deltaUi=",
+    ):
+        assert field in source
+
+
+def test_hal_teleop_target_update_uses_absolute_target_mode() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
+    teleop_body = source.split("TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(", 1)[1].split(
+        "void LTDMCDriver::stopTeleopSide", 1
+    )[0]
+
+    assert "const auto updateTargetPulse = static_cast<long>(std::llround(leadLimitedTargetPulse));" in normalized
+    assert "updateTeleopTargetBestEffort(card, axisNo, updateTargetPulse)" in normalized
+    assert "TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(" in source
+    assert "result.appliedDeltaUi[axisIndex]" in source
+    assert "result.targetPulse[axisIndex]" in source
+    assert "int updateTeleopTargetBestEffort" in source
+    assert "const auto retUpdate = dmcUpdateTargetPosition(card, axisNo, targetPulse, 1);" in normalized
+    assert "return retUpdate;" in normalized
+    assert "result.updateReturn[axisIndex]" in source
+    json_source = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
+    assert '\\"updateReturn\\"' in json_source
+    assert '\\"currentPulse\\"' in json_source
+    assert '\\"launchDeltaPulse\\"' in json_source
+    assert '\\"stopReason\\"' in json_source
+    assert '\\"axisIoStatus\\"' in json_source
+    assert '\\"movingBefore\\"' in json_source
+    assert '\\"moveStarted\\"' in json_source
+    assert 'dmcFailureMessage("dmc_update_target_position"' not in source
+    assert "dmcPMove(card, axisNo, updateTargetPulse, 1)" not in teleop_body
+    assert "dmcTeleopFailureMessage(" not in teleop_body
+    assert "updateTeleopTargetBestEffort(card, axisNo, updateTargetPulse)" in teleop_body
+    assert "<< \" targetPulse=\" << targetPulse" in source
+    assert "<< \" limit=[\" << limit.min << \",\" << limit.max << \"]\"" in source
+    assert "syncZeroDeltaTarget" in source
+    assert "teleopTargetPulse_[index] = pulse_[index];" in normalized
+    assert "axis busy before teleop target" not in source
+
+
+def test_hal_teleop_zero_delta_sync_only_refreshes_active_axes() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
+    teleop_body = source.split("TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(", 1)[1].split(
+        "void LTDMCDriver::stopTeleopSide", 1
+    )[0]
+    zero_delta_branch = teleop_body.split("if (deltaPulse == 0) {", 1)[1].split(
+        "if (!axisMotionEnabled(side, axis))",
+        1,
+    )[0]
+
+    assert "const bool zeroDeltaWasActive = teleopTargetActive_[index];" in normalized
+    assert "if (syncZeroDeltaTarget && zeroDeltaWasActive) {" in zero_delta_branch
+    assert zero_delta_branch.index("zeroDeltaWasActive") < zero_delta_branch.index("updateTeleopTargetBestEffort")
+
+
+def test_hal_teleop_stop_side_hard_stops_and_retargets_to_current_position() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    body = source.split("void LTDMCDriver::stopTeleopSide(Side side)", 1)[1].split(
+        "void LTDMCDriver::configureStageAxes",
+        1,
+    )[0]
+
+    assert "dmcStop(card, axisNo, 0)" in body
+    assert "pulse_[index] = static_cast<double>(dmcGetPosition(card, axisNo));" in body
+    assert "updateTeleopTargetBestEffort(card, axisNo, currentPulse);" in body
+    assert "teleopTargetActive_[index] = false;" in body
+    assert "teleopTargetPulse_[index] = pulse_[index];" in body
+
+
+def test_hal_teleop_soft_limit_clips_to_payload_range() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
+    teleop_body = source.split("TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(", 1)[1].split(
+        "void LTDMCDriver::stopTeleopSide", 1
+    )[0]
+
+    assert "double clipTeleopTargetToLimit(double baseUi, double targetUi, const AxisLimit& limit)" in normalized
+    assert "if (baseUi < limit.min)" in normalized
+    assert "if (baseUi > limit.max)" in normalized
+    assert "return targetUi > baseUi ? (std::min)(targetUi, limit.max) : baseUi;" in normalized
+    assert "return targetUi < baseUi ? (std::max)(targetUi, limit.min) : baseUi;" in normalized
+    assert "return std::clamp(targetUi, limit.min, limit.max);" in normalized
+    assert "clipTeleopTargetToLimit(baseUi, unclippedTargetUi, limit)" in normalized
+    assert "teleop target exceeds soft limit" not in teleop_body
+    assert "teleopDefaultLimit" not in source
+    assert "+/-7.5" not in source
+
+
+def test_hal_teleop_soft_limit_uses_actual_position_even_when_target_is_active() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    body = source.split("TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(", 1)[1].split(
+        "void LTDMCDriver::stopTeleopSide",
+        1,
+    )[0]
+
+    assert "double actualPulse = teleopTargetActive_[index] ? teleopTargetPulse_[index] : pulse_[index];" in body
+    assert "actualPulse = static_cast<double>(dmcGetPosition(card, axisNo));" in body
+    assert "pulse_[index] = actualPulse;" in body
+    assert "result.currentPulse[axisIndex] = actualPulse;" in body
+    assert "const auto basePulse = actualPulse;" in body
+    assert "const auto targetUi = clipTeleopTargetToLimit(baseUi, unclippedTargetUi, limit);" in body
+
+
+def test_hal_teleop_stops_moving_axis_when_limit_holds_target_at_current_pulse() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    body = source.split("TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(", 1)[1].split(
+        "void LTDMCDriver::stopTeleopSide",
+        1,
+    )[0]
+    zero_delta_branch = body.split("if (deltaPulse == 0) {", 1)[1].split(
+        "if (!axisMotionEnabled(side, axis))",
+        1,
+    )[0]
+    assert "if (targetHeldAtBase && moving) {" in body
+    held_target_branch = body.split("if (targetHeldAtBase && moving) {", 1)[1].split(
+        "const bool shouldLaunchMove = !moving;",
+        1,
+    )[0]
+
+    assert "struct AxisHoldResult" in source
+    assert "stopTeleopAxisAtCurrentBestEffort(card, axisNo)" in zero_delta_branch
+    assert "const bool targetHeldAtBase = std::abs(appliedTargetPulse - basePulse) <= 0.5;" in body
+    assert "stopTeleopAxisAtCurrentBestEffort(card, axisNo)" in held_target_branch
+    assert body.index("if (targetHeldAtBase && moving) {") < body.index("const bool shouldLaunchMove = !moving;")
+
+
+def test_hal_teleop_limits_and_step_caps_come_from_payload() -> None:
+    command_source = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    json_source = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
+    driver_source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    header_source = (REPO_ROOT / "hal" / "include" / "LTDMCDriver.h").read_text(encoding="utf-8")
+    normalized_driver = " ".join(driver_source.split())
+    normalized_header = " ".join(header_source.split())
+
+    assert "jsonTeleopSoftLimits(bodyText)" in command_source
+    assert 'jsonNumberValue(bodyText, "translationStepLimitPulse", 0.0)' in command_source
+    assert 'jsonNumberValue(bodyText, "rotationStepLimitPulse", 0.0)' in command_source
+    assert 'jsonNumberValue(bodyText, "translationPulseDeadband", 0.0)' in command_source
+    assert 'jsonNumberValue(bodyText, "rotationPulseDeadband", 0.0)' in command_source
+    assert 'jsonBoolValue(bodyText, "syncZeroDeltaTarget", false)' in command_source
+    assert "jsonTeleopEnabledAxes(bodyText)" in command_source
+    assert "jsonTeleopTargetUpdateResult(side, result)" in command_source
+    assert '\\"appliedDeltas\\"' in json_source
+    assert "const std::array<AxisLimit, 6>& limits" in normalized_header
+    assert "TeleopTargetUpdateResult updateTeleopTargetUi" in normalized_header
+    assert "const auto stepLimitPulse = rotation ? rotationStepPulse : translationStepPulse;" in normalized_driver
+    assert (
+        "const auto pulseDeadband = rotation ? rotationPulseDeadband : translationPulseDeadband;"
+        in normalized_driver
+    )
+    assert "clampPulseStep(deadbandedDeltaPulse, stepLimitPulse)" in normalized_driver
+    assert "const auto limit = limits[axisIndex];" in normalized_driver
+
+
+def test_hal_omega7_assignment_supports_icf_swap_hands() -> None:
+    header_source = (REPO_ROOT / "hal" / "include" / "Omega7Driver.h").read_text(encoding="utf-8")
+    driver_source = (REPO_ROOT / "hal" / "src" / "Omega7Driver.cpp").read_text(encoding="utf-8")
+    server_source = (REPO_ROOT / "hal" / "src" / "HalServer.cpp").read_text(encoding="utf-8")
+    start_hal = (REPO_ROOT / "scripts" / "start-hal.ps1").read_text(encoding="utf-8")
+
+    assert "bool initialize(int leftOpenId, int rightOpenId, bool swapHands)" in header_source
+    assert "takeDeviceByHandedness(true)" in driver_source
+    assert "takeDeviceByOpenId(leftOpenId)" in driver_source
+    assert "std::swap(state_[0], state_[1])" in driver_source
+    assert 'envBoolValue("APPSTATION_OMEGA7_SWAP_HANDS", false)' in server_source
+    assert "APPSTATION_OMEGA7_SWAP_HANDS" in start_hal
+
+
+def test_hal_native_start_retries_omega_open_after_startup_occupancy() -> None:
+    header_source = (REPO_ROOT / "hal" / "include" / "Omega7Driver.h").read_text(encoding="utf-8")
+    driver_source = (REPO_ROOT / "hal" / "src" / "Omega7Driver.cpp").read_text(encoding="utf-8")
+    command_source = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    health_branch = command_source.split('if (name == "hal.reconnect")', 1)[1].split(
+        'if (name == "omega7.gravity_compensation")',
+        1,
+    )[0]
+    native_start = command_source.split('if (name == "teleop.native.start")', 1)[1].split(
+        'if (name == "teleop.native.stop")',
+        1,
+    )[0]
+
+    assert "bool ensureReady()" in header_source
+    assert "int leftOpenId_{0};" in header_source
+    assert "int rightOpenId_{1};" in header_source
+    assert "bool swapHands_{false};" in header_source
+    assert "bool Omega7Driver::ensureReady()" in driver_source
+    assert "leftOpenId_ = leftOpenId;" in driver_source
+    assert "rightOpenId_ = rightOpenId;" in driver_source
+    assert "swapHands_ = swapHands;" in driver_source
+    assert "if (!dhdModule)" in driver_source
+    assert "dhdModule = LoadLibraryA(\"dhd64.dll\")" in driver_source
+    assert "omega_.ensureReady();" in health_branch
+    assert health_branch.find("omega_.ensureReady();") < health_branch.find("jsonHealth(")
+    assert "omega_.ensureReady();" in native_start
+    assert native_start.find("omega_.ensureReady();") < native_start.find("nativeTeleop_.start(")
+
+
+def test_hal_server_binds_to_configured_port_from_environment() -> None:
+    server_source = (REPO_ROOT / "hal" / "src" / "HalServer.cpp").read_text(encoding="utf-8")
+    http_source = (REPO_ROOT / "hal" / "src" / "HalHttpServer.cpp").read_text(encoding="utf-8")
+
+    assert 'envIntValue("APPSTATION_HAL_PORT", 8091)' in server_source
+    assert "address.sin_port = htons(static_cast<u_short>(halPort));" in http_source
+    assert 'std::cerr << "Failed to bind HalServer on 127.0.0.1:" << halPort' in http_source
+    assert 'std::cout << "HalServer listening on http://127.0.0.1:" << halPort' in http_source
+    assert "htons(8091)" not in http_source
+
+
+def test_hal_http_server_is_health_only_diagnostic_surface() -> None:
+    http_source = (REPO_ROOT / "hal" / "src" / "HalHttpServer.cpp").read_text(encoding="utf-8")
+
+    assert '"GET /health "' in http_source
+    forbidden_routes = [
+        "GET /motion/state ",
+        "GET /motion/axis_diagnostics ",
+        "GET /omega/state ",
+        "GET /teleop/native/status ",
+        "POST /omega7/gravity_compensation ",
+        "POST /omega7/zero_force_feedback ",
+        "POST /teleop/native/configure ",
+        "POST /teleop/native/start ",
+        "POST /teleop/native/stop ",
+        "POST /teleop/native/gripper_command ",
+        "POST /gripper/command ",
+        "POST /motion/emergency_stop ",
+        "POST /motion/home_all ",
+        "POST /motion/home_origin_side ",
+        "POST /motion/enable_side ",
+        "POST /motion/disable_side ",
+        "POST /motion/home_side ",
+        "POST /motion/manual_axis_move ",
+        "POST /motion/teleop_target_update ",
+        "POST /motion/teleop_stop_side ",
+    ]
+    for route in forbidden_routes:
+        assert route not in http_source
+
+    assert "dispatchPost(" not in http_source
+    assert "jsonMotionState(" not in http_source
+    assert "jsonOmegaState(" not in http_source
+    assert "axisDiagnosticsJson(" not in http_source
+    assert "nativeTeleop.statusJson(" not in http_source
+
+
+def test_hal_dds_idl_matches_backend_dds_types() -> None:
+    idl = (REPO_ROOT / "hal" / "dds" / "appstation_hal.idl").read_text(encoding="utf-8")
+
+    assert "module appstation" in idl
+    assert "struct JsonEnvelope" in idl
+    assert "uint64 stamp_unix_ms;" in idl
+    assert "uint64 stamp_monotonic_ms;" in idl
+    assert "string source;" in idl
+    assert "string payload_json;" in idl
+    assert "struct HalCommandRequest" in idl
+    assert "string request_id;" in idl
+    assert "string name;" in idl
+    assert "struct HalCommandReply" in idl
+    assert "boolean ok;" in idl
+    assert "string result_json;" in idl
+    assert "string error;" in idl
+
+
+def test_hal_server_wires_three_layer_teleop_dds_without_bridge() -> None:
+    server_source = (REPO_ROOT / "hal" / "src" / "HalServer.cpp").read_text(encoding="utf-8")
+    leader_source = (REPO_ROOT / "hal" / "src" / "TeleopLeaderPublisher.cpp").read_text(encoding="utf-8")
+    mapping_source = (REPO_ROOT / "hal" / "src" / "TeleopMappingNode.cpp").read_text(encoding="utf-8")
+    follower_source = (REPO_ROOT / "hal" / "src" / "TeleopFollowerTargetSubscriber.cpp").read_text(encoding="utf-8")
+
+    assert not (REPO_ROOT / "hal" / "include" / "HalFastDdsBridge.h").exists()
+    assert not (REPO_ROOT / "hal" / "src" / "HalFastDdsBridge.cpp").exists()
+    assert '#include "TeleopLeaderPublisher.h"' in server_source
+    assert '#include "TeleopMappingNode.h"' in server_source
+    assert '#include "TeleopFollowerTargetSubscriber.h"' in server_source
+    assert "nativeTeleop.setLeaderStatePublisher" in server_source
+    assert "nativeTeleop.setHardwareTargetPublisher" in server_source
+    assert "teleopMapping.start()" in server_source
+    assert "followerSubscriber.start()" in server_source
+    assert "HalFastDdsBridge" not in server_source
+    assert "AppStation.Teleop.LeaderState" in leader_source
+    assert "AppStation.Teleop.LeaderState" in mapping_source
+    assert "AppStation.Teleop.HardwareTarget" in mapping_source
+    assert "AppStation.Teleop.HardwareTarget" in follower_source
+
+
+def test_hal_direct_dds_control_server_replaces_backend_http_control_plane() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "HalDdsControlServer.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "HalDdsControlServer.cpp").read_text(encoding="utf-8")
+    server_source = (REPO_ROOT / "hal" / "src" / "HalServer.cpp").read_text(encoding="utf-8")
+
+    assert "class HalDdsControlServer" in header
+    assert "HalCommandDispatcher& commandDispatcher" in header
+    assert "AppStation.Hal.Health" in source
+    assert "AppStation.Hal.MotionState" in source
+    assert "AppStation.Hal.OmegaState" in source
+    assert "AppStation.Hal.NativeTeleopStatus" in source
+    assert "AppStation.Hal.CommandRequest" in source
+    assert "AppStation.Hal.CommandReply" in source
+    assert "commandDispatcher_.handle" in source
+    assert "replyWriter_->write(&reply)" in source
+    assert "source = \"hal-cpp\"" in source
+    assert '#include "HalDdsControlServer.h"' in server_source
+    assert "HalDdsControlServer ddsControl" in server_source
+    assert "ddsControl.start()" in server_source
+    assert "HalFastDdsBridge" not in source
+
+
+def test_hal_dds_motion_state_telemetry_publishes_at_100hz() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "HalDdsControlServer.cpp").read_text(encoding="utf-8")
+    loop_body = source.split("void loop()", 1)[1].split("void emergencyLoop()", 1)[0]
+    telemetry_body = source.split("void publishTelemetry()", 1)[1].split("void publishJson", 1)[0]
+
+    assert "publishJson(motionWriter_, jsonMotionState(motion_.readState()))" in telemetry_body
+    assert "100 Hz" in loop_body
+    assert "std::chrono::milliseconds(10)" in loop_body
+    assert "std::chrono::milliseconds(50)" not in loop_body
+
+
+def test_hal_build_links_fastdds_for_direct_hal_dds() -> None:
+    build_cmd = (REPO_ROOT / "hal" / "build_hal.cmd").read_text(encoding="utf-8")
+    cmake = (REPO_ROOT / "hal" / "CMakeLists.txt").read_text(encoding="utf-8")
+
+    assert cmake.count("add_executable(HalServer") == 1
+    assert "F:\\opt\\ros\\jazzy" in build_cmd
+    assert "TeleopLeaderPublisher.cpp" in build_cmd
+    assert "TeleopMappingNode.cpp" in build_cmd
+    assert "TeleopFollowerTargetSubscriber.cpp" in build_cmd
+    assert "HalDdsControlServer.cpp" in build_cmd
+    assert "fastrtps-2.14.lib" in build_cmd
+    assert "fastcdr-2.2.lib" in build_cmd
+    assert "fastdds/dds/domain/DomainParticipantFactory.hpp" in (
+        REPO_ROOT / "hal" / "src" / "TeleopMappingNode.cpp"
+    ).read_text(encoding="utf-8")
+    assert "APPSTATION_ENABLE_DDS" in cmake
+    assert "HalFastDdsBridge.cpp" not in cmake
+    assert "HalDdsControlServer.cpp" in cmake
+    assert "TeleopLeaderPublisher.cpp" in cmake
+    assert "TeleopMappingNode.cpp" in cmake
+    assert "TeleopFollowerTargetSubscriber.cpp" in cmake
+
+
+def test_python_dds_runtime_uses_fastdds_without_legacy_runtime_or_sidecar() -> None:
+    dds_client = (REPO_ROOT / "backend" / "hal_client" / "dds_client.py").read_text(encoding="utf-8")
+    dds_runtime = (REPO_ROOT / "backend" / "hal_client" / "dds_runtime.py").read_text(encoding="utf-8")
+    native_source = (REPO_ROOT / "backend" / "native" / "appstation_fastdds_transport.cpp").read_text(encoding="utf-8")
+    native_build = (REPO_ROOT / "backend" / "native" / "build_fastdds_transport.cmd").read_text(encoding="utf-8")
+    pyproject = (REPO_ROOT / "backend" / "pyproject.toml").read_text(encoding="utf-8")
+    legacy_runtime = "cyclone" + "dds"
+    old_bridge = "dds_" + "bridge"
+
+    assert "FastDdsHalTransport" in dds_client
+    assert "FastDdsHalTransport" in dds_runtime
+    assert "ctypes.CDLL" in dds_runtime
+    assert "appstation_fastdds_transport.dll" in dds_runtime
+    assert "fastdds" in dds_runtime
+    assert "appstation_fastdds_create" in native_source
+    assert "appstation_fastdds_publish_command_request" in native_source
+    assert "appstation_fastdds_wait_for_command_reply" in native_source
+    assert "appstation_fastdds_publish_teleop_hardware_target" not in native_source
+    assert '/OUT:"appstation_fastdds_transport.next.dll"' in native_build
+    assert '/OUT:"appstation_fastdds_transport.dll"' not in native_build
+    assert "fastrtps-2.14.lib" in native_build
+    assert "fastcdr-2.2.lib" in native_build
+    assert legacy_runtime not in dds_client.lower()
+    assert legacy_runtime not in dds_runtime.lower()
+    assert legacy_runtime not in pyproject.lower()
+    assert not (REPO_ROOT / "backend" / "hal_client" / f"{old_bridge}.py").exists()
+    assert not (REPO_ROOT / "backend" / "hal_client" / f"{old_bridge}_runner.py").exists()
+    assert not (REPO_ROOT / "backend" / "tests" / f"test_hal_{old_bridge}.py").exists()
+
+
+def test_fastdds_command_publish_checks_bool_write_result_explicitly() -> None:
+    native_source = (REPO_ROOT / "backend" / "native" / "appstation_fastdds_transport.cpp").read_text(encoding="utf-8")
+    command_body = native_source.split("int appstation_fastdds_publish_command_request", 1)[1].split(
+        "int appstation_fastdds_publish_emergency_stop",
+        1,
+    )[0]
+    emergency_body = native_source.split("int appstation_fastdds_publish_emergency_stop", 1)[1].split(
+        "int appstation_fastdds_wait_for_command_reply",
+        1,
+    )[0]
+
+    assert "const bool written = handle->commandRequestWriter->write(&sample);" in command_body
+    assert "if (!written)" in command_body
+    assert "if (!handle->commandRequestWriter->write(&sample))" not in command_body
+    assert "const bool written = handle->emergencyStopWriter->write(&sample);" in emergency_body
+    assert "if (!written)" in emergency_body
+    assert "if (!handle->emergencyStopWriter->write(&sample))" not in emergency_body
+
+
+def test_fastdds_command_topics_keep_burst_capacity_above_startup_cleanup_sequence() -> None:
+    native_source = (REPO_ROOT / "backend" / "native" / "appstation_fastdds_transport.cpp").read_text(encoding="utf-8")
+    hal_source = (REPO_ROOT / "hal" / "src" / "HalDdsControlServer.cpp").read_text(encoding="utf-8")
+    backend_request_qos = native_source.split("DataWriterQos commandRequestWriterQos()", 1)[1].split(
+        "DataReaderQos commandReplyReaderQos()",
+        1,
+    )[0]
+    backend_reply_qos = native_source.split("DataReaderQos commandReplyReaderQos()", 1)[1].split(
+        "void check(ReturnCode_t code",
+        1,
+    )[0]
+    hal_request_qos = hal_source.split("DataReaderQos commandRequestReaderQos()", 1)[1].split(
+        "DataWriterQos commandReplyWriterQos()",
+        1,
+    )[0]
+    hal_reply_qos = hal_source.split("DataWriterQos commandReplyWriterQos()", 1)[1].split(
+        "}  // namespace",
+        1,
+    )[0]
+
+    assert "configureHistory(qos, 32)" in backend_request_qos
+    assert "configureHistory(qos, 32)" in backend_reply_qos
+    assert "configureReaderHistory(qos, 32)" in hal_request_qos
+    assert "configureWriterHistory(qos, 32)" in hal_reply_qos
+
+
+def test_fastdds_teleop_shadow_topics_and_standard_hardware_target_contract() -> None:
+    idl = (REPO_ROOT / "hal" / "dds" / "appstation_hal.idl").read_text(encoding="utf-8")
+    dds_types = (REPO_ROOT / "backend" / "hal_client" / "dds_types.py").read_text(encoding="utf-8")
+    native_source = (REPO_ROOT / "backend" / "native" / "appstation_fastdds_transport.cpp").read_text(encoding="utf-8")
+    server_source = (REPO_ROOT / "hal" / "src" / "HalServer.cpp").read_text(encoding="utf-8")
+    mapping_source = (REPO_ROOT / "hal" / "src" / "TeleopMappingNode.cpp").read_text(encoding="utf-8")
+    docs = (REPO_ROOT / "docs" / "dds-bridge.md").read_text(encoding="utf-8")
+
+    assert 'TOPIC_TELEOP_LEADER_STATE = "AppStation.Teleop.LeaderState"' in dds_types
+    assert 'TOPIC_TELEOP_FOLLOWER_TARGET_PREVIEW = "AppStation.Teleop.FollowerTargetPreview"' in dds_types
+    assert 'TOPIC_TELEOP_HARDWARE_TARGET = "AppStation.Teleop.HardwareTarget"' in dds_types
+
+    assert "struct TeleopHardwareTarget" in idl
+    assert "double deltas[6];" in idl
+    assert "double soft_limit_min[6];" in idl
+    assert "double soft_limit_max[6];" in idl
+    assert "string payload_json;" in idl
+    assert idl.index("struct TeleopHardwareTarget") > idl.index("struct HalCommandReply")
+
+    teleop_types = (REPO_ROOT / "hal" / "include" / "TeleopDdsTypes.h").read_text(encoding="utf-8")
+    leader_publisher = (REPO_ROOT / "hal" / "include" / "TeleopLeaderPublisher.h").read_text(encoding="utf-8")
+    follower_subscriber = (REPO_ROOT / "hal" / "include" / "TeleopFollowerTargetSubscriber.h").read_text(
+        encoding="utf-8"
+    )
+
+    assert "struct TeleopHardwareTarget" in teleop_types
+    assert "class TeleopLeaderPublisher" in leader_publisher
+    assert "class TeleopFollowerTargetSubscriber" in follower_subscriber
+    assert "HalFastDdsBridge" not in server_source
+    assert "AppStation.Teleop.HardwareTarget" in mapping_source
+    assert "appstation_fastdds_publish_teleop_hardware_target" not in native_source
+    assert "loan_sample" not in native_source
+    assert "discard_loan" not in native_source
+    assert "publishTeleopHardwareTargetSharedMemory" not in native_source
+    assert "targetWriter_->write(&sample)" in mapping_source
+
+    assert "TeleopLeaderPublisher leaderPublisher" in server_source
+    assert "TeleopFollowerTargetSubscriber followerSubscriber" in server_source
+    assert "APPSTATION_TELEOP_EXECUTOR" in server_source
+    assert "dds_follower" in server_source
+    assert "motion.updateTeleopTargetUi" not in server_source
+
+    assert "AppStation.Teleop.HardwareTarget" in docs
+    assert "loan_sample" not in docs
+    assert "DataSharing" not in docs
+
+
+def test_hal_server_is_split_into_transport_command_json_and_executor_modules() -> None:
+    server_source = (REPO_ROOT / "hal" / "src" / "HalServer.cpp").read_text(encoding="utf-8")
+    cmake = (REPO_ROOT / "hal" / "CMakeLists.txt").read_text(encoding="utf-8")
+    build_cmd = (REPO_ROOT / "hal" / "build_hal.cmd").read_text(encoding="utf-8")
+
+    expected_files = [
+        ("include", "HalJson.h"),
+        ("src", "HalJson.cpp"),
+        ("include", "HalCommandDispatcher.h"),
+        ("src", "HalCommandDispatcher.cpp"),
+        ("include", "HalDdsControlServer.h"),
+        ("src", "HalDdsControlServer.cpp"),
+        ("include", "HalHttpServer.h"),
+        ("src", "HalHttpServer.cpp"),
+        ("include", "TeleopHardwareTargetExecutor.h"),
+        ("src", "TeleopHardwareTargetExecutor.cpp"),
+        ("include", "TeleopDdsTypes.h"),
+        ("include", "TeleopLeaderPublisher.h"),
+        ("src", "TeleopLeaderPublisher.cpp"),
+        ("include", "TeleopMappingNode.h"),
+        ("src", "TeleopMappingNode.cpp"),
+        ("include", "TeleopFollowerTargetSubscriber.h"),
+        ("src", "TeleopFollowerTargetSubscriber.cpp"),
+    ]
+    for folder, name in expected_files:
+        assert (REPO_ROOT / "hal" / folder / name).exists(), f"missing hal/{folder}/{name}"
+        assert name in cmake
+        if folder == "src":
+            assert name in build_cmd
+
+    assert '#include "HalCommandDispatcher.h"' in server_source
+    assert '#include "HalDdsControlServer.h"' in server_source
+    assert '#include "HalHttpServer.h"' in server_source
+    assert '#include "TeleopFollowerTargetSubscriber.h"' in server_source
+    assert '#include "TeleopLeaderPublisher.h"' in server_source
+    assert '#include "TeleopMappingNode.h"' in server_source
+    assert "HalCommandDispatcher commandDispatcher" in server_source
+    assert "HalDdsControlServer ddsControl" in server_source
+    assert "TeleopMappingNode teleopMapping" in server_source
+    assert "runHalHttpServer(" in server_source
+
+    forbidden_in_server = [
+        "std::string jsonHealth(",
+        "std::string jsonMotionState(",
+        "std::string jsonOmegaState(",
+        "NativeTeleopConfig jsonNativeTeleopConfig(",
+        "std::string handleHalCommand(",
+        "void serveConnection(",
+    ]
+    for token in forbidden_in_server:
+        assert token not in server_source
+
+
+def test_hal_teleop_dds_is_driven_by_native_master_loop_and_target_messages() -> None:
+    leader_source = (REPO_ROOT / "hal" / "src" / "TeleopLeaderPublisher.cpp").read_text(encoding="utf-8")
+    mapping_source = (REPO_ROOT / "hal" / "src" / "TeleopMappingNode.cpp").read_text(encoding="utf-8")
+    follower_source = (REPO_ROOT / "hal" / "src" / "TeleopFollowerTargetSubscriber.cpp").read_text(encoding="utf-8")
+    executor_source = (REPO_ROOT / "hal" / "src" / "TeleopHardwareTargetExecutor.cpp").read_text(encoding="utf-8")
+    native_header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    native_source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+
+    assert "AppStation.Teleop.LeaderState" in leader_source
+    assert "writer_->write(&sample)" in leader_source
+    assert "AppStation.Teleop.LeaderState" in mapping_source
+    assert "AppStation.Teleop.HardwareTarget" in mapping_source
+    assert "DataReaderListener" in mapping_source
+    assert "on_data_available" in mapping_source
+    assert "wait_for_unread_message" not in mapping_source
+    assert "nativeTeleop_.processLeaderState" in mapping_source
+    assert "publishHardwareTarget" in mapping_source
+    assert "AppStation.Teleop.HardwareTarget" in follower_source
+    assert "DataReaderListener" in follower_source
+    assert "on_data_available" in follower_source
+    assert "wait_for_unread_message" not in follower_source
+    assert "executor_.apply(target)" in follower_source
+    assert "motion_.updateTeleopTargetUi(" in executor_source
+
+    assert "using LeaderStatePublisher" in native_header
+    assert "void setLeaderStatePublisher" in native_header
+    assert "LeaderStatePublisher leaderStatePublisher_" in native_header
+    assert "publisher(hands)" in native_source
+    native_tick_body = native_source.split("void NativeTeleopController::tick(double dtSec)", 1)[1].split(
+        "void NativeTeleopController::tickSideBestEffort",
+        1,
+    )[0]
+    assert "const auto hands = omega_.readState();" in native_tick_body
+    assert native_tick_body.index("const auto hands = omega_.readState();") < native_tick_body.index(
+        "publisher(hands)"
+    )
+
+
+def test_hal_omega7_force_output_is_wired_to_sdk() -> None:
+    header_source = (REPO_ROOT / "hal" / "include" / "Omega7Driver.h").read_text(encoding="utf-8")
+    driver_source = (REPO_ROOT / "hal" / "src" / "Omega7Driver.cpp").read_text(encoding="utf-8")
+    command_source = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    protocol_source = (REPO_ROOT / "backend" / "hal_client" / "protocol.py").read_text(encoding="utf-8")
+
+    assert "void setGravityCompensation(bool leftEnabled, bool rightEnabled, double leftScale, double rightScale)" in header_source
+    assert "std::array<bool, 2> forceOutputEnabled_{{true, true}}" in header_source
+    assert "std::array<double, 2> gravityScale_{{0.45, 1.0}}" in header_source
+    assert "DhdSetStandardGravity" in driver_source
+    assert "dhdSetStandardGravity(kStandardGravity * gravityScale_[index], deviceId)" in driver_source
+    assert "DhdEnableForce" in driver_source
+    assert "dhdEnableForce(enabled ? 1 : 0, deviceId)" in driver_source
+    assert "dhdSetGravityCompensation(enabled ? 1 : 0, deviceId)" in driver_source
+    assert "dhdSetForceAndTorqueAndGripperForce(" in driver_source
+    assert "writeZeroForceUnlocked(item)" in driver_source
+    assert 'if (name == "omega7.gravity_compensation")' in command_source
+    assert 'if (name == "omega7.zero_force_feedback")' in command_source
+    assert '"omega7.gravity_compensation": HalCommandSpec("POST", "/omega7/gravity_compensation")' in protocol_source
+    assert '"omega7.zero_force_feedback": HalCommandSpec("POST", "/omega7/zero_force_feedback")' in protocol_source
+
+
+def test_hal_launch_promotes_latest_built_binary() -> None:
+    start_hal = (REPO_ROOT / "scripts" / "start-hal.ps1").read_text(encoding="utf-8")
+    build_hal = (REPO_ROOT / "hal" / "build_hal.cmd").read_text(encoding="utf-8")
+
+    assert "$halNextExe = Join-Path $repo \"hal\\build\\HalServer.next.exe\"" in start_hal
+    assert "$workerExe = Join-Path $repo \"hal\\build\\JodellGripperWorker.exe\"" in start_hal
+    assert "$workerNextExe = Join-Path $repo \"hal\\build\\JodellGripperWorker.next.exe\"" in start_hal
+    assert "function Promote-HalCandidate" in start_hal
+    assert "Get-FileHash -Algorithm SHA256 -LiteralPath $CandidateExe" in start_hal
+    assert "$candidateHash.Hash -ne $targetHash.Hash" in start_hal
+    assert "Promote-HalCandidate -CandidateExe $halNextExe -TargetExe $halExe" in start_hal
+    assert "Promote-HalCandidate -CandidateExe $workerNextExe -TargetExe $workerExe" in start_hal
+    assert "Copy-Item -LiteralPath $CandidateExe -Destination $TargetExe -Force" in start_hal
+    assert 'Join-Path $halBuild "JodellGripperWorker.exe"' in start_hal
+    assert 'copy /Y "HalServer.next.exe" "HalServer.exe"' in build_hal
+    assert 'copy /Y "JodellGripperWorker.next.exe" "JodellGripperWorker.exe"' in build_hal
+
+
+def test_hal_stage_axis_configuration_matches_icf_card_counts() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
+
+    assert "int stageAxisCount(appstation::hal::Side side)" in normalized
+    assert "return side == appstation::hal::Side::Left ? 6 : 9;" in normalized
+    assert "axisNoInt < stageAxisCount(side)" in normalized
+
+
+def test_hal_enable_side_rejects_partial_servo_failures() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
+
+    assert "if (failed > 0) { throw std::runtime_error(failures.str()); }" in normalized
+    assert "succeeded == 0 && failed > 0" not in normalized
+
+
+def test_hal_home_origin_does_not_auto_enable_participating_axes() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "LTDMCDriver.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    dispatcher = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    home_all_branch = dispatcher.split('if (name == "motion.home_all")', 1)[1].split(
+        'if (name == "motion.home_origin_side")',
+        1,
+    )[0]
+    home_side_branch = dispatcher.split('if (name == "motion.home_origin_side")', 1)[1].split(
+        'if (name == "motion.enable_side")',
+        1,
+    )[0]
+
+    home_all_body = source.split("void LTDMCDriver::homeAll(", 1)[1].split(
+        "void LTDMCDriver::homeOriginSide",
+        1,
+    )[0]
+    home_side_body = source.split("void LTDMCDriver::homeOriginSide(", 1)[1].split(
+        "void LTDMCDriver::moveRelativeUi",
+        1,
+    )[0]
+
+    assert "enableHomeAxes" not in header
+    assert "std::string LTDMCDriver::enableHomeAxes" not in source
+    assert "motion.enableHomeAxes" not in home_all_branch
+    assert "motion.enableHomeAxes" not in home_side_branch
+    for body in (home_all_body, home_side_body):
+        assert "axisMotionEnabled(side, axis)" in body
+        assert "enable required axes before returning to work origin" in body
+
+
+def test_hal_treats_card0_dmc5c10_sevon_feedback_as_unreadable() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    header = (REPO_ROOT / "hal" / "include" / "LTDMCDriver.h").read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
+
+    assert "bool usesSevonPin(appstation::hal::Side side, appstation::hal::SemanticAxis axis)" in normalized
+    assert "return physicalAxis(side, axis) < stageAxisCount(side);" in normalized
+    assert "bool hasReadableSevonFeedback(appstation::hal::Side side, appstation::hal::SemanticAxis axis)" in normalized
+    assert "if (side == appstation::hal::Side::Right) { return false; }" in normalized
+    assert "std::array<bool, 12> commandedEnabled_{};" in header
+    assert "if (!hasReadableSevonFeedback(side, axis)) { enabled_[index] = commandedEnabled_[index]; }" in normalized
+    assert (
+        "else if (dmcReadSevonPin) { enabled_[index] = dmcReadSevonPin(card, axisNo) > 0; "
+        "commandedEnabled_[index] = enabled_[index]; }"
+    ) in normalized
+    unsupported_sevon_branch = normalized.split("if (!usesSevonPin(side, axis)) {", 1)[1].split(
+        "const auto ret = dmcWriteSevonPin",
+        1,
+    )[0]
+    assert "const auto index = stateIndex(side, axis);" in unsupported_sevon_branch
+    assert "enabled_[index] = axisEnabled;" in unsupported_sevon_branch
+    assert "commandedEnabled_[index] = axisEnabled;" in unsupported_sevon_branch
+    assert "++succeeded;" in unsupported_sevon_branch
+    assert "continue;" in unsupported_sevon_branch
+
+
+def test_hal_ignores_card0_unsupported_sevon_write_without_masking_other_failures() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
+
+    assert "bool ignoreUnsupportedSevonWriteFailure(" in normalized
+    assert "side == appstation::hal::Side::Right" in normalized
+    assert "ret == 2" in normalized
+    assert "if (ignoreUnsupportedSevonWriteFailure(side, axis, ret))" in normalized
+    assert "enabled_[index] = axisEnabled;" in normalized
+    assert "commandedEnabled_[index] = axisEnabled;" in normalized
+    assert "++succeeded;" in normalized
+    assert "continue;" in normalized
+    assert "failures << dmcAxisFailureMessage(\"dmc_write_sevon_pin\", ret, card, axisNo);" in normalized
+
+
+def test_hal_manual_axis_move_dispatches_card0_yaw_without_special_rejection() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    branch = source.split('if (name == "motion.manual_axis_move") {', 1)[1].split(
+        'if (name == "motion.teleop_target_update") {',
+        1,
+    )[0]
+    assert "Card 0 Yaw motion axis is disabled by safety policy" not in branch
+    assert "motion_.moveRelativeUi(" in branch
+
+
+def test_ltdmc_driver_has_no_permanent_card0_yaw_gate() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+
+    assert "axisMotionPermanentlyDisabled" not in source
+    assert "Card 0 Yaw motion axis is disabled by safety policy" not in source
+
+
+def test_hal_stage_axis_and_direction_signs_match_icf_mapping() -> None:
+    source = (REPO_ROOT / "hal" / "include" / "HalTypes.h").read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
+
+    assert "kLeftPhysicalAxis{0, 1, 3, 5, 4, 2}" in normalized
+    assert "kRightPhysicalAxis{2, 0, 5, 8, 1, 7}" in normalized
+    assert "-5000.0, 5000.0, -10000.0, 1666.666667, -2500.0, -3333.333" in normalized
+    assert "-5000.0, -10000.0, -5000.0, 1666.666667, 2500.0, 333.3333" in normalized
+
+
+def test_runtime_launch_disables_pagehide_auto_shutdown_and_stop_stack_kills_all_listener_trees() -> None:
+    start_stack = (REPO_ROOT / "scripts" / "start-stack.ps1").read_text(encoding="utf-8")
+    stop_stack = (REPO_ROOT / "scripts" / "stop-stack.ps1").read_text(encoding="utf-8")
+
+    assert "VITE_AUTO_SHUTDOWN_ON_CLOSE" not in start_stack
+    assert "[switch]$SkipStartupHome" in start_stack
+    assert "APPSTATION_SKIP_STARTUP_HOME" in start_stack
+    assert "Sort-Object -Unique" in stop_stack
+    assert "Select-Object -ExpandProperty OwningProcess -First 1" not in stop_stack
+    assert "$currentPid = $PID" in stop_stack
+    assert "$RootPid -eq $currentPid" in stop_stack
+    assert "Stop-ProcessTree -RootPid $rootPid" in stop_stack
+    assert "$repo = (Resolve-Path (Join-Path $PSScriptRoot \"..\"))" in stop_stack
+    assert "backend\\.app:create_app" in stop_stack
+    assert "18080|18082" in stop_stack
+    assert "Stop-BackendProcessTrees" in stop_stack
+
+
+def test_hal_native_keeps_mechanical_soft_limits_stable_while_anchoring_rotation_window() -> None:
+    backend_source = (REPO_ROOT / "backend" / "services" / "teleop_mapping.py").read_text(encoding="utf-8")
+    hal_source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    soft_limit_body = backend_source.split("def _soft_limit_arrays(", 1)[1].split(
+        "def _effective_limit_arrays",
+        1,
+    )[0]
+    effective_body = hal_source.split(
+        "std::array<AxisLimit, 6> NativeTeleopController::effectiveSoftLimits",
+        1,
+    )[1].split(
+        "std::array<double, 6> NativeTeleopController::velocityDeltasUi",
+        1,
+    )[0]
+
+    assert "native_teleop_limit_arrays(config, side)" in soft_limit_body
+    assert "pulseToUi(config_.homeReferencePulse[targetIndex][axisIndex], targetSide, axis)" in effective_body
+    assert "limits[axisIndex].min += originUi" not in effective_body
+    assert "limits[axisIndex].max += originUi" not in effective_body
+    assert "std::max(limits[axisIndex].min, originUi + workLimit.min)" in effective_body
+    assert "std::min(limits[axisIndex].max, originUi + workLimit.max)" in effective_body
+    assert "axisIndex < 3" in effective_body
+
+
+def test_hal_native_teleop_controller_is_wired_to_server_and_build() -> None:
+    server = (REPO_ROOT / "hal" / "src" / "HalServer.cpp").read_text(encoding="utf-8")
+    cmake = (REPO_ROOT / "hal" / "CMakeLists.txt").read_text(encoding="utf-8")
+    build_cmd = (REPO_ROOT / "hal" / "build_hal.cmd").read_text(encoding="utf-8")
+
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+
+    assert "NativeTeleopController nativeTeleop" in server
+    assert "nativeTeleop.stop()" in server
+
+    assert "src/NativeTeleopController.cpp" in cmake
+    assert "src/JodellGripperDriver.cpp" in cmake
+    assert "NativeTeleopController.cpp" in build_cmd
+    assert "JodellGripperDriver.cpp" in build_cmd
+
+    assert "class NativeTeleopController" in header
+    assert "velocity_admittance" in source
+    assert "updateTeleopTargetUi" in source
+    assert "stopTeleopSide" in source
+    assert "setGravityCompensation" in source
+    assert "forceOutputEnabled" in source
+
+
+def test_hal_native_controller_defaults_match_stable_window_output_and_xy_signs() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    normalized = " ".join(header.split())
+
+    assert "std::array<double, 2> translationScale{{1.0, 1.0}}" in normalized
+    assert "std::array<double, 2> rotationScale{{1.0, 1.0}}" in normalized
+    assert "{0.60, 0.50, 0.375, 0.60, 0.08, 0.10}" in normalized
+    assert "{0.60, 0.50, 0.375, 0.60, 0.08, 0.001}" in normalized
+    assert "{true, true, true, true, true, false}" in normalized
+    assert "double translationStartVelocityUmS{600.0}" in normalized
+    assert "double translationMaxVelocityUmS{8000.0}" in normalized
+    assert "double rotationStartVelocityDegS{1.0}" in normalized
+    assert "double rotationMaxVelocityDegS{12.0}" in normalized
+    assert "double accTimeSec{0.05}" in normalized
+    assert "double decTimeSec{0.05}" in normalized
+    assert "{-5000000.0, -5000000.0, -10000000.0, 1667.0, 2500.0, -333.3333}" in normalized
+    assert "{-5000000.0, 10000000.0, -5000000.0, 1667.0, -2500.0, 3333.333}" in normalized
+    assert "bool gripperTeleopEnabled{false}" in normalized
+
+
+def test_hal_native_home_stops_controller_and_waits_for_motion_done() -> None:
+    dispatcher = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    motion = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    home_all_branch = dispatcher.split('if (name == "motion.home_all")', 1)[1].split(
+        'if (name == "motion.home_origin_side")',
+        1,
+    )[0]
+    home_side_branch = dispatcher.split('if (name == "motion.home_origin_side")', 1)[1].split(
+        'if (name == "motion.enable_side")',
+        1,
+    )[0]
+
+    assert "nativeTeleop_.stop();" in home_all_branch
+    assert "nativeTeleop_.stop();" in home_side_branch
+    assert "const auto enabledAxes = jsonHomeAllEnabledAxes(bodyText);" in home_all_branch
+    assert "motion_.enableHomeAxes" not in home_all_branch
+    assert "const auto enabledAxes = jsonBoolArray6(bodyText, \"enabledAxes\", kAllAxesEnabled);" in home_side_branch
+    assert "motion_.enableHomeAxes" not in home_side_branch
+    assert "waitForAxesDone(homeAxes, homeAxisCount, \"home_all pre-move\", 3000)" in motion
+    assert "waitForAxesDone(homeAxes, homeAxisCount, \"home_all\", 60000)" in motion
+    assert "waitForAxesDone(homeAxes, homeAxisCount, \"home_origin_side\", 60000)" in motion
+    assert "teleopTargetActive_[index] = false;" in motion
+
+
+def test_hal_native_home_origin_moves_to_absolute_work_origin_like_icf() -> None:
+    motion = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    home_all_body = motion.split("void LTDMCDriver::homeAll(", 1)[1].split(
+        "void LTDMCDriver::homeOriginSide",
+        1,
+    )[0]
+    home_side_body = motion.split("void LTDMCDriver::homeOriginSide(", 1)[1].split(
+        "void LTDMCDriver::moveRelativeUi",
+        1,
+    )[0]
+
+    for body in (home_all_body, home_side_body):
+        assert "const auto currentPulse = dmcGetPosition(card, axisNo);" in body
+        assert "const auto deltaPulse = targetPulse - currentPulse;" in body
+        assert "startWorkOriginMoveOrThrow(card, axisNo, targetPulse, deltaPulse, currentPulse)" in body
+
+    assert "constexpr long kWorkOriginSettledPulseTolerance = 100;" in motion
+    assert "std::abs(deltaPulse) <= kWorkOriginSettledPulseTolerance" in motion
+    assert "const auto absoluteRet = dmcPMove(card, axisNo, targetPulse, 1);" in motion
+    assert "const auto relativeRet = dmcPMove(card, axisNo, deltaPulse, 0);" in motion
+    assert (
+        'dmcAbsoluteFailureMessage("dmc_pmove", absoluteRet, card, axisNo, deltaPulse, targetPulse, currentPulse)'
+        in motion
+    )
+    assert "relative fallback ret=" in motion
+
+
+def test_hal_emergency_stop_preempts_long_motion_waits() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "LTDMCDriver.h").read_text(encoding="utf-8")
+    motion = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    dispatcher = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    emergency_body = motion.split("void LTDMCDriver::emergencyStop() {", 1)[1].split(
+        "std::string LTDMCDriver::enableSide",
+        1,
+    )[0]
+    emergency_branch = dispatcher.split('if (name == "motion.emergency_stop")', 1)[1].split(
+        'if (name == "motion.home_all")',
+        1,
+    )[0]
+
+    assert "return handleEmergencyStop();" in emergency_branch
+    assert "nativeTeleop_.stop();" not in emergency_branch
+    assert 'GetProcAddress(ltdmcModule, "dmc_emg_stop")' in motion
+    assert "dmcEmgStop(card);" in emergency_body
+    assert "std::scoped_lock lock(mutex_)" not in emergency_body
+    assert "stopAllAxesBestEffort();" in emergency_body
+    assert "disableAllAxesBestEffort();" in emergency_body
+    assert "dmcStop(card, static_cast<unsigned short>(axisNo), 1);" in emergency_body
+    assert "dmcWriteSevonPin(card, static_cast<unsigned short>(axisNo), 0);" in emergency_body
+    assert "std::unique_lock<std::mutex> stateLock(mutex_, std::try_to_lock);" in emergency_body
+    assert "std::atomic_bool estopActive_{false};" in header
+    assert "std::atomic_uint64_t estopSequence_{0};" in header
+    assert "void disableAllAxesBestEffort() noexcept;" in header
+    assert "void clearEstopIfUnchanged(std::uint64_t sequenceAtStart);" in header
+
+
+def test_hal_emergency_stop_uses_nonblocking_dispatch_path() -> None:
+    dispatcher_header = (REPO_ROOT / "hal" / "include" / "HalCommandDispatcher.h").read_text(encoding="utf-8")
+    dispatcher = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    controller_header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    controller = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+
+    emergency_body = dispatcher.split("std::string HalCommandDispatcher::handleEmergencyStop() {", 1)[1].split(
+        "std::string HalCommandDispatcher::handle(",
+        1,
+    )[0]
+    emergency_branch = dispatcher.split('if (name == "motion.emergency_stop")', 1)[1].split(
+        'if (name == "motion.home_all")',
+        1,
+    )[0]
+    controller_emergency_body = controller.split("void NativeTeleopController::requestEmergencyStop() {", 1)[
+        1
+    ].split("void NativeTeleopController::startGripperWorker()", 1)[0]
+
+    assert "std::string handleEmergencyStop();" in dispatcher_header
+    assert "void requestEmergencyStop();" in controller_header
+    assert "motion_.emergencyStop();" in emergency_body
+    assert "nativeTeleop_.requestEmergencyStop();" in emergency_body
+    assert emergency_body.index("motion_.emergencyStop();") < emergency_body.index(
+        "nativeTeleop_.requestEmergencyStop();"
+    )
+    assert "nativeTeleop_.stop();" not in emergency_body
+    assert "nativeTeleop_.stop();" not in emergency_branch
+    assert "return handleEmergencyStop();" in emergency_branch
+    assert "worker_.join()" not in controller_emergency_body
+    assert "stopTeleopSide" not in controller_emergency_body
+    assert "running_.store(false" in controller_emergency_body
+    assert "gripperCv_.notify_all();" in controller_emergency_body
+
+
+def test_hal_dds_emergency_stop_has_dedicated_reader_thread() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "HalDdsControlServer.cpp").read_text(encoding="utf-8")
+    backend_types = (REPO_ROOT / "backend" / "hal_client" / "dds_types.py").read_text(encoding="utf-8")
+    backend_runtime = (REPO_ROOT / "backend" / "native" / "appstation_fastdds_transport.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'constexpr const char* kTopicEmergencyStop = "AppStation.Hal.EmergencyStop";' in source
+    assert "Topic* emergencyStopTopic" in source
+    assert "DataReader* emergencyStopReader_" in source
+    assert "std::thread emergencyWorker" in source
+    assert "emergencyWorker = std::thread([this]() { emergencyLoop(); });" in source
+    assert "void emergencyLoop()" in source
+    assert "pollEmergencyStops()" in source
+    assert "handleEmergencyStopCommand(samples[i]);" in source
+    assert "commandDispatcher_.handleEmergencyStop()" in source
+    assert "TOPIC_HAL_EMERGENCY_STOP = \"AppStation.Hal.EmergencyStop\"" in backend_types
+    assert 'constexpr const char* kTopicEmergencyStop = "AppStation.Hal.EmergencyStop";' in backend_runtime
+    assert "appstation_fastdds_publish_emergency_stop" in backend_runtime
+
+
+def test_hal_motion_entries_reject_after_estop_latch() -> None:
+    motion = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    executor = (REPO_ROOT / "hal" / "src" / "TeleopHardwareTargetExecutor.cpp").read_text(encoding="utf-8")
+
+    move_relative_body = motion.split("void LTDMCDriver::moveRelativeUi(", 1)[1].split(
+        "TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi",
+        1,
+    )[0]
+    teleop_body = motion.split("TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(", 1)[1].split(
+        "void LTDMCDriver::stopTeleopSide",
+        1,
+    )[0]
+    home_all_body = motion.split(
+        "void LTDMCDriver::homeAll(\n"
+        "    const std::array<double, 12>& workOriginPulse,\n"
+        "    const std::array<std::array<bool, 6>, 2>& enabledAxes) {",
+        1,
+    )[1].split("void LTDMCDriver::homeOriginSide", 1)[0]
+    home_side_body = motion.split(
+        "void LTDMCDriver::homeOriginSide(\n"
+        "    Side side,\n"
+        "    const std::array<double, 6>& workOriginPulse,\n"
+        "    const std::array<bool, 6>& enabledAxes) {",
+        1,
+    )[1].split("void LTDMCDriver::moveRelativeUi", 1)[0]
+
+    for body in (move_relative_body, teleop_body, home_all_body, home_side_body):
+        assert "throwIfEstopActive();" in body
+    assert "void LTDMCDriver::throwIfEstopActive() const {" in motion
+    assert "if (motion_.estopActive())" in executor
+    assert "return;" in executor.split("void TeleopHardwareTargetExecutor::apply", 1)[1].split(
+        "std::array<AxisLimit, 6> limits",
+        1,
+    )[0]
+
+
+def test_hal_status_reads_fall_back_to_cached_snapshot_when_motion_lock_is_busy() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "LTDMCDriver.h").read_text(encoding="utf-8")
+    motion = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    health_body = motion.split("HalHealth LTDMCDriver::health(double uptimeS) const {", 1)[1].split(
+        "void LTDMCDriver::ensureMotionReturnAllowed",
+        1,
+    )[0]
+    read_state_body = motion.split("MotionState LTDMCDriver::readState() {", 1)[1].split(
+        "void LTDMCDriver::emergencyStop",
+        1,
+    )[0]
+
+    assert "mutable std::mutex snapshotMutex_;" in header
+    assert "MotionState cachedState_{};" in header
+    assert "MotionState cachedStateSnapshot() const;" in header
+    assert "void publishStateSnapshotLocked();" in header
+    assert "HalHealth cachedHealth(double uptimeS) const;" in header
+    assert "std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);" in health_body
+    assert "if (!lock.owns_lock())" in health_body
+    assert "return cachedHealth(uptimeS);" in health_body
+    assert "std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);" in read_state_body
+    assert "if (!lock.owns_lock())" in read_state_body
+    assert "return cachedStateSnapshot();" in read_state_body
+    assert "publishStateSnapshotLocked(state);" in read_state_body
+    assert motion.count("publishStateSnapshotLocked();") >= 4
+
+
+def test_hal_direct_work_origin_home_rejects_estop_before_enable_or_motion() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "LTDMCDriver.h").read_text(encoding="utf-8")
+    motion = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    dispatcher = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    home_all_branch = dispatcher.split('if (name == "motion.home_all")', 1)[1].split(
+        'if (name == "motion.home_origin_side")',
+        1,
+    )[0]
+    home_side_branch = dispatcher.split('if (name == "motion.home_origin_side")', 1)[1].split(
+        'if (name == "motion.enable_side")',
+        1,
+    )[0]
+    home_all_body = motion.split(
+        "void LTDMCDriver::homeAll(\n"
+        "    const std::array<double, 12>& workOriginPulse,\n"
+        "    const std::array<std::array<bool, 6>, 2>& enabledAxes) {",
+        1,
+    )[1].split("void LTDMCDriver::homeOriginSide", 1)[0]
+    home_side_body = motion.split(
+        "void LTDMCDriver::homeOriginSide(\n"
+        "    Side side,\n"
+        "    const std::array<double, 6>& workOriginPulse,\n"
+        "    const std::array<bool, 6>& enabledAxes) {",
+        1,
+    )[1].split("void LTDMCDriver::moveRelativeUi", 1)[0]
+
+    assert "void ensureMotionReturnAllowed() const;" in header
+    assert "void LTDMCDriver::ensureMotionReturnAllowed() const {" in motion
+    assert (
+        'throw std::runtime_error("emergency stop active; acknowledge safety before returning to work origin");'
+        in motion
+    )
+    for branch in (home_all_branch, home_side_branch):
+        assert "motion_.ensureMotionReturnAllowed();" in branch
+        assert branch.index("motion_.ensureMotionReturnAllowed();") < branch.index("nativeTeleop_.stop();")
+        assert branch.index("motion_.ensureMotionReturnAllowed();") < branch.index("motion_.home")
+    for body in (home_all_body, home_side_body):
+        assert "ensureMotionReturnAllowed();" in body
+
+
+def test_hal_native_gripper_manual_endpoint_uses_native_controller_queue() -> None:
+    dispatcher = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    protocol = (REPO_ROOT / "backend" / "hal_client" / "protocol.py").read_text(encoding="utf-8")
+    gripper_backend = (REPO_ROOT / "backend" / "services" / "gripper_backend.py").read_text(encoding="utf-8")
+    controller_header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    branch = dispatcher.split('if (name == "teleop.native.gripper_command" || name == "gripper.command")', 1)[1].split(
+        'if (name == "motion.emergency_stop")',
+        1,
+    )[0]
+
+    assert '"teleop.native.gripper_command": HalCommandSpec("POST", "/teleop/native/gripper_command")' in protocol
+    assert 'await self._hal.command(' in gripper_backend
+    assert '"teleop.native.gripper_command"' in gripper_backend
+    assert "void configureGripper(const JodellGripperConfig& config);" in controller_header
+    assert (
+        "bool commandGripperTarget(Side side, double targetMm, int speed, int torque, "
+        "std::string* message = nullptr);"
+    ) in controller_header
+    assert "nativeTeleop_.configureGripper(config.gripper)" in branch
+    assert "nativeTeleop_.configure(config)" not in branch
+    assert "nativeTeleop_.commandGripperTarget(side, targetMm, speed, torque, &message)" in branch
+    assert "gripper_.commandTarget(side, targetMm, speed, torque, &message)" not in branch
+    assert "jsonNativeTeleopConfig(bodyText)" in branch
+
+
+def test_frontend_hal_native_gripper_commands_are_not_blocked_by_cached_enabled_state() -> None:
+    store = (REPO_ROOT / "frontend" / "src" / "stores" / "telemetry.ts").read_text(encoding="utf-8")
+    settings = (REPO_ROOT / "frontend" / "src" / "views" / "SettingsView.tsx").read_text(encoding="utf-8")
+
+    assert "config.teleop.engine" not in store
+    assert "config.teleop.engine" not in settings
+    assert "const canCommandGripper = true" in settings
+    assert "disabled={!canCommandGripper}" in settings
+
+
+def test_manual_axis_direction_corrections_are_backend_authoritative() -> None:
+    store = (REPO_ROOT / "frontend" / "src" / "stores" / "telemetry.ts").read_text(encoding="utf-8")
+    command_service = (REPO_ROOT / "backend" / "services" / "command_service.py").read_text(encoding="utf-8")
+    normalized = " ".join(store.split())
+    real_mode_body = store.split("issueManualAxisMove: (side, axis, direction) => {", 1)[1].split(
+        "issueManualGripperMove:",
+        1,
+    )[0]
+
+    assert "left: [1, 1, 1, 1, 1, 1]" in normalized
+    assert "right: [1, 1, 1, 1, 1, 1]" in normalized
+    assert '"left": [1, -1, 1, 1, 1, 1]' in command_service
+    assert '"right": [-1, -1, -1, 1, 1, 1]' in command_service
+    assert "const effectiveDirection = manualAxisEffectiveDirection(side, axisIndex, direction)" in real_mode_body
+    assert "manualAxisMoveApi(side, axis, effectiveDirection, step, speedMode)" in real_mode_body
+    assert "manualAxisMoveApi(side, axis, direction, step, speedMode)" not in real_mode_body
+
+
+def test_hal_native_controller_uses_icf_omega_semantic_pose_mapping() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    json_source = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
+
+    assert "omegaPoseToSemantic" in source
+    assert 'std::string mappingMode{"direct"}' in header
+    assert 'config.mappingMode = jsonStringValueOr(body, "mappingMode", config.mappingMode);' in json_source
+    assert 'normalized.mappingMode != "legacy"' in source
+    assert "return {raw[1], raw[0], raw[2], raw[3], raw[5], raw[4]};" in normalized
+    assert "return {raw[0], raw[1], raw[2], raw[3], raw[4], raw[5]};" in normalized
+    assert "const auto rawSemanticPose = omegaPoseToSemantic(hand.pose, config_.mappingMode);" in source
+    assert "const auto semanticPose = kalmanPoseForSide(sourceIndex, rawSemanticPose, dtSec);" in source
+    assert "referencePose_[sourceIndex] = semanticPose;" in source
+    assert "incrementalDeltasUi(sourceIndex, targetSide, semanticPose)" in source
+    assert "velocityDeltasUi(sourceIndex, targetSide, semanticPose, dtSec)" in source
+    assert "const std::array<double, 6>& pose" in header
+
+
+def test_hal_native_default_cross_mapping_matches_stage_one_and_two_targets() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    tick_body = source.split("void NativeTeleopController::tickSide(", 1)[1].split(
+        "void NativeTeleopController::syncIncrementalZeroDeltaUnlocked",
+        1,
+    )[0]
+    normalized = " ".join(tick_body.split())
+
+    assert "bool swapTeleopChannels{true};" in header
+    assert "const Side sourceSide = sideFromIndex(sourceIndex);" in tick_body
+    assert (
+        "const Side targetSide = config_.swapTeleopChannels ? sideFromIndex(1 - sourceIndex) : sourceSide;"
+        in tick_body
+    )
+    assert "const int targetIndex = sideIndex(targetSide);" in tick_body
+    assert "lastDiagnosticTargetSide_[sourceIndex] = targetSide;" in tick_body
+    assert "sourceIndex) : sourceSide; const int targetIndex = sideIndex(targetSide);" in normalized
+
+
+def test_hal_native_incremental_zero_delta_stops_active_target_like_icf_incremental_follow() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    body = source.split("void NativeTeleopController::tickSide(", 1)[1].split(
+        "std::array<double, 6> NativeTeleopController::velocityDeltasUi",
+        1,
+    )[0]
+    zero_branch = body.split("if (!hasMotion(deltas)) {", 1)[1].split("\n  }\n\n", 1)[0]
+
+    assert 'std::string controlMode{"incremental_position"}' in header
+    assert "void syncIncrementalZeroDeltaUnlocked(" in header
+    assert "config_.controlMode == kIncrementalPositionMode" in zero_branch
+    assert (
+        "syncIncrementalZeroDeltaUnlocked(sourceSide, targetSide, sourceIndex, targetIndex, semanticPose"
+        in zero_branch
+    )
+    sync_body = source.split("void NativeTeleopController::syncIncrementalZeroDeltaUnlocked(", 1)[1].split(
+        "std::array<double, 6> NativeTeleopController::velocityDeltasUi",
+        1,
+    )[0]
+    assert "motion_.stopTeleopSide(targetSide);" in sync_body
+    assert "targetActive_[targetIndex] = false;" in sync_body
+    assert "recordZeroStopActionUnlocked(sourceSide, targetSide);" in sync_body
+    assert "referencePose_[sourceIndex] = semanticPose" in sync_body
+    assert "motion_.updateTeleopTargetUi(" not in sync_body
+
+
+def test_hal_native_incremental_motion_updates_target_then_advances_reference() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    body = source.split("void NativeTeleopController::tickSide(", 1)[1].split(
+        "void NativeTeleopController::syncIncrementalZeroDeltaUnlocked(",
+        1,
+    )[0]
+    active_branch = body.split("const auto result = motion_.updateTeleopTargetUi(", 1)[1].split(
+        "}\n\nvoid NativeTeleopController::syncIncrementalZeroDeltaUnlocked(",
+        1,
+    )[0]
+    normalized = " ".join(active_branch.split())
+
+    assert "targetSide," in active_branch
+    assert "deltas," in active_branch
+    assert "config_.translationStepLimitPulse," in active_branch
+    assert "config_.rotationStepLimitPulse," in active_branch
+    assert "config_.translationPulseDeadband," in active_branch
+    assert "config_.rotationPulseDeadband," in active_branch
+    assert "config_.enabledAxes[targetIndex]," in active_branch
+    assert "true," in active_branch
+    assert "const auto limits = effectiveSoftLimits(targetSide, targetIndex);" in body
+    assert "limits," in active_branch
+    assert "targetActive_[targetIndex] = true;" in active_branch
+    assert "recordActionUnlocked(sourceSide, targetSide, result);" in active_branch
+    assert (
+        "if (config_.controlMode == kIncrementalPositionMode) { referencePose_[sourceIndex] = semanticPose; }"
+        in normalized
+    )
+
+
+def test_hal_native_teleop_rotation_work_limits_are_relative_to_home_reference() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    json_source = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
+    backend = (REPO_ROOT / "backend" / "services" / "teleop_mapping.py").read_text(encoding="utf-8")
+    normalized_source = " ".join(source.split())
+
+    assert "std::array<std::array<double, 6>, 2> workOriginPulse" in header
+    assert "std::array<bool, 2> workOriginValid" in header
+    assert "std::array<std::array<double, 6>, 2> homeReferencePulse" in header
+    assert "std::array<bool, 2> homeReferenceValid" in header
+    assert "bool rotationWorkLimitEnabled" in header
+    assert "std::array<std::array<AxisLimit, 6>, 2> rotationWorkLimits" in header
+    assert "std::array<AxisLimit, 6> effectiveSoftLimits(Side targetSide, int targetIndex) const" in header
+    assert "pulseToUi(config_.homeReferencePulse[targetIndex][axisIndex], targetSide, axis)" in source
+    assert "limits[axisIndex].min += originUi" not in source
+    assert "limits[axisIndex].max += originUi" not in source
+    assert "std::max(limits[axisIndex].min, originUi + workLimit.min)" in source
+    assert "std::min(limits[axisIndex].max, originUi + workLimit.max)" in source
+    assert "const auto limits = effectiveSoftLimits(targetSide, targetIndex);" in normalized_source
+    assert 'jsonBoolValue(body, "leftWorkOriginValid", config.workOriginValid[0])' in json_source
+    assert 'jsonNumberArray6(body, "leftWorkOriginPulse", config.workOriginPulse[0])' in json_source
+    assert 'jsonBoolValue(body, "leftHomeReferenceValid", config.homeReferenceValid[0])' in json_source
+    assert 'jsonNumberArray6(body, "leftHomeReferencePulse", config.homeReferencePulse[0])' in json_source
+    assert 'jsonBoolValue(body, "rotationWorkLimitEnabled", config.rotationWorkLimitEnabled)' in json_source
+    assert 'jsonAxisLimits(body, "leftRotationWorkLimitMin", "leftRotationWorkLimitMax"' in json_source
+    assert '"leftWorkOriginPulse": self._work_origin_pulse("left", config)' in backend
+    assert '"leftHomeReferencePulse": self._home_reference_pulse("left", config)' in backend
+    assert '"rightWorkOriginValid": self._work_origin_valid("right", config)' in backend
+    assert '"leftRotationWorkLimitMin": self._rotation_work_limit_arrays("left", config)[0]' in backend
+
+
+def test_hal_native_incremental_continuous_mode_filters_small_rotation_noise() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    incremental_body = source.split("std::array<double, 6> NativeTeleopController::incrementalDeltasUi(", 1)[1].split(
+        "long NativeTeleopController::applyContinuousPulseGate",
+        1,
+    )[0]
+    continuous_branch = incremental_body.split("if (config_.continuousIncrementMode) {", 1)[1].split(
+        "} else if (rotation) {",
+        1,
+    )[0]
+    normalized = " ".join(continuous_branch.split())
+
+    assert "const bool aboveInputThreshold = std::abs(rawDelta) >= inputThreshold;" in incremental_body
+    assert "filteredDelta = aboveInputThreshold ? rawDelta : 0.0;" in normalized
+    assert "std::abs(rawDelta) > 1e-12 ? rawDelta : 0.0" not in continuous_branch
+
+
+def test_hal_native_gripper_follow_uses_physical_hands_without_arm_logical_gate() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    body = source.split("void NativeTeleopController::tickGrippers(", 1)[1].split(
+        "void NativeTeleopController::enqueueGripperCommand",
+        1,
+    )[0]
+
+    assert "const int sourceIndex = gripperSourceIndex(targetIndex);" in body
+    assert "if (!logicalConnected_[sourceIndex])" not in body
+
+
+def test_hal_native_gripper_defaults_follow_operator_to_hardware_mapping() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+
+    assert 'std::array<std::string, 2> gripperSourceHand{{"PhysicalRight", "PhysicalLeft"}};' in header
+
+
+def test_hal_native_status_reports_gripper_source_diagnostics() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    tick_body = source.split("void NativeTeleopController::tickGrippers(", 1)[1].split(
+        "void NativeTeleopController::enqueueGripperCommand",
+        1,
+    )[0]
+    status_body = source.split("std::string NativeTeleopController::statusJson() const", 1)[1].split(
+        "void NativeTeleopController::loop()",
+        1,
+    )[0]
+
+    assert "std::array<double, 2> gripperSourceGapMm_" in header
+    assert "std::array<bool, 2> gripperSourceGapAvailable_" in header
+    assert "gripperSourceGapAvailable_[targetIndex] = hand.gripperGapAvailable;" in tick_body
+    assert "gripperSourceGapMm_[targetIndex] = hand.gripperGapAvailable ? hand.gripperGap * 1000.0 : -1.0;" in tick_body
+    assert 'sourceHand\\":\\"' in status_body
+    assert 'sourceGapAvailable\\":' in status_body
+    assert 'sourceGapMm\\":' in status_body
+
+
+def test_hal_native_incremental_below_threshold_input_stops_active_target_like_icf() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    body = source.split("void NativeTeleopController::tickSide(", 1)[1].split(
+        "void NativeTeleopController::syncIncrementalZeroDeltaUnlocked(",
+        1,
+    )[0]
+    no_motion_branch = body.split("if (!hasMotion(deltas)) {", 1)[1].split(
+        "\n  }\n\n  const auto result = motion_.updateTeleopTargetUi(",
+        1,
+    )[0]
+
+    assert '"incremental input below output threshold stopped"' in no_motion_branch
+    assert 'const auto stopMessage = incrementalInputActive_[sourceIndex]' in no_motion_branch
+    assert (
+        'syncIncrementalZeroDeltaUnlocked(sourceSide, targetSide, sourceIndex, targetIndex, semanticPose, stopMessage)'
+        in no_motion_branch
+    )
+    assert "return;" in no_motion_branch
+
+
+def test_hal_native_incremental_gated_input_advances_reference_and_syncs_target() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    tick_body = source.split("void NativeTeleopController::tickSide(", 1)[1].split(
+        "std::array<double, 6> NativeTeleopController::velocityDeltasUi",
+        1,
+    )[0]
+    incremental_body = source.split("std::array<double, 6> NativeTeleopController::incrementalDeltasUi(", 1)[1].split(
+        "long NativeTeleopController::applyContinuousPulseGate",
+        1,
+    )[0]
+    normalized_tick = " ".join(tick_body.split())
+    normalized_incremental = " ".join(incremental_body.split())
+
+    assert "std::array<bool, 2> incrementalInputActive_" in header
+    assert "incrementalInputActive_[sourceIndex] = false;" in normalized_incremental
+    assert "incrementalInputActive_[sourceIndex] = true;" in normalized_incremental
+    assert "continuousPulseCarry_" in header
+    assert "auto& pulseCarry = continuousPulseCarry_[sourceIndex][axisIndex];" in normalized_incremental
+    assert "pulseCarry += requestedPulseFloat;" in normalized_incremental
+    assert "pulseCarry -= requestedPulse;" in normalized_incremental
+    assert '"incremental input below output threshold stopped"' in normalized_tick
+    assert (
+        "if (incrementalInputActive_[sourceIndex]) { referencePose_[sourceIndex] = semanticPose;"
+        not in normalized_tick
+    )
+    assert (
+        "setBlockerUnlocked(sourceIndex, \"active\", \"incremental input below output threshold\"); return; }"
+        not in normalized_tick
+    )
+    assert (
+        "syncIncrementalZeroDeltaUnlocked(sourceSide, targetSide, sourceIndex, targetIndex, semanticPose, stopMessage);"
+        in normalized_tick
+    )
+    zero_branch = normalized_tick.split("if (!hasMotion(deltas)) {", 1)[1].split(
+        "setBlockerUnlocked(sourceIndex, \"active\", \"inside native velocity deadzone\");",
+        1,
+    )[0]
+    assert (
+        "syncIncrementalZeroDeltaUnlocked(sourceSide, targetSide, sourceIndex, targetIndex, semanticPose"
+        in zero_branch
+    )
+
+
+def test_hal_native_continuous_increment_preserves_subthreshold_pulse_carry() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    incremental_body = source.split("std::array<double, 6> NativeTeleopController::incrementalDeltasUi(", 1)[1].split(
+        "long NativeTeleopController::applyContinuousPulseGate",
+        1,
+    )[0]
+    continuous_branch = incremental_body.split("if (config_.continuousIncrementMode) {", 1)[1].split(
+        "} else if (rotation) {",
+        1,
+    )[0]
+    normalized = " ".join(continuous_branch.split())
+    pulse_gate_body = incremental_body.split("auto& pulseCarry = continuousPulseCarry_[sourceIndex][axisIndex];", 1)[1]
+
+    assert "filteredDelta = aboveInputThreshold ? rawDelta : 0.0;" in normalized
+    assert "pulseCarry += requestedPulseFloat;" in pulse_gate_body
+    assert "pulseCarry -= requestedPulse;" in pulse_gate_body
+
+
+def test_hal_native_records_zero_delta_action_after_incremental_stop() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    body = source.split("void NativeTeleopController::recordZeroStopActionUnlocked(", 1)[1].split(
+        "void NativeTeleopController::recordActionUnlocked",
+        1,
+    )[0]
+
+    assert "recordZeroStopActionUnlocked" in header
+    assert "NativeTeleopAction action;" in body
+    assert "action.side = targetSide;" in body
+    assert "action.sourceSide = sourceSide;" in body
+    assert "lastAction_ = action;" in body
+    assert "actionHistory_.push_back(action);" in body
+
+
+def test_hal_native_action_history_exposes_pulse_and_limit_diagnostics() -> None:
+    hal_types = (REPO_ROOT / "hal" / "include" / "HalTypes.h").read_text(encoding="utf-8")
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    record_body = source.split("void NativeTeleopController::recordActionUnlocked(", 1)[1].split(
+        "void NativeTeleopController::recordZeroStopActionUnlocked",
+        1,
+    )[0]
+    append_body = source.split("void appendAction(", 1)[1].split("bool hasMotion", 1)[0]
+
+    assert "std::array<double, 6> requestedDeltaPulse{};" in header
+    assert "std::array<double, 6> appliedDeltaPulse{};" in header
+    assert "std::array<double, 6> targetPulse{};" in header
+    assert "std::array<double, 6> currentPulse{};" in header
+    assert "std::array<double, 6> launchDeltaPulse{};" in header
+    assert "std::array<double, 6> updateReturn{};" in header
+    assert "std::array<double, 6> stopReason{};" in hal_types
+    assert "std::array<double, 6> axisIoStatus{};" in hal_types
+    assert "std::array<double, 6> stopReason{};" in header
+    assert "std::array<double, 6> axisIoStatus{};" in header
+    assert "std::array<bool, 6> movingBefore{};" in header
+    assert "std::array<bool, 6> moveStarted{};" in header
+    assert "std::array<bool, 6> clipped{};" in header
+    assert "action.requestedDeltaPulse = result.requestedDeltaPulse;" in record_body
+    assert "action.appliedDeltaPulse = result.appliedDeltaPulse;" in record_body
+    assert "action.targetPulse = result.targetPulse;" in record_body
+    assert "action.currentPulse = result.currentPulse;" in record_body
+    assert "action.launchDeltaPulse = result.launchDeltaPulse;" in record_body
+    assert "action.updateReturn = result.updateReturn;" in record_body
+    assert "action.stopReason = result.stopReason;" in record_body
+    assert "action.axisIoStatus = result.axisIoStatus;" in record_body
+    assert "action.movingBefore = result.movingBefore;" in record_body
+    assert "action.moveStarted = result.moveStarted;" in record_body
+    assert "action.clipped = result.clipped;" in record_body
+    assert '\\"requestedDeltaPulse\\":' in append_body
+    assert '\\"appliedDeltaPulse\\":' in append_body
+    assert '\\"targetPulse\\":' in append_body
+    assert '\\"currentPulse\\":' in append_body
+    assert '\\"launchDeltaPulse\\":' in append_body
+    assert '\\"updateReturn\\":' in append_body
+    assert '\\"stopReason\\":' in append_body
+    assert '\\"axisIoStatus\\":' in append_body
+    assert '\\"movingBefore\\":' in append_body
+    assert '\\"moveStarted\\":' in append_body
+    assert '\\"clipped\\":' in append_body
+
+
+def test_hal_native_dds_target_publish_records_action_history() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    tick_body = source.split("if (hardwareTargetPublisher_) {", 1)[1].split(
+        "const auto result = motion_.updateTeleopTargetUi(",
+        1,
+    )[0]
+    record_marker = "void NativeTeleopController::recordPublishedTargetActionUnlocked("
+
+    assert "void recordPublishedTargetActionUnlocked(" in header
+    assert record_marker in source
+
+    record_body = source.split(record_marker, 1)[1].split(
+        "void NativeTeleopController::recordActionUnlocked",
+        1,
+    )[0]
+
+    assert "recordPublishedTargetActionUnlocked(sourceSide, target, sourceIndex);" in tick_body
+    assert tick_body.index("hardwareTargetPublisher_(target);") < tick_body.index(
+        "recordPublishedTargetActionUnlocked(sourceSide, target, sourceIndex);"
+    )
+    assert tick_body.index("recordPublishedTargetActionUnlocked(sourceSide, target, sourceIndex);") < tick_body.index(
+        "return;"
+    )
+    assert "action.ts = static_cast<std::int64_t>(target.stampUnixMs);" in record_body
+    assert "action.monotonicS = static_cast<double>(target.stampMonotonicMs) / 1000.0;" in record_body
+    assert "action.deltas = target.deltas;" in record_body
+    assert "action.deltaVector[offset + i] = target.deltas[i];" in record_body
+    assert "lastAction_ = action;" in record_body
+    assert "actionHistory_.push_back(action);" in record_body
+
+
+def test_ltdmc_teleop_reports_axis_launch_and_tracking_state() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    body = source.split("TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(", 1)[1].split(
+        "void LTDMCDriver::stopTeleopSide",
+        1,
+    )[0]
+
+    assert "result.currentPulse[axisIndex] = actualPulse;" in body
+    assert "result.movingBefore[axisIndex] = moving;" in body
+    assert "result.axisIoStatus[axisIndex] = static_cast<double>(dmcAxisIoStatus(card, axisNo));" in body
+    assert "dmcGetStopReason(card, axisNo, &stopReason)" in body
+    assert "result.stopReason[axisIndex] = static_cast<double>(stopReason);" in body
+    assert "result.moveStarted[axisIndex] = shouldLaunchMove;" in body
+    assert (
+        "result.launchDeltaPulse[axisIndex] = shouldLaunchMove ? static_cast<double>(launchDeltaPulse) : 0.0;"
+        in body
+    )
+    assert (
+        "applyMotionProfile(card, axisNo, startVelocityPulse, maxVelocityPulse, tacc, tdec, launchDeltaPulse)"
+        in body
+    )
+
+
+def test_hal_native_status_exposes_per_hand_input_gate_diagnostics() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    status_body = source.split("std::string NativeTeleopController::statusJson() const", 1)[1].split(
+        "void NativeTeleopController::loop",
+        1,
+    )[0]
+    tick_body = source.split("void NativeTeleopController::tickSide(", 1)[1].split(
+        "std::array<double, 6> NativeTeleopController::velocityDeltasUi",
+        1,
+    )[0]
+    incremental_body = source.split("std::array<double, 6> NativeTeleopController::incrementalDeltasUi(", 1)[1].split(
+        "long NativeTeleopController::applyContinuousPulseGate",
+        1,
+    )[0]
+
+    assert "lastSemanticPose_" in header
+    assert "lastRawDelta_" in header
+    assert "lastFilteredDelta_" in header
+    assert "lastRequestedPulse_" in header
+    assert "lastEmittedPulse_" in header
+    assert "lastOutputDeltaUi_" in header
+    assert "lastDiagnosticTargetSide_" in header
+    assert "lastSemanticPose_[sourceIndex] = semanticPose;" in tick_body
+    assert "lastDiagnosticTargetSide_[sourceIndex] = targetSide;" in tick_body
+    assert "lastRawDelta_[sourceIndex][axisIndex] = rawDelta;" in incremental_body
+    assert "lastFilteredDelta_[sourceIndex][axisIndex] = filteredDelta;" in incremental_body
+    assert "lastRequestedPulse_[sourceIndex][axisIndex] = requestedPulseFloat;" in incremental_body
+    assert "lastEmittedPulse_[sourceIndex][axisIndex] = requestedPulse;" in incremental_body
+    assert "lastOutputDeltaUi_[sourceIndex][axisIndex] = deltas[axisIndex];" in incremental_body
+    assert '\\"inputs\\":{' in status_body
+    assert 'appendInputDiagnostic(' in status_body
+    assert '\\"semanticPose\\":' in source
+    assert '\\"referencePose\\":' in source
+    assert '\\"rawDelta\\":' in source
+    assert '\\"filteredDelta\\":' in source
+    assert '\\"requestedPulse\\":' in source
+    assert '\\"emittedPulse\\":' in source
+    assert '\\"outputDeltaUi\\":' in source
+    assert '\\"targetSide\\":' in source
+
+
+def test_hal_native_incremental_rotation_spike_recaptures_reference_before_motion_update() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    tick_body = source.split("void NativeTeleopController::tickSide(", 1)[1].split(
+        "void NativeTeleopController::syncIncrementalZeroDeltaUnlocked",
+        1,
+    )[0]
+    guard_body = source.split("bool NativeTeleopController::suppressIncrementalRotationSpikeUnlocked(", 1)[1].split(
+        "std::array<AxisLimit, 6> NativeTeleopController::effectiveSoftLimits",
+        1,
+    )[0]
+
+    assert "bool suppressIncrementalRotationSpikeUnlocked(" in header
+    assert "constexpr double kIncrementalRotationSpikeGuardDeg = 5.0;" in source
+    assert "suppressIncrementalRotationSpikeUnlocked(" in tick_body
+    assert tick_body.index("suppressIncrementalRotationSpikeUnlocked(") < tick_body.index(
+        "motion_.updateTeleopTargetUi("
+    )
+    assert "axisIndex = 3" in guard_body
+    assert "std::abs(rawDelta) <= kIncrementalRotationSpikeGuardDeg" in guard_body
+    assert "referencePose_[sourceIndex] = semanticPose;" in guard_body
+    assert "motion_.stopTeleopSide(targetSide);" in guard_body
+    assert "targetActive_[targetIndex] = false;" in guard_body
+    assert (
+        'setBlockerUnlocked(sourceIndex, "blocked", '
+        '"incremental rotation input spike suppressed; reference recaptured");'
+    ) in guard_body
+
+
+def test_hal_native_throttles_repeated_zero_delta_actions() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    body = source.split("void NativeTeleopController::recordZeroStopActionUnlocked(", 1)[1].split(
+        "int NativeTeleopController::gripperSourceIndex",
+        1,
+    )[0]
+
+    assert "if (hasLastAction_ && !hasMotion(lastAction_.deltas))" in body
+    assert "return;" in body
+
+
+def test_hal_native_tick_isolates_one_hand_errors_from_other_hand_and_grippers() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    tick_body = source.split("void NativeTeleopController::tick(double dtSec)", 1)[1].split(
+        "void NativeTeleopController::tickSideBestEffort",
+        1,
+    )[0]
+    helper_body = source.split("void NativeTeleopController::tickSideBestEffort", 1)[1].split(
+        "void NativeTeleopController::tickSide(",
+        1,
+    )[0]
+
+    assert "void tickSideBestEffort(int sourceIndex, const Omega7State& hand, double dtSec);" in header
+    assert "tickSideBestEffort(0, hands[0], dtSec);" in tick_body
+    assert "tickSideBestEffort(1, hands[1], dtSec);" in tick_body
+    assert tick_body.index("tickSideBestEffort(0, hands[0], dtSec);") < tick_body.index(
+        "tickSideBestEffort(1, hands[1], dtSec);"
+    )
+    assert "tickGrippers(hands);" in tick_body
+    assert tick_body.index("tickSideBestEffort(1, hands[1], dtSec);") < tick_body.index("tickGrippers(hands);")
+    assert "try {" in helper_body
+    assert "tickSide(sourceIndex, hand, dtSec);" in helper_body
+    assert "catch (const std::exception& exc)" in helper_body
+    assert "lastError_ = exc.what();" in helper_body
+    assert 'setBlockerUnlocked(sourceIndex, "blocked", exc.what());' in helper_body
+
+
+def test_hal_native_zero_increment_hard_stops_active_target() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    body = source.split("void NativeTeleopController::syncIncrementalZeroDeltaUnlocked(", 1)[1].split(
+        "std::array<AxisLimit, 6> NativeTeleopController::effectiveSoftLimits",
+        1,
+    )[0]
+
+    assert "if (targetActive_[targetIndex]) {" in body
+    assert "motion_.stopTeleopSide(targetSide);" in body
+    assert "targetActive_[targetIndex] = false;" in body
+    assert "recordZeroStopActionUnlocked(sourceSide, targetSide);" in body
+    assert "motion_.updateTeleopTargetUi(" not in body
+
+
+def test_ltdmc_native_teleop_reattaches_moving_axis_without_reprofiling_busy_axis() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    body = source.split("TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(", 1)[1].split(
+        "void LTDMCDriver::stopTeleopSide",
+        1,
+    )[0]
+
+    assert "const bool reattachMovingTarget = moving && !teleopTargetActive_[index];" in body
+    assert "if (reattachMovingTarget) {" in body
+    reattach_body = body.split("if (reattachMovingTarget) {", 1)[1].split("}", 1)[0]
+    assert "teleopTargetPulse_[index] = actualPulse;" in reattach_body
+    assert "teleopTargetActive_[index] = true;" in reattach_body
+    assert "const bool shouldLaunchMove = !moving;" in body
+    assert body.index("const bool reattachMovingTarget") < body.index("const auto basePulse")
+    assert body.index("const bool shouldLaunchMove") < body.index("applyMotionProfile(")
+
+
+def test_ltdmc_native_teleop_accumulates_active_target_with_bounded_lead() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    normalized = " ".join(source.split())
+    body = source.split("TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(", 1)[1].split(
+        "void LTDMCDriver::stopTeleopSide",
+        1,
+    )[0]
+
+    assert "long maxTeleopTargetLeadPulse(" in source
+    assert "double clampTeleopTargetLead(" in source
+    assert "const bool reversingTargetLead =" in body
+    assert (
+        "const auto targetBasePulse = teleopTargetActive_[index] && !reversingTargetLead "
+        "? teleopTargetPulse_[index] : actualPulse;"
+        in normalized
+    )
+    assert "const auto targetLeadPulse = maxTeleopTargetLeadPulse(" in body
+    assert "const auto unclippedTargetPulse = targetBasePulse + static_cast<double>(deltaPulse);" in body
+    assert (
+        "const auto leadLimitedTargetPulse = clampTeleopTargetLead(actualPulse, targetPulse, targetLeadPulse);"
+        in body
+    )
+    assert "const auto launchDeltaPulse = static_cast<long>(std::llround(appliedTargetPulse - actualPulse));" in body
+    assert body.index("const bool reversingTargetLead") < body.index("const auto unclippedTargetPulse")
+
+
+def test_ltdmc_native_teleop_relaunches_when_target_update_misses_pmove_window() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "LTDMCDriver.cpp").read_text(encoding="utf-8")
+    body = source.split("TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(", 1)[1].split(
+        "void LTDMCDriver::stopTeleopSide",
+        1,
+    )[0]
+
+    assert "bool teleopTargetUpdateMissedWindow(int updateReturn)" in source
+    assert "const auto updateReturn = updateTeleopTargetBestEffort(card, axisNo, updateTargetPulse);" in body
+    assert "if (moving && teleopTargetUpdateMissedWindow(updateReturn)) {" in body
+    missed_window_branch = body.split("if (moving && teleopTargetUpdateMissedWindow(updateReturn)) {", 1)[1].split(
+        "#else",
+        1,
+    )[0]
+    assert (
+        "const auto relaunchCurrentPulse = static_cast<double>(dmcGetPosition(card, axisNo));"
+        in missed_window_branch
+    )
+    assert "const auto relaunchDeltaPulse =" in missed_window_branch
+    assert (
+        "applyMotionProfile(card, axisNo, startVelocityPulse, maxVelocityPulse, tacc, tdec, relaunchDeltaPulse)"
+        in missed_window_branch
+    )
+    assert "result.moveStarted[axisIndex] = true;" in missed_window_branch
+    assert "result.launchDeltaPulse[axisIndex] = static_cast<double>(relaunchDeltaPulse);" in missed_window_branch
+
+
+def test_omega7_gripper_gap_uses_direct_encoder_and_angle_fallbacks() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "Omega7Driver.cpp").read_text(encoding="utf-8")
+    read_body = source.split("std::array<Omega7State, 2> Omega7Driver::readState()", 1)[1].split(
+        "void Omega7Driver::setGravityCompensation",
+        1,
+    )[0]
+
+    assert "using DhdGetGripperAngleDeg" in source
+    assert "using DhdGetGripperEncoder" in source
+    assert "using DhdGripperEncoderToGap" in source
+    assert 'GetProcAddress(dhdModule, "dhdGetGripperAngleDeg")' in source
+    assert 'GetProcAddress(dhdModule, "dhdGetGripperEncoder")' in source
+    assert 'GetProcAddress(dhdModule, "dhdGripperEncoderToGap")' in source
+    assert "constexpr double kOmega7GripperOpenDeg = 30.0;" in source
+    assert "constexpr double kOmega7GripperGapMinReliableMm = 0.001;" in source
+    assert "dhdGetGripperGap" in read_body
+    assert "dhdGripperEncoderToGap" in read_body
+    assert "dhdGetGripperAngleDeg" in read_body
+    assert "item.gripperGap = selectedGapMm / 1000.0;" in read_body
+    assert "item.gripperGapAvailable = haveGap;" in read_body
+
+
+def test_settings_gripper_teleop_uses_hal_native_status_only() -> None:
+    source = (REPO_ROOT / "frontend" / "src" / "views" / "SettingsView.tsx").read_text(encoding="utf-8")
+
+    assert "const handleTeleopToggle" not in source
+    assert "startGripperTeleop" not in source
+    assert "stopGripperTeleop" not in source
+    assert "fetchGripperTeleopStatus" not in source
+    assert "主手连接后 HAL-native 会自动接管夹爪" in source
+
+
+def test_hal_native_incremental_honors_continuous_increment_settings() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    json_source = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
+    payload = (REPO_ROOT / "backend" / "services" / "teleop_mapping.py").read_text(encoding="utf-8")
+    incremental_body = source.split("std::array<double, 6> NativeTeleopController::incrementalDeltasUi(", 1)[1].split(
+        "void NativeTeleopController::tickGrippers",
+        1,
+    )[0]
+
+    assert "bool continuousIncrementMode{true}" in header
+    assert "double translationInputEpsilonM{0.00002}" in header
+    assert "double rotationInputEpsilonDeg{0.03}" in header
+    assert "double translationMinActivePulse{3.0}" in header
+    assert "double rotationMinActivePulse{3.0}" in header
+    assert "int continuousMicroConfirmTicks{0}" in header
+    assert "continuousDirection_" in header
+    assert "continuousStreak_" in header
+    assert "applyContinuousPulseGate" in header
+    assert 'jsonBoolValue(body, "continuousIncrementMode"' in json_source
+    assert 'jsonNumberValue(body, "translationInputEpsilon"' in json_source
+    assert '"continuousIncrementMode": self._continuous_increment_mode(config)' in payload
+    assert '"translationInputEpsilon": self._translation_input_epsilon_m(config)' in payload
+    assert "config_.continuousIncrementMode" in incremental_body
+    assert "config_.translationInputEpsilonM" in incremental_body
+    assert "config_.rotationInputEpsilonDeg" in incremental_body
+    assert "applyContinuousPulseGate(" in incremental_body
+    assert "kRotationInputEpsilonFloorDeg" not in source
+    assert "kTranslationMicroConfirmUpperM" not in source
+    assert "kRotationMicroConfirmUpperDeg" not in source
+    assert "kContinuousMicroConfirmTicksFloor" not in source
+    assert "std::max(0.0, normalized.rotationInputEpsilonDeg)" in source
+    assert "std::max(0, normalized.continuousMicroConfirmTicks)" in source
+    assert "if (config_.continuousMicroConfirmTicks <= 0)" in source
+
+
+def test_hal_native_incremental_uses_target_stage_impulse_and_units() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    tick_body = source.split("void NativeTeleopController::tickSide(", 1)[1].split(
+        "std::array<double, 6> NativeTeleopController::velocityDeltasUi",
+        1,
+    )[0]
+    incremental_body = source.split("std::array<double, 6> NativeTeleopController::incrementalDeltasUi(", 1)[1].split(
+        "void NativeTeleopController::tickGrippers",
+        1,
+    )[0]
+    normalized = " ".join(incremental_body.split())
+
+    assert "config_.swapTeleopChannels ? sideFromIndex(1 - sourceIndex) : sourceSide" in tick_body
+    assert "const int targetIndex = sideIndex(targetSide);" in incremental_body
+    assert "config_.impulseCoeff[targetIndex][axisIndex]" in incremental_body
+    assert "config_.impulseCoeff[sourceIndex][axisIndex]" not in incremental_body
+    assert "config_.axisOutputScale[targetIndex][axisIndex]" in incremental_body
+    assert "pulsePerUnit(targetSide, axis)" in incremental_body
+    assert (
+        "const double physical = requestedPulse / unitPulse; "
+        "deltas[axisIndex] = rotation ? physical : physical * 1000.0;"
+    ) in normalized
+    mapped_direction_body = source.split("double NativeTeleopController::mappedDirection", 1)[1].split(
+        "void NativeTeleopController::setBlockerUnlocked",
+        1,
+    )[0]
+    assert "const int targetIndex = sideIndex(targetSide);" in mapped_direction_body
+    assert "config_.impulseCoeff[targetIndex][axisIndex]" in mapped_direction_body
+    assert "config_.impulseCoeff[sourceIndex][axisIndex]" not in mapped_direction_body
+
+
+def test_hal_native_kalman_filter_keeps_status_schema_and_gates_pose_source() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    json_source = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
+    payload = (REPO_ROOT / "backend" / "services" / "teleop_mapping.py").read_text(encoding="utf-8")
+    status_body = source.split("std::string NativeTeleopController::statusJson() const", 1)[1].split(
+        "void NativeTeleopController::loop",
+        1,
+    )[0]
+    tick_body = source.split("void NativeTeleopController::tickSide(", 1)[1].split(
+        "void NativeTeleopController::syncIncrementalZeroDeltaUnlocked",
+        1,
+    )[0]
+
+    assert "bool kalmanFilterEnabled{false}" in header
+    assert "double kalmanBeta{0.05}" in header
+    assert "double kalmanDtMaxSec{0.05}" in header
+    assert "double kalmanTranslationMeasurementVariance{1e-8}" in header
+    assert "double kalmanRotationMeasurementVariance{0.04}" in header
+    assert "double kalmanTranslationIntentVelocityThreshold{0.0005}" in header
+    assert "double kalmanRotationIntentVelocityThreshold{0.5}" in header
+    assert "struct KalmanAxisState" in header
+    assert "kalmanPoseForSide" in header
+    assert "kalmanIntentWeight" in header
+    assert "applyKalmanIntentWeights" in header
+    assert "lastIntentWeight_" in header
+    assert "kalmanStates_" in header
+    assert 'jsonBoolValue(body, "kalmanFilterEnabled", config.kalmanFilterEnabled)' in json_source
+    assert 'jsonNumberValue(body, "kalmanBeta", config.kalmanBeta)' in json_source
+    assert (
+        'jsonNumberValue(body, "kalmanRotationMeasurementVariance", '
+        "config.kalmanRotationMeasurementVariance)"
+    ) in json_source
+    assert 'jsonNumberValue(body, "kalmanTranslationIntentVelocityThreshold"' in json_source
+    assert '"kalmanFilterEnabled": bool(teleop.get("kalmanFilterEnabled", False))' in payload
+    assert '"kalmanBeta": float(teleop.get("kalmanBeta", ICF_TELEOP_DEFAULTS["kalmanBeta"]))' in payload
+    assert '"kalmanTranslationIntentVelocityThreshold": float(' in payload
+    assert "const auto rawSemanticPose = omegaPoseToSemantic(hand.pose, config_.mappingMode);" in tick_body
+    assert "const auto semanticPose = kalmanPoseForSide(sourceIndex, rawSemanticPose, dtSec);" in tick_body
+    assert "lastSemanticPose_[sourceIndex] = semanticPose;" in tick_body
+    assert "config_.kalmanBeta" in source
+    assert "config_.kalmanRotationMeasurementVariance" in source
+    assert "double wrapKalmanRotationResidualDeg(double residualDeg)" in source
+    assert "gamma = wrapKalmanRotationResidualDeg(gamma);" in source
+    assert "const double controlInput = 0.0;" in source
+    assert "double gamma = measurement - predictedMeasurement;" in source
+    assert "const double hPredictedPHt = predictedP00;" in source
+    assert "const double pCrossSymmetric = 0.5 * (state.p01 + state.p10);" in source
+    assert "const double qCrossSymmetric = 0.5 * (state.q01 + state.q10);" in source
+    assert "const double q00Adaptive = gainPosition * gamma * gamma * gainPosition;" in source
+    assert "const double rAdaptive = gamma * gamma - hPredictedPHt;" in source
+    assert "const double velocityConfidence =" in source
+    assert "if (speed >= threshold)" in source
+    assert "deltas = applyKalmanIntentWeights(sourceIndex, deltas);" in source
+    assert "kalman" not in status_body.lower()
+    assert "lastSemanticPose_" in status_body
+
+
+def test_hal_native_jodell_driver_binds_required_vendor_symbols() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "JodellGripperDriver.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "JodellGripperDriver.cpp").read_text(encoding="utf-8")
+
+    assert "class JodellGripperDriver" in header
+    assert "serialOperation" in source
+    assert "clawEnable" in source
+    assert "runWithParam" in source
+    assert "getClawCurrentLocation" in source
+    assert "COM8" in source
+    assert "COM9" in source
+
+
+def test_hal_native_gripper_follows_physical_hand_even_without_arm_logical_activation() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    body = source.split("void NativeTeleopController::tickGrippers(", 1)[1].split(
+        "double NativeTeleopController::mappedDirection",
+        1,
+    )[0]
+
+    assert "logicalConnected_[sourceIndex]" not in body
+    assert "const auto& hand = hands[sourceIndex];" in body
+    assert body.index("const auto& hand = hands[sourceIndex];") < body.index("enqueueGripperCommand")
+
+
+def test_hal_native_gripper_surfaces_command_status_and_retries_port_open() -> None:
+    controller_header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    controller_source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    gripper_source = (REPO_ROOT / "hal" / "src" / "JodellGripperDriver.cpp").read_text(encoding="utf-8")
+    gripper_header = (REPO_ROOT / "hal" / "include" / "JodellGripperDriver.h").read_text(encoding="utf-8")
+    normalized_controller = " ".join(controller_source.split())
+    normalized_gripper = " ".join(gripper_source.split())
+
+    assert "std::array<bool, 2> gripperLastCommandOk_" in controller_header
+    assert "std::array<std::string, 2> gripperLastMessage_" in controller_header
+    assert "std::array<double, 2> gripperPositionsMm_" in controller_header
+    assert '\\"grippers\\":{\\"left\\"' in controller_source
+    assert (
+        "enqueueGripperCommand(targetIndex, targetSide, targetMm, config_.gripper.speed, config_.gripper.torque)"
+        in normalized_controller
+    )
+    assert "void NativeTeleopController::gripperLoop()" in controller_source
+    assert "const bool ok = gripper_.commandTarget" in normalized_controller
+    assert "command.torque, &message, false);" in normalized_controller
+    assert "gripperLastCommandOk_[command.targetIndex] = ok;" in normalized_controller
+    assert "gripperLastMessage_[command.targetIndex] = message;" in normalized_controller
+    assert "gripperPositionsMm_ = gripperPositions;" in normalized_controller
+    assert '",\\"positionMm\\":' in controller_source
+    assert "positionMmSnapshot" in gripper_header
+    assert "const auto gripperPositions = gripper_.positionMmSnapshot(gripperPositionsMm_);" in controller_source
+    assert "const auto gripperPositions = gripper_.positionMm();" not in controller_source
+    assert "std::array<double, 2> positionMm_" in gripper_header
+    assert "getClawCurrentLocation_(slave)" in gripper_source
+    assert "lastError_ = std::string(\"native gripper \")" not in normalized_controller
+    assert "constexpr auto kPortSwitchSettleMs = std::chrono::milliseconds(50);" in gripper_source
+    assert "for (int attempt = 0; attempt < 5; ++attempt)" in normalized_gripper
+    assert "std::this_thread::sleep_for(kPortSwitchSettleMs);" in normalized_gripper
+    assert "(void)serialOperation_(port, config_.baudrate, 0);" in normalized_gripper
+
+
+def test_hal_native_gripper_io_is_decoupled_from_motion_loop() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    tick_body = source.split("void NativeTeleopController::tickGrippers(", 1)[1].split(
+        "void NativeTeleopController::enqueueGripperCommand",
+        1,
+    )[0]
+    assert "void NativeTeleopController::gripperLoop()" in source
+    loop_body = source.split("void NativeTeleopController::gripperLoop()", 1)[1].split(
+        "double NativeTeleopController::mappedDirection",
+        1,
+    )[0]
+
+    assert "#include <condition_variable>" in header
+    assert "std::condition_variable gripperCv_" in header
+    assert "std::thread gripperWorker_" in header
+    assert "std::array<PendingGripperCommand, 2> pendingGripperCommands_" in header
+    assert "enqueueGripperCommand(" in tick_body
+    assert "gripper_.commandTarget" not in tick_body
+    assert "gripper_.commandTarget" in loop_body
+
+
+def test_hal_native_gripper_worker_samples_positions_without_commands() -> None:
+    gripper_header = (REPO_ROOT / "hal" / "include" / "JodellGripperDriver.h").read_text(encoding="utf-8")
+    gripper_source = (REPO_ROOT / "hal" / "src" / "JodellGripperDriver.cpp").read_text(encoding="utf-8")
+
+    assert "bool readPositionMm(Side side, std::string* message = nullptr);" in gripper_header
+    assert "bool JodellGripperDriver::readPositionMm(" in gripper_source
+
+
+def test_hal_native_gripper_worker_starts_only_when_gripper_teleop_is_enabled() -> None:
+    controller_source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    start_body = controller_source.split(
+        "void NativeTeleopController::start(bool leftConnected, bool rightConnected)",
+        1,
+    )[1].split("void NativeTeleopController::stop()", 1)[0]
+    normalized = " ".join(start_body.split())
+
+    assert "gripperTeleopEnabled = config_.gripperTeleopEnabled;" in normalized
+    gripper_enabled_body, gripper_disabled_rest = normalized.split(
+        "if (gripperTeleopEnabled) {",
+        1,
+    )[1].split("} else {", 1)
+    gripper_disabled_body = gripper_disabled_rest.split("} if (running_.exchange(true))", 1)[0]
+    assert "startGripperWorker();" in gripper_enabled_body
+    assert "startGripperWorker();" not in gripper_disabled_body
+    assert "stopGripperWorker();" in gripper_disabled_body
+
+
+def test_hal_native_gripper_uses_isolated_jodell_worker_processes() -> None:
+    gripper_header = (REPO_ROOT / "hal" / "include" / "JodellGripperDriver.h").read_text(encoding="utf-8")
+    gripper_source = (REPO_ROOT / "hal" / "src" / "JodellGripperDriver.cpp").read_text(encoding="utf-8")
+    worker_source = (REPO_ROOT / "hal" / "src" / "JodellGripperWorker.cpp").read_text(encoding="utf-8")
+    controller_header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    controller_source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    json_source = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
+    cmake = (REPO_ROOT / "hal" / "CMakeLists.txt").read_text(encoding="utf-8")
+    build_cmd = (REPO_ROOT / "hal" / "build_hal.cmd").read_text(encoding="utf-8")
+    command_body = gripper_source.split("bool JodellGripperDriver::commandTarget(", 1)[1].split(
+        "bool JodellGripperDriver::readPositionMm",
+        1,
+    )[0]
+    read_body = gripper_source.split("bool JodellGripperDriver::readPositionMm", 1)[1].split(
+        "std::array<double, 2> JodellGripperDriver::targetMm",
+        1,
+    )[0]
+    loop_body = controller_source.split("void NativeTeleopController::gripperLoop()", 1)[1].split(
+        "void NativeTeleopController::sampleGripperPosition",
+        1,
+    )[0]
+    sample_body = (
+        controller_source.split("void NativeTeleopController::sampleGripperPosition", 1)[1].split(
+            "double NativeTeleopController::mappedDirection",
+            1,
+        )[0]
+        if "void NativeTeleopController::sampleGripperPosition" in controller_source
+        else ""
+    )
+    normalized_loop = " ".join(loop_body.split())
+    normalized_sample = " ".join(sample_body.split())
+
+    assert "bool processWorkersEnabled{true};" in gripper_header
+    assert "std::array<ProcessWorkerHandle, 2> workerProcesses_" in gripper_header
+    assert "ensureProcessWorkerUnlocked" in gripper_source
+    assert "CreateProcessA" in gripper_source
+    assert "JodellGripperWorker.exe" in gripper_source
+    assert 'std::getenv("APPSTATION_JODELL_WORKER_EXE")' in gripper_source
+    assert "workerOverride[0] != '\\0'" in gripper_source
+    assert "commandProcessWorkerUnlocked" in gripper_source
+    assert "closeProcessWorkersUnlocked" in gripper_source
+    assert "processWorkersEnabled = false" in worker_source
+    assert "std::getline(std::cin, line)" in worker_source
+    assert "driver.commandTarget" in worker_source
+    assert "driver.readPositionMm" in worker_source
+    assert command_body.index("if (config_.processWorkersEnabled)") < command_body.index("ensureLoadedUnlocked")
+    assert read_body.index("if (config_.processWorkersEnabled)") < read_body.index("ensureLoadedUnlocked")
+    assert '\\"workerMode\\":\\"' in controller_source
+    assert "processWorkersEnabled" in controller_source
+    assert "gripperProcessWorkersEnabled" in json_source
+    assert "jodellWorkerExePath" in json_source
+    assert "gripperWorkerCommandTimeoutMs" in json_source
+    assert "add_executable(JodellGripperWorker src/JodellGripperWorker.cpp)" in cmake
+    assert "JodellGripperWorker.next.exe" in build_cmd
+    assert "getClawCurrentLocation_(slave)" in gripper_source
+    assert "void sampleGripperPosition(Side side);" in controller_header
+    assert "nextGripperSampleIndex_" not in controller_header
+    assert "constexpr auto kGripperPositionSampleInterval = std::chrono::microseconds(33333);" in controller_source
+    assert "gripperCv_.wait_until(lock, nextSampleAt, [&]" in normalized_loop
+    assert "sampleGripperPosition(Side::Left);" in normalized_loop
+    assert "sampleGripperPosition(Side::Right);" in normalized_loop
+    assert "sampleGripperPosition(sideFromIndex(sampleIndex));" not in normalized_loop
+    assert "const bool ok = gripper_.readPositionMm(side, &message);" in normalized_sample
+    assert "gripperPositionsMm_ = gripper_.positionMmSnapshot(gripperPositionsMm_);" in normalized_sample
+    assert "gripperLastCommandOk_[index] = ok;" in normalized_sample
+    assert "gripperLastMessage_[index] = message;" in normalized_sample
+
+
+def test_hal_native_gripper_errors_do_not_pollute_arm_teleop_last_error() -> None:
+    controller_source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    normalized = " ".join(controller_source.split())
+    command_loop_body = controller_source.split("void NativeTeleopController::gripperLoop()", 1)[1].split(
+        "void NativeTeleopController::sampleGripperPosition",
+        1,
+    )[0]
+    sample_body = controller_source.split("void NativeTeleopController::sampleGripperPosition", 1)[1].split(
+        "bool NativeTeleopController::running() const",
+        1,
+    )[0]
+    direct_command_body = controller_source.split("bool NativeTeleopController::commandGripperTarget(", 1)[1].split(
+        "std::string NativeTeleopController::statusJson() const",
+        1,
+    )[0]
+
+    assert "lastError_ = std::string(\"native gripper \")" not in normalized
+    assert "gripperLastCommandOk_[command.targetIndex] = ok;" in command_loop_body
+    assert "gripperLastMessage_[command.targetIndex] = message;" in command_loop_body
+    assert "gripperLastCommandOk_[index] = ok;" in sample_body
+    assert "gripperLastMessage_[index] = message;" in sample_body
+    assert "gripperLastCommandOk_[index] = ok;" in direct_command_body
+    assert "gripperLastMessage_[index] = driverMessage;" in direct_command_body
+
+
+def test_hal_native_jodell_driver_closes_other_active_port_before_switching() -> None:
+    gripper_header = (REPO_ROOT / "hal" / "include" / "JodellGripperDriver.h").read_text(encoding="utf-8")
+    gripper_source = (REPO_ROOT / "hal" / "src" / "JodellGripperDriver.cpp").read_text(encoding="utf-8")
+    normalized = " ".join(gripper_source.split())
+
+    assert "bool ensurePortOpenUnlocked(int index, int port, std::string* message);" in gripper_header
+    assert "std::array<int, 2> activePorts_" in gripper_header
+    assert "selectPortUnlocked" not in gripper_header
+    assert "selectPortUnlocked" not in gripper_source
+    assert "for (int& activePort : activePorts_)" in normalized
+    assert "activePort > 0 && activePort != port" in normalized
+    assert "(void)serialOperation_(activePort, config_.baudrate, 0);" in normalized
+    assert "if (activePorts_[index] == port)" in normalized
+    assert "activePorts_[index] = port;" in normalized
+
+
+def test_hal_native_stop_clears_logical_connection_state() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    stop_body = source.split("void NativeTeleopController::stop() {", 1)[1].split(
+        "void NativeTeleopController::startGripperWorker()",
+        1,
+    )[0]
+    normalized = " ".join(stop_body.split())
+
+    assert "logicalConnected_ = {false, false};" in normalized
+
+
+def test_hal_native_gripper_teleop_throttles_background_jodell_commands() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    tick_body = source.split("void NativeTeleopController::tickGrippers(", 1)[1].split(
+        "void NativeTeleopController::enqueueGripperCommand",
+        1,
+    )[0]
+    normalized_tick = " ".join(tick_body.split())
+
+    assert "constexpr int kGripperTeleopDeadbandFloorCounts = 1;" in source
+    assert "constexpr double kGripperTeleopMinCommandIntervalFloorMs = 10.0;" in source
+    assert "normalized.gripperDeadbandCounts = std::max(" in source
+    assert "normalized.gripperMinCommandIntervalMs = std::max(" in source
+    assert "int gripperDeadbandCounts{1};" in header
+    assert "double gripperMinCommandIntervalMs{20.0};" in header
+    assert (
+        "if (gripperLastRaw_[targetIndex] >= 0 && elapsedMs < config_.gripperMinCommandIntervalMs)"
+    ) in normalized_tick
+    assert (
+        "if (gripperLastRaw_[targetIndex] >= 0 && std::abs(raw - gripperLastRaw_[targetIndex]) "
+        "< config_.gripperDeadbandCounts)"
+    ) in normalized_tick
+
+
+def test_hal_native_gripper_icf_min_gap_contract() -> None:
+    header = (REPO_ROOT / "hal" / "include" / "NativeTeleopController.h").read_text(encoding="utf-8")
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    json_source = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
+    tick_body = source.split("void NativeTeleopController::tickGrippers(", 1)[1].split(
+        "void NativeTeleopController::enqueueGripperCommand",
+        1,
+    )[0]
+    command_body = source.split("bool NativeTeleopController::commandGripperTarget(", 1)[1].split(
+        "std::string NativeTeleopController::statusJson() const",
+        1,
+    )[0]
+
+    assert "bool gripperIcfTargetProtectionEnabled{true};" in header
+    assert "double gripperIcfTargetMinGapMm{1.02};" in header
+    assert "effectiveGripperTargetMm" in header
+    assert "effectiveGripperTargetMm(targetMm)" in command_body
+    assert "effectiveGripperTargetMm(targetMm)" in tick_body
+    assert 'jsonBoolValue(body, "icfTargetProtectionEnabled"' in json_source
+    assert 'jsonNumberValue(body, "icfTargetMinGapMm"' in json_source
+
+
+def test_hal_native_status_reports_logical_hand_connections() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    status_body = source.split("std::string NativeTeleopController::statusJson() const", 1)[1].split(
+        "void NativeTeleopController::loop",
+        1,
+    )[0]
+
+    assert '\\"logicalConnected\\":[' in status_body
+    assert "logicalConnected_[0]" in status_body
+    assert "logicalConnected_[1]" in status_body
+
+
+def test_hal_native_status_reports_gripper_command_speed_for_acceptance() -> None:
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    status_body = source.split("std::string NativeTeleopController::statusJson() const", 1)[1].split(
+        "void NativeTeleopController::loop",
+        1,
+    )[0]
+
+    assert '\\"gripperCommand\\":{\\"speed\\":' in status_body
+    assert "config_.gripper.speed" in status_body
+    assert "config_.gripper.torque" in status_body
+
+
+def test_hal_native_acceptance_script_no_longer_uses_direct_hal_http_control() -> None:
+    source = (REPO_ROOT / "scripts" / "accept-hal-native-teleop.ps1").read_text(encoding="utf-8-sig")
+
+    assert "HAL HTTP only supports /health" in source
+    assert "backend/UI DDS path" in source
+    assert "Invoke-RestMethod" not in source
+    assert "/teleop/native/start" not in source
+    assert "/teleop/native/status" not in source
+    assert "/motion/" not in source
+    assert "/gripper/" not in source
