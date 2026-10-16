@@ -7,8 +7,10 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
 
 #include "HalTypes.h"
@@ -51,6 +53,8 @@ class JodellGripperDriver {
       const std::function<bool()>& commandAllowed = {});
   // 主动读取某侧当前位置，成功后刷新 positionMm_ 缓存。
   bool readPositionMm(Side side, std::string* message = nullptr);
+  // 只读采样让等待中的命令优先；nullopt 表示忙时跳过，并非一次失败的测量。
+  std::optional<bool> readPositionMmIfIdle(Side side, double timeoutMs, std::string* message = nullptr);
   // 以下快照接口供 teleop 状态 JSON 使用，调用方不需要直接持有 mutex_。
   std::array<double, 2> targetMm() const;
   std::array<double, 2> positionMm() const;
@@ -69,6 +73,7 @@ class JodellGripperDriver {
 
   // Unlocked 后缀表示调用方必须已经持有 mutex_，以串行化 vendor DLL 和 worker 管道访问。
   bool ensureLoadedUnlocked(std::string* message);
+  bool readPositionMmUnlocked(Side side, std::string* message, double timeoutMs = 0.0);
   bool ensurePortOpenUnlocked(int index, int port, std::string* message);
   int portNumber(const std::string& value) const;
   int sideIndex(Side side) const;
@@ -78,13 +83,15 @@ class JodellGripperDriver {
       int index,
       const std::string& command,
       double* positionMm,
-      std::string* message);
+      std::string* message,
+      double timeoutMs = 0.0);
   void closeProcessWorkerUnlocked(int index, bool abortPending = false);
   void closeProcessWorkersUnlocked();
 #endif
 
   // mutex_ 保护配置、目标/位置缓存、DLL 句柄和 worker 进程句柄。
   mutable std::mutex mutex_;
+  std::atomic_uint pendingCommands_{0};
   JodellGripperConfig config_{};
   // targetMm_ 是最近一次命令目标；positionMm_ 是最近一次读取或命令返回的位置。
   std::array<double, 2> targetMm_{{0.0, 0.0}};

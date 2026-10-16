@@ -2199,7 +2199,7 @@ def test_hal_native_gripper_uses_isolated_jodell_worker_processes() -> None:
     assert "add_executable(JodellGripperWorker src/JodellGripperWorker.cpp)" in cmake
     assert "JodellGripperWorker.next.exe" in build_cmd
     assert "getClawCurrentLocation_(slave)" in gripper_source
-    assert "void sampleGripperPosition(Side side);" in controller_header
+    assert "void sampleGripperPosition(Side side, bool feedbackOnly = false);" in controller_header
     assert "nextGripperSampleIndex_" not in controller_header
     assert "constexpr auto kGripperPositionSampleInterval = std::chrono::microseconds(33333);" in controller_source
     assert "gripperCv_.wait_until(lock, nextSampleAt, [&]" in normalized_loop
@@ -2208,7 +2208,8 @@ def test_hal_native_gripper_uses_isolated_jodell_worker_processes() -> None:
     assert "sampleGripperPosition(sideFromIndex(sampleIndex));" not in normalized_loop
     assert normalized_loop.index("if (shouldSample)") < normalized_loop.index("gripperDriver(command.side).commandTarget")
     assert "command = pendingGripperCommands_[targetIndex];" in normalized_loop
-    assert "const bool ok = gripperDriver(side).readPositionMm(side, &message);" in normalized_sample
+    assert "gripperDriver(side).readPositionMm(side, &message)" in normalized_sample
+    assert "gripperDriver(side).readPositionMmIfIdle(side, kPolicyGripperReadTimeoutMs, &message)" in normalized_sample
     assert "const auto sampleMidpoint = readStarted + (readFinished - readStarted) / 2;" in normalized_sample
     assert "gripperPositionSampleMonotonicMs_[index] = sampleMonotonicMs;" in normalized_sample
     assert "std::array<std::int64_t, 2> gripperPositionSampleMonotonicMs_" in controller_header

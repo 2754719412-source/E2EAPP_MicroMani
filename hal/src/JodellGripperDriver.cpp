@@ -190,6 +190,11 @@ bool JodellGripperDriver::commandTarget(
     std::string* message,
     bool readPosition,
     const std::function<bool()>& commandAllowed) {
+  pendingCommands_.fetch_add(1);
+  struct CommandCompletion {
+    std::atomic_uint& pending;
+    ~CommandCompletion() { pending.fetch_sub(1); }
+  } completion{pendingCommands_};
   std::scoped_lock lock(mutex_);
   const auto cancelled = [&]() {
     if (!commandAllowed || commandAllowed()) return false;
@@ -306,6 +311,22 @@ bool JodellGripperDriver::commandTarget(
 
 bool JodellGripperDriver::readPositionMm(Side side, std::string* message) {
   std::scoped_lock lock(mutex_);
+  return readPositionMmUnlocked(side, message);
+}
+
+std::optional<bool> JodellGripperDriver::readPositionMmIfIdle(
+    Side side, double timeoutMs, std::string* message) {
+  if (pendingCommands_.load() != 0) return std::nullopt;
+  std::unique_lock lock(mutex_, std::try_to_lock);
+  if (!lock.owns_lock() || pendingCommands_.load() != 0) return std::nullopt;
+  if (!config_.processWorkersEnabled) {
+    if (message) *message = "bounded feedback READ requires isolated worker";
+    return false;
+  }
+  return readPositionMmUnlocked(side, message, timeoutMs);
+}
+
+bool JodellGripperDriver::readPositionMmUnlocked(Side side, std::string* message, double timeoutMs) {
   if (!config_.enabled) {
     if (message) {
       *message = "native gripper teleop disabled";
@@ -324,12 +345,17 @@ bool JodellGripperDriver::readPositionMm(Side side, std::string* message) {
     }
     double positionMm = -1.0;
     std::string workerMessage;
-    const bool ok = commandProcessWorkerUnlocked(index, "READ", &positionMm, &workerMessage);
+    const bool ok = commandProcessWorkerUnlocked(index, "READ", &positionMm, &workerMessage, timeoutMs);
     if (!ok) {
       lastError_ = workerMessage;
       if (message) {
         *message = workerMessage;
       }
+      return false;
+    }
+    if (!std::isfinite(positionMm) || positionMm < 0.0 || positionMm > config_.strokeMm) {
+      lastError_ = "invalid Jodell worker position";
+      if (message) *message = lastError_;
       return false;
     }
     positionMm_[index] = positionMm;
@@ -617,7 +643,8 @@ bool JodellGripperDriver::commandProcessWorkerUnlocked(
     int index,
     const std::string& command,
     double* positionMm,
-    std::string* message) {
+    std::string* message,
+    double timeoutMs) {
   auto& worker = workerProcesses_[index];
   if (worker.process == nullptr || worker.stdinWrite == nullptr || worker.stdoutRead == nullptr) {
     if (message) {
@@ -634,7 +661,8 @@ bool JodellGripperDriver::commandProcessWorkerUnlocked(
     return false;
   }
   std::string line;
-  if (!readLineWithTimeout(static_cast<HANDLE>(worker.stdoutRead), config_.workerCommandTimeoutMs, &line)) {
+  if (!readLineWithTimeout(static_cast<HANDLE>(worker.stdoutRead),
+      timeoutMs > 0.0 ? timeoutMs : config_.workerCommandTimeoutMs, &line)) {
     if (message) {
       *message = "Jodell worker response timeout";
     }

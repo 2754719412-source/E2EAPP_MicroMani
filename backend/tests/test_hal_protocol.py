@@ -42,6 +42,7 @@ def test_shared_hal_command_protocol_covers_existing_real_hal_commands() -> None
         "teleop.native.gripper_command": ("POST", "/teleop/native/gripper_command"),
         "gripper.command": ("POST", "/gripper/command"),
         "gripper.prepare_replay": ("POST", "/gripper/prepare_replay"),
+        "gripper.feedback.configure": ("POST", "/gripper/feedback/configure"),
         "gripper.replay_target": ("POST", "/gripper/replay_target"),
     }
 

@@ -42,6 +42,7 @@ HAL_COMMANDS: dict[str, HalCommandSpec] = {
     "teleop.native.gripper_command": HalCommandSpec("POST", "/teleop/native/gripper_command"),
     "gripper.command": HalCommandSpec("POST", "/gripper/command"),
     "gripper.prepare_replay": HalCommandSpec("POST", "/gripper/prepare_replay"),
+    "gripper.feedback.configure": HalCommandSpec("POST", "/gripper/feedback/configure"),
     "gripper.replay_target": HalCommandSpec("POST", "/gripper/replay_target"),
 }
 

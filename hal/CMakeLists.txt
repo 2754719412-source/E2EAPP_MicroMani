@@ -117,6 +117,17 @@ if(BUILD_TESTING AND APPSTATION_ENABLE_DDS)
   endforeach()
 endif()
 if(BUILD_TESTING AND NOT APPSTATION_ENABLE_VENDOR_SDKS)
+  if(WIN32)
+    foreach(gripper_test GripperFeedbackTests GripperIsolationTests)
+      add_executable(${gripper_test} tests/${gripper_test}.cpp src/HalJson.cpp)
+      target_link_libraries(${gripper_test} PRIVATE appstation_hal_core)
+      if(MSVC)
+        target_compile_options(${gripper_test} PRIVATE /utf-8)
+      endif()
+      add_test(NAME ${gripper_test} COMMAND ${gripper_test})
+      set_tests_properties(${gripper_test} PROPERTIES TIMEOUT 30)
+    endforeach()
+  endif()
   add_executable(MotionExecutorTests
     tests/MotionExecutorTests.cpp
     src/HalCommandDispatcher.cpp

@@ -28,6 +28,7 @@ constexpr double kGripperTeleopMinCommandIntervalFloorMs = 10.0;
 // 增量模式中旋转轴如果单帧跳过该阈值，认为是参考切换或采样异常，而不直接下发。
 constexpr double kIncrementalRotationSpikeGuardDeg = 5.0;
 constexpr auto kGripperPositionSampleInterval = std::chrono::microseconds(33333);
+constexpr double kPolicyGripperReadTimeoutMs = 100.0;
 
 std::int64_t unixTimeMs() {
   // 对外状态和动作历史使用墙钟毫秒，方便和后端事件日志合并。
@@ -377,8 +378,7 @@ void NativeTeleopController::configure(const NativeTeleopConfig& config,
     }
   }
   // 夹爪和主手力输出配置下推到底层驱动，避免等待下一次 start。
-  gripper_.configure(normalized.gripper);
-  rightGripper_.configure(normalized.gripper);
+  configureGripper(normalized.gripper);
   if (!normalized.gripperTeleopEnabled) {
     stopGripperWorker();
   }
@@ -392,9 +392,11 @@ void NativeTeleopController::configure(const NativeTeleopConfig& config,
 
 void NativeTeleopController::prepareReplayGripper(const JodellGripperConfig& config, std::uint64_t epoch,
     const std::array<bool, 2>& participating) {
+  std::scoped_lock lifecycleLock(lifecycleMutex_);
   if (running() || !motion_.commandEpochAllowed(epoch)) {
     throw std::runtime_error("replay gripper preparation blocked by teleop or safety stop");
   }
+  stopGripperFeedback();
   configureGripper(config);
   {
     std::scoped_lock lock(mutex_);
@@ -411,10 +413,15 @@ void NativeTeleopController::prepareReplayGripper(const JodellGripperConfig& con
 }
 
 void NativeTeleopController::configureGripper(const JodellGripperConfig& config) {
+  std::scoped_lock configurationLock(gripperConfigurationMutex_);
+  if (appliedGripperConfig_ && *appliedGripperConfig_ == config) return;
   {
     std::scoped_lock lock(mutex_);
     // 手动夹爪命令可能只更新夹爪配置，不重置完整 teleop 配置。
     config_.gripper = config;
+    gripperPositionOk_ = {false, false};
+    gripperPositionSampleTs_ = {0, 0};
+    gripperPositionSampleMonotonicMs_ = {0, 0};
     config_.gripperIcfTargetMinGapMm = std::clamp(
         config_.gripperIcfTargetMinGapMm,
         0.0,
@@ -422,6 +429,76 @@ void NativeTeleopController::configureGripper(const JodellGripperConfig& config)
   }
   gripper_.configure(config);
   rightGripper_.configure(config);
+  appliedGripperConfig_ = config;
+}
+
+void NativeTeleopController::configureGripperFeedback(
+    const JodellGripperConfig& config, const std::array<bool, 2>& participating) {
+  std::scoped_lock lifecycleLock(lifecycleMutex_);
+  if (running() || gripperWorkerRunning_.load()) {
+    throw std::runtime_error("feedback-only sampling cannot replace active teleop or replay");
+  }
+  if (!config.processWorkersEnabled || !config.enabled) {
+    throw std::runtime_error("feedback-only sampling requires enabled isolated gripper workers");
+  }
+  {
+    std::scoped_lock lock(mutex_);
+    if (gripperFeedbackRunning_.load() && config_.gripper == config
+        && gripperFeedbackParticipating_ == participating) return;
+  }
+  stopGripperFeedback();
+  configureGripper(config);
+  {
+    std::scoped_lock lock(mutex_);
+    gripperFeedbackParticipating_ = participating;
+    gripperPositionOk_ = {false, false};
+    gripperPositionSampleTs_ = {0, 0};
+    gripperPositionSampleMonotonicMs_ = {0, 0};
+    gripperReadAttempts_ = {};
+    gripperReadSuccesses_ = {};
+    gripperReadSkippedBusy_ = {};
+  }
+  gripperFeedbackRunning_.store(true);
+  try {
+    for (int index = 0; index < 2; ++index) {
+      if (!participating[index]) continue;
+      gripperFeedbackWorkers_[index] = std::thread([this, index]() {
+        try { gripperFeedbackLoop(sideFromIndex(index)); }
+        catch (const std::exception& error) {
+          gripperFeedbackRunning_.store(false);
+          std::scoped_lock lock(mutex_);
+          gripperPositionOk_[index] = false;
+          gripperReadMessage_[index] = error.what();
+        }
+        catch (...) {
+          gripperFeedbackRunning_.store(false);
+          std::scoped_lock lock(mutex_);
+          gripperPositionOk_[index] = false;
+          gripperReadMessage_[index] = "feedback sampling worker failed";
+        }
+      });
+    }
+  } catch (...) {
+    stopGripperFeedback();
+    throw;
+  }
+}
+
+void NativeTeleopController::stopGripperFeedback() {
+  gripperFeedbackRunning_.store(false);
+  gripperFeedbackCv_.notify_all();
+  for (auto& worker : gripperFeedbackWorkers_) {
+    if (worker.joinable()) worker.join();
+  }
+}
+
+void NativeTeleopController::gripperFeedbackLoop(Side side) {
+  while (gripperFeedbackRunning_.load()) {
+    sampleGripperPosition(side, true);
+    std::unique_lock lock(gripperFeedbackMutex_);
+    gripperFeedbackCv_.wait_for(lock, kGripperPositionSampleInterval,
+        [this]() { return !gripperFeedbackRunning_.load(); });
+  }
 }
 
 void NativeTeleopController::configureGripperProtection(bool enabled, double minGapMm) {
@@ -440,6 +517,7 @@ void NativeTeleopController::start(bool leftConnected, bool rightConnected,
   if (!motion_.commandEpochAllowed(motionEpoch)) {
     throw std::runtime_error("emergency stop active; acknowledge safety before native teleop start");
   }
+  stopGripperFeedback();
   if (running_.load()) return;
   if (worker_.joinable()) worker_.join();
   {
@@ -521,6 +599,7 @@ void NativeTeleopController::start(bool leftConnected, bool rightConnected,
 
 void NativeTeleopController::stop() {
   std::scoped_lock lifecycleLock(lifecycleMutex_);
+  stopGripperFeedback();
   // 先停控制线程，再把两侧 teleop 目标同步到当前位置。
   running_.store(false);
   executor_.revokeNative();
@@ -565,6 +644,9 @@ void NativeTeleopController::latchControlStop() noexcept {
   running_.store(false);
   gripperWorkerRunning_.store(false);
   gripperCv_.notify_all();
+  // 急停只发停止信号，不等待阻塞中的 READ 或线程回收。
+  gripperFeedbackRunning_.store(false);
+  gripperFeedbackCv_.notify_all();
 }
 
 void NativeTeleopController::requestEmergencyStop() {
@@ -717,11 +799,19 @@ void NativeTeleopController::gripperLoop(int targetIndex) {
   }
 }
 
-void NativeTeleopController::sampleGripperPosition(Side side) {
+void NativeTeleopController::sampleGripperPosition(Side side, bool feedbackOnly) {
   // 周期性采样供状态显示及回放到位判断；失败不能刷新成功采样时间。
   std::string message;
   const auto readStarted = std::chrono::steady_clock::now();
-  const bool ok = gripperDriver(side).readPositionMm(side, &message);
+  const auto attempted = feedbackOnly
+      ? gripperDriver(side).readPositionMmIfIdle(side, kPolicyGripperReadTimeoutMs, &message)
+      : std::optional<bool>(gripperDriver(side).readPositionMm(side, &message));
+  if (!attempted) {
+    std::scoped_lock lock(mutex_);
+    ++gripperReadSkippedBusy_[sideIndex(side)];
+    return;
+  }
+  const bool ok = *attempted;
   const auto readFinished = std::chrono::steady_clock::now();
   const double readMs = std::chrono::duration<double, std::milli>(readFinished - readStarted).count();
   const auto sampleMidpoint = readStarted + (readFinished - readStarted) / 2;
@@ -730,11 +820,14 @@ void NativeTeleopController::sampleGripperPosition(Side side) {
   const auto readFinishedUnixMs = unixTimeMs();
   const int index = sideIndex(side);
   std::scoped_lock lock(mutex_);
+  if (feedbackOnly && !gripperFeedbackRunning_.load()) return;
+  ++gripperReadAttempts_[index];
+  if (ok) ++gripperReadSuccesses_[index];
   gripperReadDurationMs_[index] = readMs;
   gripperReadAttemptTs_[index] = readFinishedUnixMs;
   gripperReadMessage_[index] = message;
   gripperPositionsMm_ = gripperPositionSnapshotUnlocked();
-  gripperLastCommandOk_[index] = ok;
+  if (!feedbackOnly) gripperLastCommandOk_[index] = ok;
   gripperPositionOk_[index] = ok;
   if (ok) {
     // Jodell does not expose a hardware sample timestamp. Use the midpoint of
@@ -743,7 +836,7 @@ void NativeTeleopController::sampleGripperPosition(Side side) {
         - static_cast<std::int64_t>(std::llround(readMs * 0.5));
     gripperPositionSampleMonotonicMs_[index] = sampleMonotonicMs;
   }
-  if (!message.empty()) {
+  if (!feedbackOnly && !message.empty()) {
     gripperLastMessage_[index] = message;
   }
 }
@@ -895,7 +988,11 @@ std::string NativeTeleopController::statusJsonImpl(bool compactHistory) const {
       lastOutputDeltaUi_[1]);
   out << "},\"gripperTargets\":";
   appendArray(out, gripperTargetsMm_);
-  out << ",\"grippers\":{\"left\":{\"ok\":" << (gripperLastCommandOk_[0] ? "true" : "false")
+  out << ",\"gripperFeedbackSampling\":" << (gripperFeedbackRunning_.load() ? "true" : "false")
+      << ",\"gripperCommandWorkerRunning\":" << (gripperWorkerRunning_.load() ? "true" : "false")
+      << ",\"gripperFeedbackParticipating\":[" << (gripperFeedbackParticipating_[0] ? "true" : "false")
+      << "," << (gripperFeedbackParticipating_[1] ? "true" : "false") << "]"
+      << ",\"grippers\":{\"left\":{\"ok\":" << (gripperLastCommandOk_[0] ? "true" : "false")
       << ",\"targetMm\":" << gripperTargetsMm_[0];
   appendGripperSourceDiagnostics(0);
   out << ",\"positionMm\":";
@@ -914,6 +1011,10 @@ std::string NativeTeleopController::statusJsonImpl(bool compactHistory) const {
       << ",\"lastReadAttemptTs\":" << gripperReadAttemptTs_[0]
       << ",\"lastReadMessage\":\"" << jsonEscape(gripperReadMessage_[0]) << "\""
       << ",\"positionOk\":" << (gripperPositionOk_[0] ? "true" : "false")
+      << ",\"positionSource\":\"jodell_read\""
+      << ",\"readAttempts\":" << gripperReadAttempts_[0]
+      << ",\"readSuccesses\":" << gripperReadSuccesses_[0]
+      << ",\"readSkippedBusy\":" << gripperReadSkippedBusy_[0]
       << "},\"right\":{\"ok\":" << (gripperLastCommandOk_[1] ? "true" : "false")
       << ",\"targetMm\":" << gripperTargetsMm_[1];
   appendGripperSourceDiagnostics(1);
@@ -933,6 +1034,10 @@ std::string NativeTeleopController::statusJsonImpl(bool compactHistory) const {
       << ",\"lastReadAttemptTs\":" << gripperReadAttemptTs_[1]
       << ",\"lastReadMessage\":\"" << jsonEscape(gripperReadMessage_[1]) << "\""
       << ",\"positionOk\":" << (gripperPositionOk_[1] ? "true" : "false")
+      << ",\"positionSource\":\"jodell_read\""
+      << ",\"readAttempts\":" << gripperReadAttempts_[1]
+      << ",\"readSuccesses\":" << gripperReadSuccesses_[1]
+      << ",\"readSkippedBusy\":" << gripperReadSkippedBusy_[1]
       << "}}";
   out << ",\"gravityCompensation\":["
       << (config_.leftGravityCompensation ? "true" : "false") << ","

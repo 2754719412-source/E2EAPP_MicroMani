@@ -178,6 +178,11 @@ std::string HalCommandDispatcher::handle(const std::string& name, const std::str
   if (name == "teleop.native.status") {
     return nativeTeleop_.statusJson();
   }
+  if (name == "gripper.feedback.configure") {
+    const auto config = jsonNativeTeleopConfig(bodyText);
+    nativeTeleop_.configureGripperFeedback(config.gripper, config.gripperParticipating);
+    return nativeTeleop_.statusJson();
+  }
   if (name == "gripper.prepare_replay") {
     ensureCurrentMotionCommand();
     const auto config = jsonNativeTeleopConfig(bodyText);

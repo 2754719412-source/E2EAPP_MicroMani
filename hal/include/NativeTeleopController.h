@@ -192,6 +192,8 @@ class NativeTeleopController {
   void configure(const NativeTeleopConfig& config,
       std::optional<std::uint64_t> expectedEpoch = std::nullopt);
   void configureGripper(const JodellGripperConfig& config);
+  // 仅配置读数和启动参与侧采样；不启用机械臂，也不接管同步夹爪命令。
+  void configureGripperFeedback(const JodellGripperConfig& config, const std::array<bool, 2>& participating);
   void prepareReplayGripper(const JodellGripperConfig& config, std::uint64_t epoch,
       const std::array<bool, 2>& participating);
   bool replayGripperReady() const { return !running_.load() && gripperWorkerRunning_.load(); }
@@ -266,7 +268,9 @@ class NativeTeleopController {
   void gripperLoop(int targetIndex);
   JodellGripperDriver& gripperDriver(Side side);
   std::array<double, 2> gripperPositionSnapshotUnlocked() const;
-  void sampleGripperPosition(Side side);
+  void sampleGripperPosition(Side side, bool feedbackOnly = false);
+  void stopGripperFeedback();
+  void gripperFeedbackLoop(Side side);
   void tick(double dtSec);
   void tickSideBestEffort(int sourceIndex, const Omega7State& hand, double dtSec);
   void tickSide(int sourceIndex, const Omega7State& hand, double dtSec);
@@ -380,6 +384,9 @@ class NativeTeleopController {
   std::array<bool, 2> gripperPositionOk_{{false, false}};
   std::array<double, 2> gripperCommandDurationMs_{};
   std::array<double, 2> gripperReadDurationMs_{};
+  std::array<std::uint64_t, 2> gripperReadAttempts_{};
+  std::array<std::uint64_t, 2> gripperReadSuccesses_{};
+  std::array<std::uint64_t, 2> gripperReadSkippedBusy_{};
   std::array<std::int64_t, 2> gripperReadAttemptTs_{};
   std::array<std::string, 2> gripperReadMessage_{};
   std::mutex gripperMutex_;
@@ -387,6 +394,13 @@ class NativeTeleopController {
   std::array<std::thread, 2> gripperWorkers_;
   std::atomic<bool> gripperWorkerRunning_{false};
   std::array<PendingGripperCommand, 2> pendingGripperCommands_{};
+  std::mutex gripperConfigurationMutex_;
+  std::optional<JodellGripperConfig> appliedGripperConfig_;
+  std::atomic_bool gripperFeedbackRunning_{false};
+  std::array<bool, 2> gripperFeedbackParticipating_{};
+  std::array<std::thread, 2> gripperFeedbackWorkers_;
+  std::mutex gripperFeedbackMutex_;
+  std::condition_variable gripperFeedbackCv_;
 };
 
 }  // namespace appstation::hal

@@ -68,6 +68,9 @@ def native_gripper_payload(config: dict[str, Any], side: str, target_mm: float) 
     gripper = config.get("gripper", {}) if isinstance(config.get("gripper"), dict) else {}
     teleop = config.get("teleop", {}) if isinstance(config.get("teleop"), dict) else {}
     gripper_teleop = teleop.get("gripperTeleop", {}) if isinstance(teleop.get("gripperTeleop"), dict) else {}
+    worker_timeout = gripper.get("workerCommandTimeoutMs")
+    if worker_timeout is None:
+        worker_timeout = float(gripper.get("workerCommandTimeoutSec", 2.0)) * 1000.0
     return {
         "side": side,
         "targetMm": target_mm,
@@ -78,6 +81,9 @@ def native_gripper_payload(config: dict[str, Any], side: str, target_mm: float) 
         "baudrate": int(gripper.get("baudrate", 115200)),
         "strokeMm": float(gripper.get("strokeMm", 26)),
         "jodellDllPath": str(gripper.get("jodellDllPath", "")),
+        "gripperProcessWorkersEnabled": bool(gripper.get("processWorkersEnabled", True)),
+        "jodellWorkerExePath": str(gripper.get("jodellWorkerExePath", "")),
+        "gripperWorkerCommandTimeoutMs": float(worker_timeout),
         "gripSpeed": int(gripper_teleop.get("gripSpeed", 255)),
         "gripTorque": int(gripper_teleop.get("gripTorque", 1)),
         "icfTargetProtectionEnabled": icf_target_protection_enabled(config),

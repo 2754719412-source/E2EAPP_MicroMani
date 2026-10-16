@@ -571,6 +571,7 @@ struct HalDdsControlServer::Impl {
           || request.name == "motion.teleop_stop_side"
           || request.name == "teleop.native.stop"
           || request.name == "teleop.native.status"
+          || request.name == "gripper.feedback.configure"
           || request.name == "force.state"
           || request.name == "omega7.zero_force_feedback"
           || (request.name == "omega7.gravity_compensation"

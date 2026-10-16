@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from backend.app import create_app, hal_capability_status, relative_motion_positions
 from backend.core.data_contract import data_contract_metadata, hardware_to_dataset_motion
+from backend.core.logging import now_ms
 from backend.services.policy_bridge import lerobot_state_from_ui
 from backend.tests.test_control_watchdog import confirm_mock_browser_lease
 
@@ -52,6 +53,12 @@ def test_policy_observation_converts_pulses_after_hardware_origin_math(app, monk
     pulses = [100.0 * (index + 1) for index in range(12)]
     app.state.hal.motion_state = AsyncMock(return_value={"positions": positions, "pulses": pulses})
     app.state.telemetry.gripper_positions = [4.5, 5.5]
+    app.state.hal.command = AsyncMock(return_value={"response": {
+        "gripperFeedbackSampling": True, "gripperFeedbackParticipating": [True, True],
+        "grippers": {side: {"positionSource": "jodell_read", "positionOk": True,
+                            "positionMm": value, "positionSampleTs": now_ms()}
+                     for side, value in (("left", 4.5), ("right", 5.5))},
+    }})
     config = app.state.settings.get_config()
     expected_positions = relative_motion_positions(config, positions, pulses)
     result = TestClient(app).get("/api/policy/observation").json()["data"]

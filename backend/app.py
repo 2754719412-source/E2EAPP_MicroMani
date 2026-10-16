@@ -61,6 +61,7 @@ from backend.services.control_watchdog import ControlLeaseUnavailable, ControlWa
 from backend.services.gripper_backend import native_teleop_enabled
 from backend.services.pico_network import PicoNetworkDetectionError, detect_pico_network
 from backend.services.policy_bridge import build_policy_action_plan, lerobot_state_from_ui
+from backend.services.policy_gripper_observation import PolicyGripperObservation, PolicyGripperFeedbackUnavailable
 from backend.services.teleop_mapping import SideName
 
 
@@ -1505,8 +1506,11 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail={"code": "MOTION_UNAVAILABLE", "message": str(exc)}) from exc
 
     @app.get("/api/policy/observation")
-    async def policy_observation() -> ApiEnvelope:
+    async def policy_observation(controlledSides: Annotated[list[str] | None, Query()] = None) -> ApiEnvelope:
         config = await get_config_async()
+        sides = controlledSides if controlledSides is not None else ["left", "right"]
+        if not sides or any(side not in {"left", "right"} for side in sides):
+            raise HTTPException(status_code=400, detail={"code": "BAD_POLICY_SIDES", "message": "controlledSides must include left or right"})
         joint_positions = list(telemetry.motion_positions)
         pulses: list[float] | None = None
         if _real_hardware_mode(config):
@@ -1527,7 +1531,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
                     status_code=503,
                     detail={"code": "POLICY_OBSERVATION_UNAVAILABLE", "message": str(exc)},
                 ) from exc
-        grippers = _policy_gripper_positions(config)
+        grippers, gripper_feedback = await _policy_gripper_state(config, sides, ensure_sampling=True)
         force_left = list(getattr(telemetry, "force_left", [0.0] * 6))[:6]
         force_right = list(getattr(telemetry, "force_right", [0.0] * 6))[:6]
         if len(force_left) < 6:
@@ -1541,6 +1545,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
                 "force_left": [float(value) for value in force_right],
                 "force_right": [float(value) for value in force_left],
                 "dataContract": data_contract_metadata(),
+                "gripperFeedback": gripper_feedback,
             }
         )
 
@@ -1563,7 +1568,16 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             ) from exc
         dry_run = bool(payload.get("dryRun", True))
         config = await get_config_async()
-        current_state = lerobot_state_from_ui(list(telemetry.motion_positions), _policy_gripper_positions(config))
+        raw_controlled_sides = payload.get("controlledSides")
+        controlled_sides = (
+            [side for side in raw_controlled_sides if side in {"left", "right"}]
+            if isinstance(raw_controlled_sides, list)
+            else ["left", "right"]
+        )
+        if not controlled_sides:
+            raise HTTPException(status_code=400, detail={"code": "BAD_POLICY_SIDES", "message": "controlledSides must include left or right"})
+        grippers, _feedback = await _policy_gripper_state(config, controlled_sides, ensure_sampling=False)
+        current_state = lerobot_state_from_ui(list(telemetry.motion_positions), grippers)
         try:
             plan = build_policy_action_plan(
                 current_state,
@@ -1579,17 +1593,6 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail={"code": "POLICY_ACTION_BLOCKED", "message": str(exc)}) from exc
         if dry_run:
             return envelope({"dryRun": True, "sent": False, "plan": plan, "dataContract": data_contract_metadata()})
-        raw_controlled_sides = payload.get("controlledSides")
-        controlled_sides = (
-            [side for side in raw_controlled_sides if side in {"left", "right"}]
-            if isinstance(raw_controlled_sides, list)
-            else ["left", "right"]
-        )
-        if not controlled_sides:
-            raise HTTPException(
-                status_code=400,
-                detail={"code": "BAD_POLICY_SIDES", "message": "controlledSides must include left or right"},
-            )
         results: dict[str, Any] = {"motion": {}, "grippers": {}}
         dispatch_started = False
         t_mark = time.perf_counter()
@@ -1721,12 +1724,26 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             if policy_gripper_senders.get(key) is asyncio.current_task():
                 policy_gripper_senders.pop(key, None)
 
-    def _policy_gripper_positions(config: dict[str, Any]) -> list[float]:
+    policy_gripper_observation = PolicyGripperObservation(hal)
+
+    async def _policy_gripper_state(config: dict[str, Any], sides: list[str], *, ensure_sampling: bool):
+        if _real_hardware_mode(config):
+            try:
+                return await policy_gripper_observation.read(config, sides, ensure_sampling=ensure_sampling)
+            except PolicyGripperFeedbackUnavailable as exc:
+                raise HTTPException(status_code=503, detail={
+                    "code": "POLICY_GRIPPER_FEEDBACK_UNAVAILABLE", "message": str(exc),
+                    "gripperFeedback": exc.feedback,
+                }) from exc
+        # 模拟环境显式标注来源；真实硬件不得进入此目标回退。
         gripper = config.get("gripper", {}) if isinstance(config.get("gripper"), dict) else {}
         cached = list(telemetry.gripper_positions)
         left = cached[0] if len(cached) > 0 and cached[0] >= 0 else float(gripper.get("targetLeftMm", 0.0))
         right = cached[1] if len(cached) > 1 and cached[1] >= 0 else float(gripper.get("targetRightMm", 0.0))
-        return [float(left), float(right)]
+        return [float(left), float(right)], {
+            side: {"source": "simulation", "participating": side in sides, "valid": True}
+            for side in ("left", "right")
+        }
 
     async def _policy_side_already_enabled(hardware_side: str, motion_plan: dict[str, Any]) -> bool:
         """连续策略流保持 HAL 外部控制；重复使能会被当成切换控制来源而冲突。"""

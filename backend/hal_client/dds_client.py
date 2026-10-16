@@ -145,6 +145,7 @@ class DdsHalClient(HalClient):
         stop_or_read = name in {
             "motion.emergency_stop", "motion.disable_side", "motion.teleop_stop_side",
             "teleop.native.stop", "omega7.zero_force_feedback", "hal.reconnect", "teleop.native.status",
+            "gripper.feedback.configure",
         }
         stop_or_read = stop_or_read or (name == "omega7.gravity_compensation" and (payload or {}).get("leftEnabled") is False and (payload or {}).get("rightEnabled") is False)
         if self._control_transport_failed and (not stop_or_read or name == "hal.reconnect"):
@@ -165,7 +166,7 @@ class DdsHalClient(HalClient):
             timeout_s = min(timeout_s, 1.0)
         elif name == "motion.emergency_stop":
             timeout_s = min(timeout_s, 0.75)
-        control_critical = name not in {"hal.reconnect", "teleop.native.status"}
+        control_critical = name not in {"hal.reconnect", "teleop.native.status", "gripper.feedback.configure"}
         if not stop_or_read and name != "control.lease":
             request_payload = dict(request_payload)
             request_payload["commandExpiresAtUnixMs"] = now_unix_ms() + int(timeout_s * 1000)
