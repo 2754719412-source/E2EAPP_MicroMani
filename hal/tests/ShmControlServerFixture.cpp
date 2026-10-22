@@ -37,6 +37,11 @@ int main(int argc, char** argv) {
         std::cout << (motion.estopActive() ? "ESTOP_LATCHED" : "ESTOP_MISSING") << std::endl;
       }
     }
+    // 先回收测试创建的夹爪子进程，再释放 DDS 资源，避免继承句柄影响重连。
+    native.stop();
+    JodellGripperConfig stoppedGripper;
+    stoppedGripper.enabled = false;
+    native.configureGripper(stoppedGripper);
     server.stop();
     return 0;
   } catch (const std::exception& error) {

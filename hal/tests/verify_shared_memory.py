@@ -108,6 +108,38 @@ def main():
         await_telemetry(transport)
         assert request(transport, "force.state").ok
 
+        # 夹爪高频下发不能因诊断输出无人读取而堵住普通命令通道。
+        # worker 复用生命周期测试的管道替身，不加载设备 DLL 或 DDS。
+        gripper_payload = json.dumps({
+            "side": "left", "targetMm": 12,
+            "jodellWorkerExePath": str(BUILD / "JodellGripperLifecycleTests.exe"),
+            "leftPort": "OFFLINE_TEST", "rightPort": "OFFLINE_TEST",
+        })
+        motion_payload = json.dumps({
+            "side": "left", "enabledAxes": [False] * 6,
+            "translationStepLimitPulse": 100, "rotationStepLimitPulse": 100,
+            "translationVelocityUiPerSec": 100, "rotationVelocityUiPerSec": 1,
+            "softLimitMin": [-1000] * 6, "softLimitMax": [1000] * 6,
+        })
+        assert request(transport, "teleop.native.gripper_command", payload=gripper_payload).ok
+        server.output_enabled.clear()
+        try:
+            for index in range(48):
+                name = ("teleop.native.gripper_command", "gripper.command")[index % 2]
+                sample = HalCommandRequest(uuid.uuid4().hex, now_unix_ms(), name, gripper_payload)
+                transport.publish_command_request(sample)
+                reply = transport.wait_for_command_reply(sample.request_id, 0.75)
+                assert reply is not None, f"gripper command {index} blocked by diagnostic output"
+                assert reply.ok, reply.error
+                sample = HalCommandRequest(uuid.uuid4().hex, now_unix_ms(), "motion.teleop_target_update", motion_payload)
+                transport.publish_command_request(sample)
+                reply = transport.wait_for_command_reply(sample.request_id, 0.75)
+                assert reply is not None, f"motion command {index} blocked after gripper command"
+                assert reply.ok, reply.error
+        finally:
+            server.output_enabled.set()
+        print("PASS: gripper commands remain responsive with stalled diagnostic output", flush=True)
+
         # A stalled diagnostic sink must not hold the lease/stop command worker.
         server.output_enabled.clear()
         try:
@@ -122,6 +154,8 @@ def main():
         finally:
             server.output_enabled.set()
 
+        # 急停后等待新的源时间戳，避免同毫秒请求先被旧命令检查拒绝。
+        await_telemetry(transport, after=now_unix_ms())
         # 大请求及大错误应答，覆盖 SHM 分片和 ctypes 动态扩容。
         name = "unknown_" + "x" * 262144
         reply = request(transport, name)

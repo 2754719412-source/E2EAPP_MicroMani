@@ -557,8 +557,12 @@ struct HalDdsControlServer::Impl {
   void handleCommand(const HalCommandRequestSample& request) {
     const auto commandEpoch = motion_.commandEpoch();
     const auto receivedAt = std::chrono::steady_clock::now();
+    // 高频目标不写同步调试日志：stdout 管道背压会堵住本命令及下一条机械臂命令。
     const bool trace = request.name != "motion.teleop_target_update"
-        && request.name != "motion.replay_absolute_target";
+        && request.name != "motion.replay_absolute_target"
+        && request.name != "teleop.native.gripper_command"
+        && request.name != "gripper.command"
+        && request.name != "gripper.replay_target";
     if (trace) {
       std::cout << "[HAL] DEBUG component=DDS event=command_received request_id="
                 << request.request_id << " name=" << request.name << std::endl;

@@ -16,6 +16,8 @@ for %%S in (LTDMCDriver MotionControlThread MotionExecutor NativeTeleopControlle
   cl %FLAGS% /c "%REPO%\hal\src\%%S.cpp" /Fo"%%S.obj" || goto :failed
 )
 cl %FLAGS% "%REPO%\hal\tests\ShmControlServerFixture.cpp" LTDMCDriver.obj MotionControlThread.obj MotionExecutor.obj NativeTeleopController.obj Omega7Driver.obj JodellGripperDriver.obj ForceControlRuntime.obj ForceSafetyLatch.obj ForceComplianceController.obj HkvlForceDriver.obj HkvlForceProtocol.obj HalJson.obj HalCommandDispatcher.obj HalDdsControlServer.obj /Fe"ShmControlServerFixture.exe" /link %LIBS% || goto :failed
+rem 复用不链接 DDS 的夹爪管道替身，匹配真实 worker 的进程边界。
+cl %FLAGS% "%REPO%\hal\tests\JodellGripperLifecycleTests.cpp" JodellGripperDriver.obj /Fe"JodellGripperLifecycleTests.exe" || goto :failed
 popd
 pushd "%REPO%"
 backend\.venv\Scripts\python.exe hal\tests\verify_shared_memory.py
