@@ -86,7 +86,9 @@ export default function QualityReportModal({
   const maxCameraRate = Math.max(cameraRates.global ?? 0, cameraRates.wrist_left ?? 0, cameraRates.wrist_right ?? 0)
   const feedbackTone = feedbackLevel(report.warnings, report.qualityAssessment)
   const maxSkew = report.maxSkewMs ?? 0
-  const maxFps = report.cameraMinFps ? Math.min(...Object.values(report.cameraMinFps).filter((value): value is number => typeof value === 'number')) : null
+  const cameraFps = Object.values(report.cameraMinFps ?? {}).filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  const minFps = cameraFps.length ? Math.min(...cameraFps) : null
+  const fpsDetail = minFps === null ? '帧率未提供' : `最低 ${minFps.toFixed(1)} FPS（${minFps < 20 ? '低于20，需重录' : minFps < 25 ? '低于25，需复核' : '正常'}）`
   const reasons = report.qualityAssessment?.reasons?.map((reason) => reason.message) ?? []
   const rawWarnings = report.warnings.filter((warning) => !reasons.includes(warning))
   return (
@@ -126,13 +128,13 @@ export default function QualityReportModal({
             <QualityMetric
               label="相机异常率"
               value={`${(maxCameraRate * 100).toFixed(1)}%`}
-              detail={`全局 ${report.cameraDrops.global} / 左腕 ${report.cameraDrops.wristLeft} / 右腕 ${report.cameraDrops.wristRight}；≥5% 重录`}
+              detail={`全局 ${report.cameraDrops.global} / 左腕 ${report.cameraDrops.wristLeft} / 右腕 ${report.cameraDrops.wristRight}；≥5% 重录；${fpsDetail}`}
               tone={metricTone(maxCameraRate, 0.02, 0.05)}
             />
             <QualityMetric
-              label="时序偏差"
+              label="最大组帧延迟"
               value={`${maxSkew.toFixed(1)}ms`}
-              detail={maxFps === null ? '≥300ms 复核；越小越好' : `最低相机 FPS ${maxFps.toFixed(1)}；低于25需复核`}
+              detail="相对计划组帧时刻；≥50ms 关注，≥300ms 复核"
               tone={metricTone(maxSkew, 50, 300)}
             />
           </div>

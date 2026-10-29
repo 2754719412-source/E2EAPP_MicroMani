@@ -5,6 +5,7 @@
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 #include "MotionControlThread.h"
+#include "HighResolutionWait.h"
 
 #include <stdexcept>
 
@@ -70,18 +71,28 @@ void MotionControlThread::reportFailure(const char* message) noexcept {
 }
 
 void MotionControlThread::loop() {
+  HighResolutionWait wait;
   while (running_) {
     const auto started = std::chrono::steady_clock::now();
+    bool cached = false;
     if (poll_) poll_();
-    else driver_.readState();
-    const auto elapsed = std::chrono::steady_clock::now() - started;
+    else {
+      const auto state = driver_.readState();
+      cached = state.sampleCached;
+    }
+    const auto finished = std::chrono::steady_clock::now();
+    const auto elapsed = finished - started;
+    driver_.timing_.pollWork.add(elapsed);
     // 周期从本轮开始时间计算，读硬件耗时会自动从 sleep 中扣除。
     if (elapsed < period_) {
-      std::this_thread::sleep_for(period_ - elapsed);
+      wait.until(started + period_);
     } else {
       // Slow vendor reads must not immediately reacquire the driver lock forever.
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      wait.until(std::chrono::steady_clock::now() + std::chrono::milliseconds(1));
     }
+    const auto waited = std::chrono::steady_clock::now() - finished;
+    driver_.timing_.pollWait.add(waited);
+    if (cached) driver_.timing_.busyPollWait.add(waited);
   }
 }
 

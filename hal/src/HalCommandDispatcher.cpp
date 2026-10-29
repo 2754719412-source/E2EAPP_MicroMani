@@ -123,6 +123,9 @@ std::string HalCommandDispatcher::handle(const std::string& name, const std::str
   if (name == "force.state") {
     return forceRuntime_.forceStateJson(forceMonotonicMilliseconds());
   }
+  if (name == "motion.timing") {
+    return motion_.timingJson();
+  }
   if (name == "force.configure") {
     requireForceMutationSafe("force configuration");
     forceRuntime_.configure(

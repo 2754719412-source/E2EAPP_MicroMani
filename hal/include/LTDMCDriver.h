@@ -16,6 +16,7 @@
 #include "HalTypes.h"
 #include "EmergencyStopState.h"
 #include "ControlLeaseState.h"
+#include "MotionTiming.h"
 
 namespace appstation::hal {
 
@@ -30,6 +31,8 @@ class LTDMCDriver {
   MotionState readState();
   // Return the latest completed controller sample without issuing vendor SDK reads.
   MotionState latestState() const;
+  // 只读取累计诊断计数，不访问 SDK、控制租约或设备状态。
+  std::string timingJson() const;
   // 立即急停所有轴并尽力关闭伺服；只有显式安全确认可以清除锁存。
   void emergencyStop();
   void latchEmergencyStop() noexcept;
@@ -107,6 +110,7 @@ class LTDMCDriver {
   void stopTeleopSide(Side side);
 
  private:
+  friend class MotionControlThread;
   friend struct ForceTareDispatcherTestAccess;
   friend struct MotionExecutorTestAccess;
 
@@ -143,6 +147,7 @@ class LTDMCDriver {
   // mutex_ 保护 vendor SDK 调用和内部状态；snapshotMutex_ 只保护对外快照缓存。
   mutable std::mutex mutex_;
   mutable std::mutex snapshotMutex_;
+  MotionTiming timing_;
   bool initialized_{false};
   // 原子代际同时记录锁存，急停/确认后旧命令仍保持失效。
   EmergencyStopState estop_;

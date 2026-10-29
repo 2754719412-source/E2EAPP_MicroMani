@@ -41,3 +41,25 @@ it('组帧拒绝等关键失效仍标异常', () => {
   render(<QualityReportModal open report={report([...routine, 'frame assembler recovered: 参与采集设备反馈无效'], [])} onReRecord={vi.fn()} onAccept={vi.fn()} />)
   expect(feedbackTile()).toContain('异常')
 })
+
+it('组帧延迟与相机帧率分别解释，29.2 FPS 不显示为低帧率', () => {
+  const value = { ...report([], []), maxSkewMs: 75.081, cameraMinFps: { global: 29.2 } }
+  render(<QualityReportModal open report={value} onReRecord={vi.fn()} onAccept={vi.fn()} />)
+  const timing = screen.getByText('最大组帧延迟').parentElement?.textContent ?? ''
+  expect(timing).toContain('75.1ms')
+  expect(timing).toContain('计划组帧时刻')
+  expect(timing).not.toContain('FPS')
+  const camera = screen.getByText('相机异常率').parentElement?.textContent ?? ''
+  expect(camera).toContain('最低 29.2 FPS（正常）')
+})
+
+it('相机帧率低于25时说明需复核，缺少帧率时不显示无穷值', () => {
+  const { rerender } = render(<QualityReportModal open
+    report={{ ...report([], []), cameraMinFps: { global: 24.9 } }} onReRecord={vi.fn()} onAccept={vi.fn()} />)
+  expect(screen.getByText('相机异常率').parentElement?.textContent).toContain('最低 24.9 FPS（低于25，需复核）')
+  rerender(<QualityReportModal open report={{ ...report([], []), cameraMinFps: {} }}
+    onReRecord={vi.fn()} onAccept={vi.fn()} />)
+  const camera = screen.getByText('相机异常率').parentElement?.textContent ?? ''
+  expect(camera).not.toContain('Infinity')
+  expect(camera).toContain('帧率未提供')
+})

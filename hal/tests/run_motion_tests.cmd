@@ -13,7 +13,7 @@ for %%S in (LTDMCDriver MotionControlThread MotionExecutor NativeTeleopControlle
 )
 set OBJECTS=LTDMCDriver.obj MotionControlThread.obj MotionExecutor.obj NativeTeleopController.obj Omega7Driver.obj JodellGripperDriver.obj ForceControlRuntime.obj ForceSafetyLatch.obj ForceComplianceController.obj HkvlForceDriver.obj HkvlForceProtocol.obj HalJson.obj HalCommandDispatcher.obj TeleopHardwareTargetExecutor.obj
 set TEST_RESULT=0
-for %%T in (MotionExecutorTests EmergencyStopTests ControlLeaseTests ThreadStabilityTests WorkerResilienceTests GripperIsolationTests RecordingPreparationTests NativeTelemetryTests ForceTareRuntimeTests ForceCoreTests StateSemanticsTests) do (
+for %%T in (MotionExecutorTests EmergencyStopTests ControlLeaseTests ThreadStabilityTests WorkerResilienceTests GripperIsolationTests RecordingPreparationTests NativeTelemetryTests ForceTareRuntimeTests ForceCoreTests StateSemanticsTests MotionPollingTimingTests) do (
   cl %FLAGS% "%HAL_ROOT%\tests\%%T.cpp" %OBJECTS% /Fe"%%T.exe" || goto :failed
   call :run_test %%T
   if errorlevel 1 set TEST_RESULT=1
@@ -27,6 +27,9 @@ call :run_test HardwareReferenceReturnTests
 if errorlevel 1 set TEST_RESULT=1
 cl %FLAGS% "%HAL_ROOT%\tests\OriginTelemetryTests.cpp" /Fe"OriginTelemetryTests.exe" || goto :failed
 call :run_test OriginTelemetryTests
+if errorlevel 1 set TEST_RESULT=1
+cl %FLAGS% "%HAL_ROOT%\tests\MotionReadTimingTests.cpp" /Fe"MotionReadTimingTests.exe" || goto :failed
+call :run_test MotionReadTimingTests
 if errorlevel 1 set TEST_RESULT=1
 popd
 exit /b %TEST_RESULT%

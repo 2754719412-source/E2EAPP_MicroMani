@@ -40,6 +40,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include "HighResolutionWait.h"
 #if defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
 #endif
@@ -117,7 +118,8 @@ void preciseSleepUntil(std::chrono::steady_clock::time_point target) {
 #endif
   const auto now = std::chrono::steady_clock::now();
   if (target - now > kSpinMargin) {
-    std::this_thread::sleep_until(target - kSpinMargin);
+    static thread_local HighResolutionWait wait;
+    wait.until(target - kSpinMargin);
   }
   while (std::chrono::steady_clock::now() < target) {
 #if defined(__x86_64__) || defined(_M_X64)

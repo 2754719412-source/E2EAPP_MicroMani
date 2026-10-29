@@ -135,6 +135,13 @@ link /nologo /OUT:"JodellGripperWorker.next.exe" ^
   JodellGripperWorker.next.obj JodellGripperDriver.next.obj ^
   || goto :err
 
+rem 只构建候选文件，部署须由现场操作者另行确认。
+if /I "%~1"=="--build-only" (
+  echo Build succeeded without deployment: %BUILD%\HalServer.next.exe and %BUILD%\JodellGripperWorker.next.exe
+  popd
+  exit /b 0
+)
+
 rem Timestamp backups let a successful build avoid overwriting an executable currently in use.
 for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set BUILD_STAMP=%%I
 if exist "HalServer.exe" copy /Y "HalServer.exe" "HalServer.backup-%BUILD_STAMP%.exe" >nul 2>nul

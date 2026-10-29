@@ -1,4 +1,4 @@
-"""在 MSVC 环境中验证实际 DDS 循环的时间安排；虚拟时钟，不连接设备或 DDS。"""
+"""在 MSVC 环境中验证 DDS 循环的虚拟/真实时钟安排；不连接设备或 DDS。"""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -6,7 +6,8 @@ import tempfile
 
 def main():
     source = (Path(__file__).resolve().parents[1] / "src/HalDdsControlServer.cpp").read_text(encoding="utf-8")
-    loop = "void telemetryLoop()" + source.split("void telemetryLoop()", 1)[1].split("void emergencyLoop()", 1)[0]
+    live_loop = "void telemetryLoop()" + source.split("void telemetryLoop()", 1)[1].split("void emergencyLoop()", 1)[0]
+    loop = live_loop
     # 仅替换时间来源和等待，执行源码中的完整循环与发布分支。
     loop = loop.replace("std::chrono::steady_clock", "TestClock")
     loop = loop.replace("std::this_thread::sleep_until", "sleepUntil")
@@ -20,6 +21,8 @@ def main():
 #include <stdexcept>
 #include <thread>
 #include <vector>
+#include "HighResolutionWait.h"
+using appstation::hal::HighResolutionWait;
 #if defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
 #endif
@@ -48,6 +51,17 @@ struct Fixture {
     if (stopInWait || nowUs() >= 40000) running = false;
   }
 ''' + loop + r'''
+};
+// 同时运行真实时钟下的源码循环，避免虚拟等待掩盖 Windows 唤醒误差。
+struct LiveFixture {
+  bool running = true;
+  std::vector<steady_clock::time_point> forceTimes, telemetryTimes;
+  void publishForceState() {
+    forceTimes.push_back(steady_clock::now());
+    if (forceTimes.size() == 200) running = false;
+  }
+  void publishTelemetry() { telemetryTimes.push_back(steady_clock::now()); }
+''' + live_loop + r'''
 };
 void require(bool ok, const char* message) {
   if (!ok) throw std::runtime_error(message);
@@ -92,6 +106,17 @@ int main() {
     preciseSleepUntil(deadline);
     require(steady_clock::now() >= deadline, "hybrid wait must not return before its deadline");
     preciseSleepUntil(deadline - milliseconds(10));
+    LiveFixture live;
+    live.forceTimes.reserve(200);
+    live.telemetryTimes.reserve(200);
+    live.telemetryLoop();
+    const auto rate = [](const auto& stamps) {
+      return (stamps.size() - 1) / duration<double>(stamps.back() - stamps.front()).count();
+    };
+    std::cout << "real_clock_force_hz=" << rate(live.forceTimes)
+              << " ordinary_hz=" << rate(live.telemetryTimes) << '\n';
+    require(rate(live.forceTimes) > 150 && rate(live.telemetryTimes) > 75,
+        "real telemetry wait is still limited by the coarse Windows timer");
     std::cout << "PASS: 200/100 Hz division, fixed deadlines, overload, phase, late wake, stop\n";
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
@@ -105,6 +130,7 @@ int main() {
         cpp.write_text(harness, encoding="utf-8")
         executable = build / "TelemetryTimingTests.exe"
         subprocess.run(["cl", "/nologo", "/utf-8", "/std:c++20", "/EHsc", "/O2", str(cpp),
+                        "/I", str(Path(__file__).resolve().parents[1] / "include"),
                         f"/Fe{executable}"], cwd=build, check=True)
         subprocess.run([str(executable)], cwd=build, check=True)
 

@@ -837,7 +837,8 @@ def test_hal_treats_card0_dmc5c10_sevon_feedback_as_unreadable() -> None:
     assert "std::array<bool, 12> commandedEnabled_{};" in header
     assert "if (!hasReadableSevonFeedback(side, axis)) { enabled_[index] = commandedEnabled_[index]; state.axes[index].enabledConfirmed = false; }" in normalized
     assert (
-        "else if (dmcReadSevonPin) { enabled_[index] = dmcReadSevonPin(card, axisNo) > 0; "
+        "else if (dmcReadSevonPin) { MotionTimingScope call(timing_.cards[card].readCalls[1]); "
+        "enabled_[index] = dmcReadSevonPin(card, axisNo) > 0; "
         "commandedEnabled_[index] = enabled_[index]; state.axes[index].enabledConfirmed = true; }"
     ) in normalized
     unsupported_sevon_branch = normalized.split("if (!usesSevonPin(side, axis)) {", 1)[1].split(

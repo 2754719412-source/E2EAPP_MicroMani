@@ -562,15 +562,18 @@ bool LTDMCDriver::estopActive() const {
 }
 
 MotionState LTDMCDriver::readState() {
+  MotionTimingScope attempt(timing_.readAttempt);
   // 高频状态读取使用 try_lock，避免和运动命令争锁造成控制路径抖动。
   std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
   if (!lock.owns_lock()) {
+    timing_.busyReturns.fetch_add(1, std::memory_order_relaxed);
     return cachedStateSnapshot();
   }
   return readStateLocked();
 }
 
 MotionState LTDMCDriver::readStateLocked() {
+  MotionTimingScope scan(timing_.fullRead);
   ensureInitialized();
   if (emergencyStateNeedsClear_.load(std::memory_order_acquire)) clearEmergencyStateLocked();
   MotionState state;
@@ -579,24 +582,32 @@ MotionState LTDMCDriver::readStateLocked() {
   for (int sideIndex = 0; sideIndex < 2; ++sideIndex) {
     const auto side = sideIndex == 0 ? Side::Left : Side::Right;
     const auto card = cardForSide(side);
+    MotionTimingScope cardScan(timing_.cards[card].scan);
     for (int axisIndex = 0; axisIndex < 6; ++axisIndex) {
       const auto axis = static_cast<SemanticAxis>(axisIndex);
       const auto index = stateIndex(side, axis);
 #if defined(_WIN32) && defined(APPSTATION_ENABLE_VENDOR_SDKS)
       const auto axisNo = static_cast<unsigned short>(physicalAxis(side, axis));
-      pulse_[index] = static_cast<double>(dmcGetPosition(card, axisNo));
+      {
+        MotionTimingScope call(timing_.cards[card].readCalls[0]);
+        pulse_[index] = static_cast<double>(dmcGetPosition(card, axisNo));
+      }
       // 无可靠伺服反馈的轴使用 commandedEnabled_，防止 UI 把不可读误判为未使能。
       if (!hasReadableSevonFeedback(side, axis)) {
         enabled_[index] = commandedEnabled_[index];
         state.axes[index].enabledConfirmed = false;
       } else if (dmcReadSevonPin) {
+        MotionTimingScope call(timing_.cards[card].readCalls[1]);
         enabled_[index] = dmcReadSevonPin(card, axisNo) > 0;
         commandedEnabled_[index] = enabled_[index];
         state.axes[index].enabledConfirmed = true;
       } else {
         state.axes[index].enabledConfirmed = false;
       }
-      state.axes[index].moving = dmcCheckDone(card, axisNo) == 0;
+      {
+        MotionTimingScope call(timing_.cards[card].readCalls[2]);
+        state.axes[index].moving = dmcCheckDone(card, axisNo) == 0;
+      }
 #endif
       state.axes[index].pulse = pulse_[index];
       state.axes[index].uiPosition = pulseToUi(pulse_[index], side, axis);
@@ -620,6 +631,45 @@ void LTDMCDriver::refreshOriginStateLocked(std::uint64_t epoch) {
 
 MotionState LTDMCDriver::latestState() const {
   return cachedStateSnapshot();
+}
+
+std::string LTDMCDriver::timingJson() const {
+  std::ostringstream out;
+  out << "{\"busyReturns\":" << timing_.busyReturns.load(std::memory_order_relaxed);
+  const auto metric = [&out](const char* name, const MotionTimingCounter& counter) {
+    out << ",\"" << name << "\":";
+    counter.json(out);
+  };
+  metric("pollWork", timing_.pollWork);
+  metric("pollWait", timing_.pollWait);
+  metric("busyPollWait", timing_.busyPollWait);
+  metric("readAttempt", timing_.readAttempt);
+  metric("fullRead", timing_.fullRead);
+  out << ",\"cards\":[";
+  constexpr const char* names[]{"dmc_get_position", "dmc_read_sevon_pin", "dmc_check_done",
+      "dmc_axis_io_status", "dmc_get_stop_reason"};
+  for (std::size_t card = 0; card < timing_.cards.size(); ++card) {
+    if (card) out << ",";
+    out << "{\"card\":" << card;
+    const auto& counters = timing_.cards[card];
+    metric("scan", counters.scan);
+    metric("teleopHold", counters.teleopHold);
+    out << ",\"readCalls\":{";
+    for (std::size_t i = 0; i < counters.readCalls.size(); ++i) {
+      if (i) out << ",";
+      out << "\"" << names[i] << "\":";
+      counters.readCalls[i].json(out);
+    }
+    out << "},\"teleopReadCalls\":{";
+    for (std::size_t i = 0; i < counters.teleopReadCalls.size(); ++i) {
+      if (i) out << ",";
+      out << "\"" << names[i] << "\":";
+      counters.teleopReadCalls[i].json(out);
+    }
+    out << "}}";
+  }
+  out << "]}";
+  return out.str();
 }
 
 MotionState LTDMCDriver::cachedStateSnapshot() const {
@@ -1554,6 +1604,7 @@ TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(
   checkedMotionPulse(rotationPulseDeadband);
   const auto estopSequenceAtStart = expectedEpoch.value_or(commandEpoch());
   std::scoped_lock lock(mutex_);
+  MotionTimingScope hold(timing_.cards[cardForSide(side)].teleopHold);
   ensureInitialized();
   throwIfEstopActive();
   checkMotionCommand(estopSequenceAtStart);
@@ -1594,8 +1645,14 @@ TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(
     const auto pulseDeadband = rotation ? rotationPulseDeadband : translationPulseDeadband;
     const auto axisNo = static_cast<unsigned short>(physicalAxis(side, axis));
 #if defined(_WIN32) && defined(APPSTATION_ENABLE_VENDOR_SDKS)
-    const bool moving = dmcCheckDone(card, axisNo) == 0;
-    actualPulse = static_cast<double>(dmcGetPosition(card, axisNo));
+    const bool moving = [&]() {
+      MotionTimingScope call(timing_.cards[card].teleopReadCalls[2]);
+      return dmcCheckDone(card, axisNo) == 0;
+    }();
+    {
+      MotionTimingScope call(timing_.cards[card].teleopReadCalls[0]);
+      actualPulse = static_cast<double>(dmcGetPosition(card, axisNo));
+    }
     pulse_[index] = actualPulse;
     const bool reattachMovingTarget = moving && !teleopTargetActive_[index];
     if (reattachMovingTarget) {
@@ -1608,9 +1665,11 @@ TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(
 #endif
 #if defined(_WIN32) && defined(APPSTATION_ENABLE_VENDOR_SDKS)
     if (dmcAxisIoStatus) {
+      MotionTimingScope call(timing_.cards[card].teleopReadCalls[3]);
       result.axisIoStatus[axisIndex] = static_cast<double>(dmcAxisIoStatus(card, axisNo));
     }
     if (dmcGetStopReason) {
+      MotionTimingScope call(timing_.cards[card].teleopReadCalls[4]);
       long stopReason = 0;
       if (dmcGetStopReason(card, axisNo, &stopReason) == 0) {
         result.stopReason[axisIndex] = static_cast<double>(stopReason);

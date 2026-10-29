@@ -108,6 +108,8 @@ void serveConnection(
         body = commandDispatcher.handle("hal.reconnect", "{}");
       } else if (request.rfind("GET /force/state ", 0) == 0) {
         body = commandDispatcher.handle("force.state", "{}");
+      } else if (request.rfind("GET /motion/timing ", 0) == 0) {
+        body = commandDispatcher.handle("motion.timing", "{}");
       } else {
         code = 404;
         body = "{\"ok\":false,\"message\":\"not found\"}";
