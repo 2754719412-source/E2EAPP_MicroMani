@@ -25,6 +25,7 @@ from starlette.websockets import WebSocketState
 from backend.app_factory import create_services
 from backend.core.participation import participation, hardware_sides, source_sides
 from backend.core.config import SettingsService
+from backend.core.work_origin import require_current_work_origin
 from backend.core.data_contract import (
     data_contract_metadata,
     dataset_side_to_hardware_side,
@@ -1478,13 +1479,14 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail={"code": "MOTION_UNAVAILABLE", "message": str(exc)}) from exc
 
     @app.post("/api/motion/{side}/return_origin")
-    async def return_motion_origin_side(side: str) -> ApiEnvelope:
+    async def return_motion_origin_side(side: str, request: HardwareHomeRequest | None = None) -> ApiEnvelope:
         if side not in {"left", "right"}:
             raise HTTPException(status_code=400, detail={"code": "BAD_SIDE", "message": "side must be left or right"})
         try:
             recorder.require_work_origin_return_allowed()
-            result = await commands.return_motion_origin_side(side)
-            recorder.mark_reset_origin_returned(side)
+            result = await commands.return_motion_origin_side(side, request.axes) if request else await commands.return_motion_origin_side(side)
+            if request is None or len(request.axes) == 6:
+                recorder.mark_reset_origin_returned(side)
             return envelope(result)
         except RecordingBlocksOriginReturn as exc:
             raise HTTPException(status_code=409, detail={"code": "RECORDING_ACTIVE", "message": str(exc)}) from exc
@@ -1607,6 +1609,8 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             )
         try:
             with commands.safety.operation():
+                instance_id = await require_current_work_origin(
+                    config, hal, [dataset_side_to_hardware_side(side) for side in controlled_sides])
                 for side in controlled_sides:
                     commands.safety.check(safety_token)
                     motion_plan = plan["motion"][side]
@@ -1619,7 +1623,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
                     commands.safety.check(safety_token)
                     results["motion"][side] = await hal.command(
                         "motion.teleop_target_update",
-                        _policy_motion_payload(hardware_side, motion_plan, config),
+                        {**_policy_motion_payload(hardware_side, motion_plan, config), "expectedInstanceId": instance_id},
                     )
                     timing_ms["motion"] = (time.perf_counter() - t_mark) * 1e3
                     t_mark = time.perf_counter()

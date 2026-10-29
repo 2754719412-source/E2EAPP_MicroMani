@@ -6,6 +6,7 @@ namespace appstation::hal {
 // 仅供关闭 vendor SDK 的测试使用；不加载设备、不启动真实运动。
 struct MotionExecutorTestAccess {
   static void initialize(LTDMCDriver& motion) { motion.initialized_ = true; }
+  static void setInstance(LTDMCDriver& motion, const std::string& id) { motion.instanceId_ = id; }
   static std::unique_lock<std::mutex> holdExecutor(MotionExecutor& executor) {
     return std::unique_lock<std::mutex>(executor.mutex_);
   }

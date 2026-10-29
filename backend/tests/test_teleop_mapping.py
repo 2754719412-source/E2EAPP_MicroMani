@@ -60,7 +60,8 @@ class FakeHal:
         return type(
             "Health",
             (),
-            {"connected": False, "ltdmc_ok": False, "omega7_ok": False},
+            {"connected": True, "ltdmc_ok": True, "omega7_ok": False,
+             "instance_id": "test-hal-instance", "capabilities": ["work_origin_instance_guard_v1"]},
         )()
 
     async def omega_state(self) -> dict[str, Any]:
@@ -194,6 +195,8 @@ def start_config(
         "rightValid": valid_origin,
         "leftPulse": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         "rightPulse": [7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        "leftAxisInstanceId": ["test-hal-instance"] * 6,
+        "rightAxisInstanceId": ["test-hal-instance"] * 6,
         "updatedAt": 100,
         "previousValid": False,
         "previousLeftPulse": [0.0] * 6,
@@ -435,6 +438,7 @@ def test_native_teleop_running_origin_change_forces_rehome_before_start(
             "side": "left",
             "pulse": [101.0, 102.0, 103.0, 104.0, 105.0, 106.0],
             "enabledAxes": [True, True, True, True, True, True],
+            "expectedInstanceId": "test-hal-instance",
         }
         assert commands[-1][1]["leftWorkOriginPulse"] == [101.0, 102.0, 103.0, 104.0, 105.0, 106.0]
         origin_event = next(
@@ -1190,6 +1194,7 @@ def test_teleop_start_returns_to_work_origin_before_real_mapper(monkeypatch: pyt
                     "rightPulse": [7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
                     "leftEnabledAxes": [True, True, True, True, True, True],
                     "rightEnabledAxes": [True] * 6,
+                    "expectedInstanceId": "test-hal-instance",
                 },
             ),
         ]
@@ -1214,6 +1219,7 @@ def test_teleop_start_returns_requested_side_to_origin_before_real_mapper(monkey
                     "side": "right",
                     "pulse": [7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
                     "enabledAxes": [True] * 6,
+                    "expectedInstanceId": "test-hal-instance",
                 },
             ),
         ]

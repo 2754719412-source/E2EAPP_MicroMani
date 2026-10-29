@@ -26,8 +26,12 @@ namespace {
 enum class Behavior { Success, StoppedNoHome, HomeReadError, DoneError, StartSecondFails, TripEstop, FailLease, Travel };
 Behavior behavior = Behavior::Success;
 std::vector<unsigned short> started;
+std::vector<unsigned short> pointStarted;
+std::array<long, 16> pointDistance{};
+int homeResultCalls = 0;
+long initialPulse = 90000;
 std::array<int, 16> polls{};
-long stopReasonValue = 201;
+long stopReasonValue = 5;
 unsigned long startIo = 4112;
 unsigned long stopIo = 4114;
 int stopCalls = 0;
@@ -45,6 +49,12 @@ std::array<unsigned short, 16> configuredEzCount{};
 std::array<unsigned short, 16> configuredLogic{};
 std::array<double, 16> configuredLowVelocity{};
 std::array<double, 16> configuredHighVelocity{};
+std::array<bool, 16> countPreservationConfigured{};
+short homePositionSetReturn = 0;
+short homePositionReadReturn = 0;
+unsigned short homePositionReadMode = 0;
+double homePositionReadOffset = 0.0;
+
 
 void require(bool value, const char* message) {
   if (!value) throw std::runtime_error(message);
@@ -52,6 +62,18 @@ void require(bool value, const char* message) {
 
 bool wasStarted(unsigned short axis) {
   return std::find(started.begin(), started.end(), axis) != started.end();
+}
+
+short __stdcall setHomePosition(unsigned short card, unsigned short axis, unsigned short mode, double offset) {
+  require(card == expectedCard && mode == 0 && offset == 0.0, "ORG seek must preserve counts without automatic offset");
+  countPreservationConfigured[axis] = true;
+  return homePositionSetReturn;
+}
+short __stdcall getHomePosition(unsigned short card, unsigned short axis, unsigned short* mode, double* offset) {
+  require(card == expectedCard && countPreservationConfigured[axis], "ORG count mode must be configured before readback");
+  *mode = homePositionReadMode;
+  *offset = homePositionReadOffset;
+  return homePositionReadReturn;
 }
 
 short __stdcall setPulse(unsigned short, unsigned short, unsigned short) { return 0; }
@@ -79,6 +101,7 @@ short __stdcall setProfile(unsigned short card, unsigned short axis, double low,
 short __stdcall setSProfile(unsigned short, unsigned short, unsigned short, double) { return 0; }
 short __stdcall startHome(unsigned short card, unsigned short axis) {
   require(card == expectedCard, "HOME started on wrong card");
+  require(countPreservationConfigured[axis], "ORG started before configuring count preservation");
   if (!started.empty()) {
     const auto previous = started.back();
     require(polls[previous] >= 3, "next HOME axis started before previous axis completed");
@@ -87,19 +110,37 @@ short __stdcall startHome(unsigned short card, unsigned short axis) {
   if (behavior == Behavior::StartSecondFails && started.size() == 2) return -7;
   return 0;
 }
+short __stdcall pointMove(unsigned short card, unsigned short axis, long distance, unsigned short mode) {
+  require(card == expectedCard, "limit seek started on wrong card");
+  require(mode == 0 && distance > 0, "limit seek must use bounded positive relative pulses");
+  if (!started.empty()) require(polls[started.back()] >= 3, "limit axes moved concurrently");
+  started.push_back(axis);
+  pointStarted.push_back(axis);
+  pointDistance[axis] = distance;
+  return behavior == Behavior::StartSecondFails && started.size() == 2 ? -7 : 0;
+}
 short __stdcall checkDone(unsigned short, unsigned short axis) {
   if (!wasStarted(axis)) return 1;
+  if (std::find(pointStarted.begin(), pointStarted.end(), axis) != pointStarted.end()) {
+    ++polls[axis];
+    if (behavior == Behavior::TripEstop) current->latchEmergencyStop();
+    if (behavior == Behavior::FailLease) current->failControlLease();
+  }
   if (behavior == Behavior::DoneError) return -8;
   if (behavior == Behavior::StoppedNoHome) return polls[axis] >= 3 ? 1 : 0;
   if (behavior == Behavior::Travel) return 0;
   return polls[axis] >= 3 ? 1 : 0;
 }
 long __stdcall position(unsigned short, unsigned short axis) {
-  if (!wasStarted(axis)) return 90000 + axis;
-  if (behavior == Behavior::Travel) return 90000 + axis + polls[axis] * 1000;
+  if (!wasStarted(axis)) return initialPulse + axis;
+  if (behavior == Behavior::Travel) return initialPulse + axis + polls[axis] * 1000;
+  if (std::find(pointStarted.begin(), pointStarted.end(), axis) != pointStarted.end()) {
+    return initialPulse + axis + (std::min)(polls[axis], 3) * 100;
+  }
   return polls[axis] >= 3 ? 1000 + axis : 90000 + axis;
 }
 short __stdcall homeResult(unsigned short, unsigned short axis, unsigned short* result) {
+  ++homeResultCalls;
   ++polls[axis];
   if (behavior == Behavior::HomeReadError) return -9;
   if (behavior == Behavior::TripEstop) current->latchEmergencyStop();
@@ -149,6 +190,10 @@ HardwareHomeConfig config(ReferenceSeekMode mode = ReferenceSeekMode::OriginSign
 void setup(LTDMCDriver& motion, Behavior next = Behavior::Success) {
   behavior = next;
   started.clear();
+  pointStarted.clear();
+  pointDistance.fill(0);
+  homeResultCalls = 0;
+  initialPulse = 90000;
   polls.fill(0);
   configuredDirection.fill(999);
   configuredVelocityMode.fill(-1);
@@ -157,7 +202,11 @@ void setup(LTDMCDriver& motion, Behavior next = Behavior::Success) {
   configuredLogic.fill(999);
   configuredLowVelocity.fill(-1);
   configuredHighVelocity.fill(-1);
-  stopReasonValue = 201;
+  countPreservationConfigured.fill(false);
+  homePositionSetReturn = homePositionReadReturn = 0;
+  homePositionReadMode = 0;
+  homePositionReadOffset = 0.0;
+  stopReasonValue = 5;
   startIo = 4112;
   stopIo = 4114;
   stopCalls = emergencyCalls = disableCalls = 0;
@@ -169,9 +218,12 @@ void setup(LTDMCDriver& motion, Behavior next = Behavior::Success) {
   dmcSetElMode = setEl;
   dmcSetHomeMode = setHome;
   dmcSetHomePinLogic = setLogic;
+  dmcSetHomePositionUnit = setHomePosition;
+  dmcGetHomePositionUnit = getHomePosition;
   dmcSetProfile = setProfile;
   dmcSetSProfile = setSProfile;
   dmcHomeMove = startHome;
+  dmcPMove = pointMove;
   dmcGetHomeResult = homeResult;
   dmcCheckDone = checkDone;
   dmcGetPosition = position;
@@ -203,6 +255,37 @@ void strictHomeIsSequentialAndConfiguresOnlySelectedAxes() {
       "per-axis HOME profile was not applied");
   require(configuredDirection[0] == 999 && configuredDirection[8] == 999,
       "unselected axes had their HOME configuration rewritten");
+  require(countPreservationConfigured[2] && countPreservationConfigured[5]
+      && !countPreservationConfigured[0] && !countPreservationConfigured[8],
+      "ORG seek did not explicitly preserve counts and disable automatic offset for selected axes");
+}
+
+void strictHomeRejectsUnconfirmedCounterModeBeforeMotion() {
+  for (int failure = 0; failure < 6; ++failure) {
+    LTDMCDriver motion; setup(motion);
+    if (failure == 0) homePositionSetReturn = -1;
+    if (failure == 1) homePositionReadReturn = -2;
+    if (failure == 2) homePositionReadMode = 1;
+    if (failure == 3) homePositionReadOffset = 10.0;
+    if (failure == 4) homePositionReadOffset = std::numeric_limits<double>::quiet_NaN();
+    if (failure == 5) dmcGetHomePositionUnit = nullptr;
+    bool rejected = false;
+    try { motion.homeSide(Side::Right, {false, false, true, false, false, false}, config()); }
+    catch (const std::runtime_error&) { rejected = true; }
+    require(rejected && started.empty(), "unconfirmed counter mode allowed an ORG movement");
+  }
+}
+
+void executionXyRejectsOrgBeforeStartingAnyAxis() {
+  for (const auto axes : {std::array<bool, 6>{true, false, false, false, false, false},
+                         std::array<bool, 6>{false, true, false, false, false, false},
+                         std::array<bool, 6>{true, false, true, false, false, false}}) {
+    LTDMCDriver motion; setup(motion); expectedCard = 1;
+    bool rejected = false;
+    try { motion.homeSide(Side::Left, axes, config()); }
+    catch (const std::runtime_error&) { rejected = true; }
+    require(rejected && started.empty(), "execution X/Y ORG request started an axis");
+  }
 }
 
 void strictHomeStoppedWithoutHomeFailsPromptly() {
@@ -222,6 +305,8 @@ void positiveLimitReferenceRequiresExplicitModeAndEdge() {
   const auto selection = std::array<bool, 6>{true, false, false, false, false, false};
   const auto refs = motion.homeSide(Side::Right, selection, positive);
   require(refs == selection && !motion.estopActive(), "valid explicit positive-limit reference was rejected");
+  require(motion.latestState().readTimestampMs > 0,
+      "completed limit seek published an untimed command snapshot instead of fresh controller feedback");
 
   setup(motion, Behavior::StoppedNoHome);
   startIo = 4114;
@@ -248,6 +333,73 @@ void positiveLimitModeRejectsUnsupportedAxis() {
       config(ReferenceSeekMode::PositiveLimit)); }
   catch (const std::runtime_error&) { rejected = true; }
   require(rejected && started.empty(), "unsupported axis entered positive-limit reference mode");
+}
+
+void positiveLimitRejectsOtherStopReasonsDespiteElSignal() {
+  for (long reason : {0L, 4L, 6L, 7L, 9L, 13L, 22L, 201L}) {
+    LTDMCDriver motion; setup(motion, Behavior::StoppedNoHome);
+    stopReasonValue = reason;
+    bool rejected = false;
+    try { motion.homeSide(Side::Right, {true, false, false, false, false, false},
+        config(ReferenceSeekMode::PositiveLimit)); }
+    catch (const std::runtime_error&) { rejected = true; }
+    require(rejected && motion.estopActive(), "EL+ alone masked a different stopping cause");
+  }
+}
+
+void positiveLimitSeekPreservesCounterAndIgnoresOrgSearchDirection() {
+  LTDMCDriver motion; setup(motion, Behavior::StoppedNoHome);
+  expectedCard = 1;
+  auto positive = config(ReferenceSeekMode::PositiveLimit);
+  positive.axes[0].maxSearchUi = 2000;
+  positive.axes[0].velocityMode = 0;
+  positive.axes[1].maxSearchUi = 3000;
+  const auto selection = std::array<bool, 6>{true, true, false, false, false, false};
+  require(motion.homeSide(Side::Left, selection, positive) == selection, "X/Y limit references missing");
+  require(pointStarted == std::vector<unsigned short>{0, 1}, "positive limit still used ORG search");
+  require(pointDistance[0] == 10000 && pointDistance[1] == 15000, "limit search distance/sign is wrong");
+  require(configuredHighVelocity[0] == 1500 && configuredHighVelocity[1] == 5000,
+      "limit seek ignored the selected low/high velocity mode");
+  require(homeResultCalls == 0 && configuredHomeMode[0] == 999 && configuredHomeMode[1] == 999,
+      "limit seek configured or polled ORG homing; counter reset/reversal is possible");
+  require(position(1, 0) == initialPulse + 300, "limit seek lost the original counter basis");
+}
+
+void positiveLimitFailureNeverStartsNextAxis() {
+  for (const auto mode : {Behavior::DoneError, Behavior::TripEstop, Behavior::FailLease}) {
+    LTDMCDriver motion; setup(motion, mode);
+    bool rejected = false;
+    try { motion.homeSide(Side::Right, {true, false, true, false, false, false},
+        config(ReferenceSeekMode::PositiveLimit)); }
+    catch (const std::runtime_error&) { rejected = true; }
+    require(rejected && motion.estopActive() && stopCalls > 0 && started.size() == 1,
+        "limit seek failure continued to another axis or failed to stop");
+  }
+  LTDMCDriver motion; setup(motion, Behavior::StoppedNoHome);
+  stopReasonValue = 0;
+  stopIo = startIo;
+  bool rejected = false;
+  try { motion.homeSide(Side::Right, {true, false, true, false, false, false},
+      config(ReferenceSeekMode::PositiveLimit)); }
+  catch (const std::runtime_error&) { rejected = true; }
+  require(rejected && started.size() == 1 && motion.estopActive(),
+      "reaching the distance budget without EL+ was accepted");
+}
+
+void positiveLimitInvalidBudgetAndMissingReadbackNeverMove() {
+  for (int failure = 0; failure < 5; ++failure) {
+    LTDMCDriver motion; setup(motion, Behavior::StoppedNoHome);
+    auto positive = config(ReferenceSeekMode::PositiveLimit);
+    if (failure == 0) positive.axes[0].maxSearchUi = 0.01;
+    if (failure == 1) initialPulse = (std::numeric_limits<long>::max)() - 10;
+    if (failure == 2) dmcPMove = nullptr;
+    if (failure == 3) dmcAxisIoStatus = nullptr;
+    if (failure == 4) dmcGetStopReason = nullptr;
+    bool rejected = false;
+    try { motion.homeSide(Side::Right, {true, false, false, false, false, false}, positive); }
+    catch (const std::runtime_error&) { rejected = true; }
+    require(rejected && started.empty(), "invalid limit seek began moving");
+  }
 }
 
 void maxSearchTravelStopsRunaway() {
@@ -317,15 +469,21 @@ void homeFailureIncludesEmergencyVendorFailure() {
 int main() {
   try {
     strictHomeIsSequentialAndConfiguresOnlySelectedAxes();
+    strictHomeRejectsUnconfirmedCounterModeBeforeMotion();
+    executionXyRejectsOrgBeforeStartingAnyAxis();
     strictHomeStoppedWithoutHomeFailsPromptly();
     positiveLimitReferenceRequiresExplicitModeAndEdge();
     positiveLimitModeRejectsUnsupportedAxis();
+    positiveLimitRejectsOtherStopReasonsDespiteElSignal();
+    positiveLimitSeekPreservesCounterAndIgnoresOrgSearchDirection();
+    positiveLimitFailureNeverStartsNextAxis();
+    positiveLimitInvalidBudgetAndMissingReadbackNeverMove();
     maxSearchTravelStopsRunaway();
     failuresStopAndLatch();
     missingExportsAndEmptyMaskNeverMove();
     emergencyVendorFailuresAreReported();
     homeFailureIncludesEmergencyVendorFailure();
-    std::cout << "HardwareHomingTests passed (9 offline vendor-fake cases)" << std::endl;
+    std::cout << "HardwareHomingTests passed (15 groups, including 6 counter-mode rejection cases)" << std::endl;
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "HardwareHomingTests failed: " << error.what() << std::endl;

@@ -39,6 +39,7 @@ from backend.core.motion_limits import (
 from backend.core.schemas import GripperCommandRequest, ManualAxisMoveRequest, SettingsCommandRequest
 from backend.core.motion_safety import MotionSafetyGate, motion_operation
 from backend.core.units import motion_pulse_per_unit, pulse_to_ui
+from backend.core.work_origin import axis_instance_ids, offset_reference_kinds, require_current_work_origin
 from backend.hal_client.client import HalClient
 from backend.services.gripper_backend import (
     NativeGripperAdapter,
@@ -122,8 +123,10 @@ class CommandService:
         return await asyncio.to_thread(self.settings.get_config)
 
     async def _save_config_async(self, config: dict[str, Any], *, emit_log: bool = False,
-                                 home_reference_update: bool = False) -> dict[str, Any]:
+                                 home_reference_update: bool = False, work_origin_update: bool = False) -> dict[str, Any]:
         options = {"home_reference_update": True} if home_reference_update else {}
+        if work_origin_update:
+            options["work_origin_update"] = True
         return await asyncio.to_thread(self.settings.save_config, config, emit_log=emit_log, **options)
 
     def _ensure_origin_mutation_allowed(self) -> None:
@@ -260,6 +263,7 @@ class CommandService:
         right_pulse = cast(list[float], origin["rightPulse"])
         left_enabled_axes = self._home_enabled_axes("left", config)
         right_enabled_axes = self._home_enabled_axes("right", config)
+        instance_id = await require_current_work_origin(config, self.hal, ("left", "right"))
         await self._stop_manual_teleop_connect_before_motion_return()
         self._validate_work_origin_target(config, "left", left_enabled_axes)
         self._validate_work_origin_target(config, "right", right_enabled_axes)
@@ -295,6 +299,7 @@ class CommandService:
                 "rightPulse": right_pulse,
                 "leftEnabledAxes": left_enabled_axes,
                 "rightEnabledAxes": right_enabled_axes,
+                "expectedInstanceId": instance_id,
             },
         )
         await self._confirm_work_origin({"left": left_pulse, "right": right_pulse}, requested_at, safety_token)
@@ -314,7 +319,7 @@ class CommandService:
         return result
 
     @motion_operation("side")
-    async def return_motion_origin_side(self, side: str) -> dict[str, object]:
+    async def return_motion_origin_side(self, side: str, axes: list[str] | None = None) -> dict[str, object]:
         safety_token = self.safety.capture(side)
         self.safety.check(safety_token)
         self._validate_side(side)
@@ -337,7 +342,10 @@ class CommandService:
         if not bool(origin[valid_key]):
             raise RuntimeError(f"{side} motion work origin is not captured")
         pulse = cast(list[float], origin[pulse_key])
-        enabled_axes = self._home_enabled_axes(side, config)
+        if axes is not None and (not axes or len(set(axes)) != len(axes) or any(axis not in AXIS_ORDER for axis in axes)):
+            raise RuntimeError("invalid work origin return axes")
+        enabled_axes = [axis in axes for axis in AXIS_ORDER] if axes is not None else self._home_enabled_axes(side, config)
+        instance_id = await require_current_work_origin(config, self.hal, (side,), enabled_axes)
         await self._stop_manual_teleop_connect_before_motion_return()
         self._validate_work_origin_target(config, side, enabled_axes)
         self._validate_motion_axes_enabled_for_work_origin(motion_state, side, enabled_axes)
@@ -361,10 +369,11 @@ class CommandService:
                 "side": side,
                 "pulse": pulse,
                 "enabledAxes": enabled_axes,
+                "expectedInstanceId": instance_id,
             },
         )
-        await self._confirm_work_origin({side: pulse}, requested_at, safety_token)
-        self.telemetry.home_side(side)
+        await self._confirm_work_origin({side: pulse}, requested_at, safety_token, enabled_axes)
+        self.telemetry.home_side(side, enabled_axes)
         self._log_work_origin_moves(config, op_id, "home_origin_side", "complete", side, pulse, enabled_axes)
         self.logs.event(
             "[HAL]",
@@ -534,7 +543,7 @@ class CommandService:
         self.safety.check(token)
         requested_at = now_ms()
         result = await self.hal.command("motion.return_home_reference", {
-            "side": side, "pulse": target, "enabledAxes": enabled_axes,
+            "side": side, "pulse": target, "enabledAxes": enabled_axes, "expectedInstanceId": instance_id,
         })
         if self._real_hardware_mode(config) and result.get("response", {}).get("referenceReturnCompleted") is not True:
             raise RuntimeError("HAL did not confirm hardware reference return completion; deploy matching HAL binaries")
@@ -549,6 +558,8 @@ class CommandService:
         self, side: str, axes: list[str] | None = None, *, reference_mode: str = "origin"
     ) -> dict[str, object]:
         self._validate_side(side)
+        if reference_mode == "origin" and side == "left" and (axes is None or any(axis in {"X", "Y"} for axis in axes)):
+            raise RuntimeError("执行臂 X、Y 未安装原点开关，不能机械寻零；请使用正限位建参考，并单独选择有原点开关的轴")
         safety_token = self.safety.capture(side)
         self.safety.check(safety_token)
         self._ensure_origin_mutation_allowed()
@@ -561,6 +572,12 @@ class CommandService:
         pulse_key = f"{side}Pulse"
         instance_id = await self._current_reference_instance_id(config)
         # 开始前持久化撤销所选轴的确认；失败、急停、断连不能保留旧成功标记。
+        origin = self._normalized_motion_origin(config)
+        if reference_mode == "origin":
+            for index, selected in enumerate(enabled_axes):
+                if selected:
+                    origin[f"{side}AxisInstanceId"][index] = ""
+        config["motion"]["origin"] = origin
         confirmed = cast(list[bool], home_reference[f"{side}AxisConfirmed"])
         limit_key = f"{side}AxisLimitReference"
         for index, selected in enumerate(enabled_axes):
@@ -570,7 +587,7 @@ class CommandService:
                 if limit_key in home_reference:
                     home_reference[limit_key][index] = False
         config["motion"]["homeReference"] = home_reference
-        await self._save_config_async(config, emit_log=False, home_reference_update=True)
+        await self._save_config_async(config, emit_log=False, home_reference_update=True, work_origin_update=True)
         self.safety.check(safety_token)
         result = await self.hal.command(
             "motion.home_side",
@@ -643,21 +660,28 @@ class CommandService:
                 limit_sources[index] = limit_reference_axes[index]
         home_reference[limit_key] = limit_sources
         valid_key = "leftValid" if side == "left" else "rightValid"
-        if bool(work_origin_offset.get(valid_key)) and any(
-            selected and not limit_reference_axes[index] for index, selected in enumerate(enabled_axes)
-        ):
-            self._apply_home_reference_offset(origin, home_reference, work_origin_offset, side, updated_at)
-            for index, selected in enumerate(enabled_axes):
-                if not selected or limit_reference_axes[index]:
-                    origin[pulse_key][index] = previous_origin_pulse[index]
-        if any(limit_reference_axes):
-            # 限位参考未重置控制卡计数，保留原工作位置，只重算到新参考点的偏移。
-            for index, is_limit in enumerate(limit_reference_axes):
-                if is_limit:
-                    work_origin_offset[f"{side}PulseDelta"][index] = (
-                        previous_origin_pulse[index] - home_reference[pulse_key][index]
-                    )
-            work_origin_offset["updatedAt"] = updated_at
+        origin_ids = origin[f"{side}AxisInstanceId"]
+        kinds = work_origin_offset[f"{side}AxisReferenceKind"]
+        for index, selected in enumerate(enabled_axes):
+            if not selected:
+                continue
+            kind = "positive_limit" if limit_reference_axes[index] else "origin"
+            if kind == "positive_limit" and origin_ids[index] == instance_id:
+                # 同一计数基准内重复测量时保持工作位置，记录新的参考距离。
+                work_origin_offset[f"{side}PulseDelta"][index] = previous_origin_pulse[index] - home_reference[pulse_key][index]
+                kinds[index] = kind
+                work_origin_offset[valid_key] = True
+                work_origin_offset["updatedAt"] = updated_at
+            elif work_origin_offset[valid_key] and kinds[index] == kind:
+                # 重启后使用已标定的物理参考距离，不能以旧绝对计数反算新距离。
+                origin[pulse_key][index] = home_reference[pulse_key][index] + work_origin_offset[f"{side}PulseDelta"][index]
+                origin_ids[index] = instance_id
+                origin[valid_key] = True
+                origin["updatedAt"] = updated_at
+            else:
+                origin_ids[index] = ""
+        origin["valid"] = bool(origin["leftValid"] and origin["rightValid"])
+        work_origin_offset["valid"] = bool(work_origin_offset["leftValid"] and work_origin_offset["rightValid"])
         config["motion"]["origin"] = origin
         config["motion"]["homeReference"] = home_reference
         config["motion"]["workOriginOffset"] = work_origin_offset
@@ -681,7 +705,7 @@ class CommandService:
                     f"{side} motion work origin invalidated after hardware zero refresh: {exc}",
                 )
         self.safety.check(safety_token)
-        saved = await self._save_config_async(config, emit_log=False, home_reference_update=True)
+        saved = await self._save_config_async(config, emit_log=False, home_reference_update=True, work_origin_update=True)
         self.telemetry.home_side(side, [selected and not limit_reference_axes[index]
                                        for index, selected in enumerate(enabled_axes)])
         side_label = "left" if side == "left" else "right"
@@ -719,6 +743,8 @@ class CommandService:
         preview_origin = self._normalized_motion_origin(preview)
         preview_origin["leftPulse"] = list(cast(list[float], origin["previousLeftPulse"]))
         preview_origin["rightPulse"] = list(cast(list[float], origin["previousRightPulse"]))
+        for side in ("left", "right"):
+            preview_origin[f"{side}AxisInstanceId"] = list(origin[f"previous{side.title()}AxisInstanceId"])
         preview_origin["updatedAt"] = int(cast(Any, origin["previousUpdatedAt"]))
         preview_origin["leftValid"] = True
         preview_origin["rightValid"] = True
@@ -731,6 +757,7 @@ class CommandService:
             "left",
             cast(list[float], preview_origin["leftPulse"]),
             int(cast(Any, preview_origin["updatedAt"])),
+            preview_origin["leftAxisInstanceId"],
         )
         self._set_work_origin_offset_side(
             work_origin_offset,
@@ -738,6 +765,7 @@ class CommandService:
             "right",
             cast(list[float], preview_origin["rightPulse"]),
             int(cast(Any, preview_origin["updatedAt"])),
+            preview_origin["rightAxisInstanceId"],
         )
         preview["motion"]["origin"] = preview_origin
         preview["motion"]["homeReference"] = home_reference
@@ -770,10 +798,20 @@ class CommandService:
         safety_token = self.safety.capture()
         self.safety.check(safety_token)
         self._ensure_origin_mutation_allowed()
-        state = await self.hal.motion_state()
-        self.require_stationary_motion(state)
-        pulses = self._motion_state_pulses(state)
         config = await self._get_config_async()
+        instance_id = await self._current_reference_instance_id(config)
+        requested_at = now_ms()
+        deadline = time.monotonic() + 2.0
+        while True:
+            self.safety.check(safety_token)
+            state = await self.hal.motion_state()
+            self.require_stationary_motion(state)
+            if state["timestamp_ms"] >= requested_at:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError("fresh controller feedback required before capturing work origin")
+            await asyncio.sleep(0.02)
+        pulses = self._motion_state_pulses(state)
         origin = self._normalized_motion_origin(config)
         drift = self._motion_origin_capture_drift(config, origin, pulses, side)
         if bool(drift["requiresConfirmation"]) and not confirm_large_drift:
@@ -785,6 +823,8 @@ class CommandService:
             origin["previousLeftPulse"] = list(cast(list[float], origin["leftPulse"]))
             origin["previousRightPulse"] = list(cast(list[float], origin["rightPulse"]))
             origin["previousUpdatedAt"] = int(cast(Any, origin["updatedAt"]))
+            for active_side in ("left", "right"):
+                origin[f"previous{active_side.title()}AxisInstanceId"] = list(origin[f"{active_side}AxisInstanceId"])
         home_reference = self._normalized_home_reference(config)
         work_origin_offset = self._normalized_work_origin_offset(config)
         captured_at = now_ms()
@@ -792,12 +832,14 @@ class CommandService:
             left_pulse = pulses[:6]
             origin["leftPulse"] = left_pulse
             origin["leftValid"] = True
-            self._set_work_origin_offset_side(work_origin_offset, home_reference, "left", left_pulse, captured_at)
+            origin["leftAxisInstanceId"] = [instance_id] * 6
+            self._set_work_origin_offset_side(work_origin_offset, home_reference, "left", left_pulse, captured_at, origin["leftAxisInstanceId"])
         if side in {None, "right"}:
             right_pulse = pulses[6:12]
             origin["rightPulse"] = right_pulse
             origin["rightValid"] = True
-            self._set_work_origin_offset_side(work_origin_offset, home_reference, "right", right_pulse, captured_at)
+            origin["rightAxisInstanceId"] = [instance_id] * 6
+            self._set_work_origin_offset_side(work_origin_offset, home_reference, "right", right_pulse, captured_at, origin["rightAxisInstanceId"])
         origin["valid"] = bool(origin["leftValid"] and origin["rightValid"])
         origin["updatedAt"] = captured_at
         config["motion"]["origin"] = origin
@@ -807,7 +849,9 @@ class CommandService:
         for active_side in ("left", "right") if side is None else (side,):
             self._validate_work_origin_target(config, active_side, self._home_enabled_axes(active_side, config))
         self.safety.check(safety_token)
-        saved = await self._save_config_async(config, emit_log=False)
+        if await self._current_reference_instance_id(config) != instance_id:
+            raise RuntimeError("controller instance changed while capturing work origin")
+        saved = await self._save_config_async(config, emit_log=False, work_origin_update=True)
         label = side or "both"
         self.logs.info("[HAL]", f"{label} motion work origin recorded")
         await self._stop_native_teleop_after_origin_change()
@@ -827,8 +871,12 @@ class CommandService:
         current_left = list(cast(list[float], origin["leftPulse"]))
         current_right = list(cast(list[float], origin["rightPulse"]))
         current_updated_at = int(cast(Any, origin["updatedAt"]))
+        current_ids = {side: list(origin[f"{side}AxisInstanceId"]) for side in ("left", "right")}
         origin["leftPulse"] = list(cast(list[float], origin["previousLeftPulse"]))
         origin["rightPulse"] = list(cast(list[float], origin["previousRightPulse"]))
+        for side in ("left", "right"):
+            origin[f"{side}AxisInstanceId"] = list(origin[f"previous{side.title()}AxisInstanceId"])
+            origin[f"previous{side.title()}AxisInstanceId"] = current_ids[side]
         origin["updatedAt"] = int(cast(Any, origin["previousUpdatedAt"]))
         origin["leftValid"] = True
         origin["rightValid"] = True
@@ -845,6 +893,7 @@ class CommandService:
             "left",
             cast(list[float], origin["leftPulse"]),
             int(cast(Any, origin["updatedAt"])),
+            origin["leftAxisInstanceId"],
         )
         self._set_work_origin_offset_side(
             work_origin_offset,
@@ -852,6 +901,7 @@ class CommandService:
             "right",
             cast(list[float], origin["rightPulse"]),
             int(cast(Any, origin["updatedAt"])),
+            origin["rightAxisInstanceId"],
         )
         config["motion"]["origin"] = origin
         config["motion"]["homeReference"] = home_reference
@@ -860,7 +910,8 @@ class CommandService:
         self._validate_work_origin_target(config, "left", self._home_enabled_axes("left", config))
         self._validate_work_origin_target(config, "right", self._home_enabled_axes("right", config))
         self.safety.check(safety_token)
-        saved = await self._save_config_async(config, emit_log=False)
+        await require_current_work_origin(config, self.hal, ("left", "right"))
+        saved = await self._save_config_async(config, emit_log=False, work_origin_update=True)
         self.logs.info("[HAL]", "previous motion work origin restored")
         await self._stop_native_teleop_after_origin_change()
         return {"origin": saved["motion"]["origin"], "config": saved}
@@ -877,9 +928,11 @@ class CommandService:
         if side in {None, "left"}:
             origin["leftPulse"] = [0.0] * 6
             origin["leftValid"] = False
+            origin["leftAxisInstanceId"] = [""] * 6
         if side in {None, "right"}:
             origin["rightPulse"] = [0.0] * 6
             origin["rightValid"] = False
+            origin["rightAxisInstanceId"] = [""] * 6
         origin["valid"] = bool(origin["leftValid"] and origin["rightValid"])
         origin["updatedAt"] = now_ms() if origin["leftValid"] or origin["rightValid"] else 0
         config["motion"]["origin"] = origin
@@ -887,14 +940,16 @@ class CommandService:
         if side in {None, "left"}:
             work_origin_offset["leftPulseDelta"] = [0.0] * 6
             work_origin_offset["leftValid"] = False
+            work_origin_offset["leftAxisReferenceKind"] = [""] * 6
         if side in {None, "right"}:
             work_origin_offset["rightPulseDelta"] = [0.0] * 6
             work_origin_offset["rightValid"] = False
+            work_origin_offset["rightAxisReferenceKind"] = [""] * 6
         work_origin_offset["valid"] = bool(work_origin_offset["leftValid"] and work_origin_offset["rightValid"])
         work_origin_offset["updatedAt"] = origin["updatedAt"]
         config["motion"]["workOriginOffset"] = work_origin_offset
         self.safety.check(token)
-        saved = await self._save_config_async(config, emit_log=False)
+        saved = await self._save_config_async(config, emit_log=False, work_origin_update=True)
         label = side or "both"
         self.logs.info("[HAL]", f"{label} motion work origin record cleared")
         return {"origin": saved["motion"]["origin"], "config": saved}
@@ -982,6 +1037,7 @@ class CommandService:
         token = self.safety.capture()
         self.safety.check(token)
         config = await self._get_config_async()
+        await require_current_work_origin(config, self.hal, sides)
         origin = self._normalized_motion_origin(config)
         targets = {}
         for side in sides:
@@ -1441,7 +1497,19 @@ class CommandService:
         return pulse_per_unit
 
     async def _refresh_motion_enabled(self, side: str) -> None:
-        state = await self.hal.motion_state()
+        deadline = time.monotonic() + 2.0
+        while True:
+            try:
+                state = await self.hal.motion_state()
+                break
+            except RuntimeError as exc:
+                # 使能变更后的命令状态可能先于控制卡采样发布；只等待反馈，不重发指令。
+                if str(exc) not in {
+                    "DDS topic has invalid source timestamp: AppStation.Hal.MotionState",
+                    "DDS motion controller sample timestamp is stale or unavailable",
+                } or time.monotonic() >= deadline:
+                    raise
+                await asyncio.sleep(0.02)
         raw_enabled = state.get("enabled")
         if isinstance(raw_enabled, list) and len(raw_enabled) == 12:
             values = raw_enabled[:6] if side == "left" else raw_enabled[6:12]
@@ -1749,6 +1817,8 @@ class CommandService:
             "previousLeftPulse": previous_left_pulse,
             "previousRightPulse": previous_right_pulse,
             "previousUpdatedAt": previous_updated_at,
+            **{key: axis_instance_ids(origin, key) for key in (
+                "leftAxisInstanceId", "rightAxisInstanceId", "previousLeftAxisInstanceId", "previousRightAxisInstanceId")},
         }
 
     def _normalized_home_reference(self, config: dict[str, Any]) -> dict[str, object]:
@@ -1817,6 +1887,8 @@ class CommandService:
             "leftPulseDelta": left_delta,
             "rightPulseDelta": right_delta,
             "updatedAt": updated_at,
+            "leftAxisReferenceKind": offset_reference_kinds(offset, "left"),
+            "rightAxisReferenceKind": offset_reference_kinds(offset, "right"),
         }
 
     def _set_home_reference_side(
@@ -1849,6 +1921,7 @@ class CommandService:
         side: str,
         work_origin_pulse: list[float],
         updated_at: int,
+        origin_instance_ids: list[str],
     ) -> None:
         pulse_key = "leftPulse" if side == "left" else "rightPulse"
         delta_key = "leftPulseDelta" if side == "left" else "rightPulseDelta"
@@ -1862,24 +1935,14 @@ class CommandService:
         work_origin_offset[valid_key] = reference_valid
         work_origin_offset["valid"] = bool(work_origin_offset["leftValid"] and work_origin_offset["rightValid"])
         work_origin_offset["updatedAt"] = updated_at
-
-    def _apply_home_reference_offset(
-        self,
-        origin: dict[str, object],
-        home_reference: dict[str, object],
-        work_origin_offset: dict[str, object],
-        side: str,
-        updated_at: int,
-    ) -> None:
-        pulse_key = "leftPulse" if side == "left" else "rightPulse"
-        delta_key = "leftPulseDelta" if side == "left" else "rightPulseDelta"
-        valid_key = "leftValid" if side == "left" else "rightValid"
-        reference_pulse = cast(list[float], home_reference[pulse_key])
-        delta_pulse = cast(list[float], work_origin_offset[delta_key])
-        origin[pulse_key] = [reference_pulse[index] + delta_pulse[index] for index in range(6)]
-        origin[valid_key] = True
-        origin["valid"] = bool(origin["leftValid"] and origin["rightValid"])
-        origin["updatedAt"] = updated_at
+        ref_ids = axis_instance_ids(home_reference, f"{side}AxisInstanceId")
+        confirmed = home_reference[f"{side}AxisConfirmed"]
+        limit_axes = home_reference.get(f"{side}AxisLimitReference", [False] * 6)
+        work_origin_offset[f"{side}AxisReferenceKind"] = [
+            ("positive_limit" if limit_axes[i] else "origin")
+            if origin_instance_ids[i] and origin_instance_ids[i] == ref_ids[i] and confirmed[i]
+            else "" for i in range(6)
+        ]
 
     def _six_pulses(self, value: object) -> list[float]:
         if not isinstance(value, list):

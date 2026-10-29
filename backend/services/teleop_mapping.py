@@ -37,6 +37,7 @@ from backend.core.motion_limits import (
 )
 from backend.core.operator_view import gripper_source_for_hardware_side, operator_side_for_hardware_side
 from backend.core.units import motion_pulse_per_unit
+from backend.core.work_origin import require_current_work_origin
 from backend.hal_client.client import HalClient
 
 AxisName = Literal["X", "Y", "Z", "Roll", "Pitch", "Yaw"]
@@ -275,6 +276,7 @@ class TeleopMappingService:
         origin = self._normalized_motion_origin(config)
         if side is None and not bool(origin["valid"]):
             raise RuntimeError("motion work origin is not captured")
+        instance_id = await require_current_work_origin(config, self.hal, (side,) if side else ("left", "right"))
         if side is None:
             await self._native_command(
                 "motion.home_all",
@@ -283,6 +285,7 @@ class TeleopMappingService:
                     "rightPulse": origin["rightPulse"],
                     "leftEnabledAxes": self._enabled_axes("left", config),
                     "rightEnabledAxes": self._enabled_axes("right", config),
+                    "expectedInstanceId": instance_id,
                 },
             )
             self.logs.info("[HAL]", "teleop pre-start return-to-work-origin completed")
@@ -297,6 +300,7 @@ class TeleopMappingService:
                 "side": side,
                 "pulse": origin[pulse_key],
                 "enabledAxes": self._enabled_axes(side, config),
+                "expectedInstanceId": instance_id,
             },
         )
         self.logs.info("[HAL]", f"teleop pre-start {side} return-to-work-origin completed")

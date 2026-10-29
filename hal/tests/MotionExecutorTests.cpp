@@ -168,6 +168,28 @@ void dispatcherReferenceReturnStopsNativeAndRejectsWholeTurn() {
   for (int i = 0; i < 12; ++i) require(before.axes[i].pulse == after.axes[i].pulse, "rejection moved another axis");
 }
 
+void dispatcherRejectsOldCoordinateInstanceBeforeMotion() {
+  Fixture f;
+  MotionExecutorTestAccess::setInstance(f.motion, "offline-controller");
+  Omega7Driver omega;
+  JodellGripperDriver gripper;
+  NativeTeleopController native(f.motion, f.executor, omega, gripper);
+  ForceControlRuntime force([] {}, [] {});
+  const auto started = std::chrono::steady_clock::now();
+  HalCommandDispatcher dispatcher(f.motion, f.executor, omega, native, force, started);
+  const auto before = f.motion.readState();
+  for (const auto* command : {"motion.home_all", "motion.home_origin_side", "motion.return_home_reference",
+                              "motion.teleop_target_update", "motion.replay_absolute_target"}) {
+    rejects([&] { dispatcher.handle(command,
+        R"({"expectedInstanceId":"old-controller","side":"left","pulse":[100,0,0,0,0,0],"enabledAxes":[true,false,false,false,false,false]})"); });
+  }
+  const auto after = f.motion.readState();
+  for (int i = 0; i < 12; ++i) require(before.axes[i].pulse == after.axes[i].pulse, "old coordinate basis moved an axis");
+  dispatcher.handle("motion.home_origin_side",
+      R"({"expectedInstanceId":"offline-controller","side":"left","pulse":[100,0,0,0,0,0],"enabledAxes":[true,false,false,false,false,false]})");
+  require(f.motion.readState().axes[0].pulse == 100, "current coordinate basis was rejected");
+}
+
 void busyExecutorRejectsInsteadOfQueueingAndCannotBlockEmergencyLatch() {
   Fixture f;
   auto held = MotionExecutorTestAccess::holdExecutor(f.executor);
@@ -303,11 +325,12 @@ int main() {
     stoppingInactiveNativeDoesNotStopExternal();
     dispatcherUsesSharedArbitration();
     dispatcherReferenceReturnStopsNativeAndRejectsWholeTurn();
+    dispatcherRejectsOldCoordinateInstanceBeforeMotion();
     busyExecutorRejectsInsteadOfQueueingAndCannotBlockEmergencyLatch();
     revokeRejectsAlreadyWaitingFollower();
     dispatcherEmergencyBypassesBothExecutionAndDriverLocks();
     emergencyCancelsCommandAlreadyAdmittedBeforeDriverAccess();
-    std::cout << "MotionExecutorTests passed (15 cases, offline)\n";
+    std::cout << "MotionExecutorTests passed (16 cases, offline)\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "MotionExecutorTests failed: " << error.what() << '\n';

@@ -14,6 +14,7 @@ from backend.core.gripper_protection import icf_target_min_gap_mm
 from backend.core.motion_profile import replay_motion_profile
 from backend.services.replay_timing import build_replay_timing, channel_label
 from backend.core.motion_limits import effective_limit_arrays
+from backend.core.work_origin import require_current_work_origin
 from backend.core.operator_view import operator_side_for_hardware_side, hardware_side_for_operator_side
 from backend.core.units import motion_pulse_per_unit, pulse_to_lerobot, pulse_to_ui
 from backend.services.gripper_backend import native_gripper_payload
@@ -205,11 +206,13 @@ class DatasetReplayService:
             raise RuntimeError("回放期间控制配置发生变化")
         self._check(token)
         targets = self._targets(action, config)
+        instance_id = await require_current_work_origin(config, self.svc.hal, targets.keys())
         teleop = config["teleop"]
         for side, (values, gap, low, high) in targets.items():
             self._check(token)
             payload = {
                 "side": side, "deltas": dict(zip(AXES, values)),
+                "expectedInstanceId": instance_id,
                 "enabledAxes": teleop[f"{side}EnabledAxes"], "syncZeroDeltaTarget": True,
                 "softLimitMin": low, "softLimitMax": high,
                 "translationStepLimitPulse": teleop.get("translationStepLimitPulse", 4000.),

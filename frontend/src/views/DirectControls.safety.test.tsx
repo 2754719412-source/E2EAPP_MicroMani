@@ -54,12 +54,12 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function renderMotionCard() {
+function renderMotionCard(side: 'left' | 'right' = 'left') {
   const injectLog = vi.fn()
   const requestComparison = vi.fn<(comparison: PendingComparison) => void>()
   const state = useTelemetryStore.getState()
   render(<MotionCard
-    side="left" config={state.config} positions={state.frame.jointPositions} focusHash=""
+    side={side} config={state.config} positions={state.frame.jointPositions} focusHash=""
     updateConfig={vi.fn()} injectLog={injectLog} triggerEmergencyStop={vi.fn()}
     snapshotMenu={() => ({ items: [], onClick: vi.fn(), onDelete: vi.fn() })}
     openSnapshotModal={vi.fn()} requestComparison={requestComparison}
@@ -318,4 +318,21 @@ it('寻零进行中急停，迟到的成功应答不能显示完成', async () =
   expect(screen.getByRole('status', { name: '左臂原点操作状态' })).toHaveTextContent('正在寻零：Pitch')
   await act(async () => { blockControls(); finish({ ok: true }); await pending })
   expect(screen.getByRole('status', { name: '左臂原点操作状态' })).toHaveTextContent('失败')
+})
+
+
+it('执行臂机械寻零禁止 X/Y，全选只包含有原点开关的轴', async () => {
+  const home = vi.spyOn(api, 'homeMotionSide').mockResolvedValue({ ok: true })
+  const limit = vi.spyOn(api, 'referencePositiveLimitSide')
+  vi.spyOn(api, 'fetchMotionOrigin').mockResolvedValue({ ok: true })
+  const { requestComparison } = renderMotionCard('right')
+  fireEvent.click(screen.getByRole('button', { name: '机械寻零' }))
+  expect(screen.getByRole('checkbox', { name: 'X' })).toBeDisabled()
+  expect(screen.getByRole('checkbox', { name: 'Y' })).toBeDisabled()
+  expect(screen.getByText(/X、Y 未安装原点开关/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '全选可用轴' }))
+  fireEvent.click(screen.getByRole('button', { name: '审阅寻零动作' }))
+  await act(async () => { await requestComparison.mock.calls[0][0].onConfirm() })
+  expect(home).toHaveBeenCalledExactlyOnceWith('left', ['Z', 'Roll', 'Pitch', 'Yaw'])
+  expect(limit).not.toHaveBeenCalled()
 })

@@ -22,7 +22,8 @@ def setup_homing(tmp_path, monkeypatch):
         return {**state, "timestamp_ms": now_ms()}
     async def health():
         return HalHealth(ltdmc_ok=True, omega7_ok=True, version="test", uptime_s=1.0,
-                         connected=True, mode="real", instance_id=instance["id"])
+                         connected=True, mode="real", instance_id=instance["id"],
+                         capabilities=["work_origin_instance_guard_v1"])
     hal = SimpleNamespace(command=AsyncMock(return_value={"response": {"homeCompleted": True}}),
                           motion_state=motion_state, health=health, instance=instance)
     monkeypatch.setattr("backend.app.make_hal_client", lambda *_: hal)
@@ -36,10 +37,12 @@ def setup_homing(tmp_path, monkeypatch):
         leftPulse=[0.] * 6, rightPulse=[10., 20., 30., 40., 50., 60.])
     config["motion"]["workOriginOffset"].update(
         valid=True, leftValid=True, rightValid=True,
+        leftAxisReferenceKind=["origin"] * 6, rightAxisReferenceKind=["origin"] * 6,
         rightPulseDelta=[1., 2., 3., 4., 5., 6.])
     config["motion"]["origin"].update(
+        leftAxisInstanceId=["test-hal-instance"] * 6, rightAxisInstanceId=["test-hal-instance"] * 6,
         valid=True, leftValid=True, rightValid=True, rightPulse=[11., 22., 33., 44., 55., 66.])
-    app.state.settings.save_config(config, emit_log=False, home_reference_update=True)
+    app.state.settings.save_config(config, emit_log=False, home_reference_update=True, work_origin_update=True)
     from backend.tests.test_control_watchdog import confirm_mock_browser_lease
     hal.command.return_value = {"response": {"ok": True, "leaseFresh": True}}
     session = asyncio.run(confirm_mock_browser_lease(app.state.control_watchdog))
@@ -321,6 +324,7 @@ def test_failed_homing_does_not_save_reference(tmp_path, monkeypatch, failure):
     assert response.status_code == 503
     after = client.app.state.settings.get_config()["motion"]
     assert after["homeReference"]["rightPulse"] == before["homeReference"]["rightPulse"]
+    before["origin"]["rightAxisInstanceId"][4] = ""
     assert after["origin"] == before["origin"]
     assert after["homeReference"]["rightAxisConfirmed"] == [True, True, True, True, False, True]
 
@@ -353,7 +357,7 @@ def test_return_hardware_reference_never_seeks_or_changes_origin(tmp_path, monke
     response = client.post("/api/motion/right/return_home_reference", json={"axes": ["X", "Y", "Z", "Roll", "Pitch", "Yaw"]})
     assert response.status_code == 200, response.text
     hal.command.assert_awaited_once_with("motion.return_home_reference", {
-        "side": "right", "pulse": target, "enabledAxes": [True] * 6})
+        "side": "right", "pulse": target, "enabledAxes": [True] * 6, "expectedInstanceId": "test-hal-instance"})
     assert client.app.state.settings.get_config()["motion"] == before
 
 
@@ -546,3 +550,14 @@ def test_hardware_home_rejects_instance_change_before_reference_commit(tmp_path,
     reference = client.app.state.settings.get_config()["motion"]["homeReference"]
     assert reference["rightAxisConfirmed"][4] is False
     assert reference["rightAxisInstanceId"][4] == ""
+
+
+@pytest.mark.parametrize("axes", [["X"], ["Y"], ["Z", "X"], ["X", "Y", "Z", "Roll", "Pitch", "Yaw"]])
+def test_execution_xy_cannot_use_org_home(tmp_path, monkeypatch, axes):
+    client, hal, _ = setup_homing(tmp_path, monkeypatch)
+    before = deepcopy(client.app.state.settings.get_config()["motion"])
+    response = client.post("/api/motion/left/home", json={"axes": axes})
+    assert response.status_code == 503, response.text
+    assert "未安装原点开关" in response.text
+    hal.command.assert_not_awaited()
+    assert client.app.state.settings.get_config()["motion"] == before

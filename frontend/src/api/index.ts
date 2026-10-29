@@ -66,7 +66,7 @@ function commandRequiresSafetyClear(path: string, body: unknown): boolean {
   if (/^\/api\/datasets\/[^/]+\/episodes\/[^/]+\/replay\/start$/.test(path)) return true
   if (/^\/api\/motion\/(?:(left|right)\/)?origin\/(capture|restore_previous|clear)$/.test(path)) return true
   if (/^\/api\/(sensors\/tare|force\/(left|right)\/tare)$/.test(path)) return true
-  if (/^\/api\/motion\/(manual_axis_move|home_all|(left|right)\/(enable_all|home|return_origin|return_home_reference))$/.test(path)) return true
+  if (/^\/api\/motion\/(manual_axis_move|home_all|(left|right)\/(enable_all|home|positive_limit_reference|return_origin|return_home_reference))$/.test(path)) return true
   if (/^\/api\/gripper\/(left|right)\/command$/.test(path)) {
     const command = body && typeof body === 'object' && 'command' in body ? body.command : undefined
     return command !== 'stop' && command !== 'disable'
@@ -316,12 +316,12 @@ export async function postCommand(path: string, body?: unknown) {
   const blocked = isConfirmedForceSelfCheck(apiPath, body) ? forceSelfCheckBlockedReason()
     : commandRequiresSafetyClear(apiPath, body) ? controlCommandBlockedReason() : null
   if (blocked) throw new Error(blocked)
-  const returningOrigin = /\/motion\/(home_all|(left|right)\/(home|return_origin|return_home_reference))$/.test(apiPath)
+  const returningOrigin = /\/motion\/(home_all|(left|right)\/(home|positive_limit_reference|return_origin|return_home_reference))$/.test(apiPath)
   if (returningOrigin && returnOriginPending) throw new Error('已有回原点操作进行中，请等待设备确认')
   if (mockMode) return { ok: true, path, body, ts: Date.now() }
   if (returningOrigin) returnOriginPending = true
   const controller = new AbortController()
-  const timeoutMs = /\/motion\/(home_all|(left|right)\/(home|return_origin|return_home_reference))$/.test(apiPath)
+  const timeoutMs = returningOrigin
     ? 80_000
     // 首次录制需加载 LeRobot/编码器；等待期间仍由独立租约与遥测保护设备。
     : apiPath === '/api/record/session/create' ? 60_000

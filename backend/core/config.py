@@ -39,6 +39,7 @@ from backend.core.defaults import (
 )
 from backend.core.force_config import hkvl_tare_sample_count, validate_force_config
 from backend.core.logging import LogService, now_ms, stable_config_hash
+from backend.core.work_origin import axis_instance_ids, offset_reference_kinds
 from backend.core.motion_limits import (
     WorkOriginMissing,
     config_limit_to_ui,
@@ -203,6 +204,7 @@ def _ensure_home_reference_model(config: dict[str, Any], has_current_home_refere
         next_reference[valid_key] = side_reference_valid
         next_offset[delta_key] = side_offset
         next_offset[valid_key] = side_offset_valid
+        next_offset[f"{side}AxisReferenceKind"] = offset_reference_kinds(offset, side)
     next_reference["valid"] = bool(next_reference["leftValid"] and next_reference["rightValid"])
     next_offset["valid"] = bool(next_offset["leftValid"] and next_offset["rightValid"])
     motion["homeReferenceVersion"] = ICF_HOME_REFERENCE_VERSION
@@ -540,6 +542,7 @@ class SettingsService:
         op_id: str | None = None,
         before_commit: Callable[[], None] | None = None,
         home_reference_update: bool = False,
+        work_origin_update: bool = False,
     ) -> dict[str, Any]:
         old_config: dict[str, Any] = {}
         if self.config_path.exists():
@@ -558,6 +561,32 @@ class SettingsService:
                 isinstance(raw_motion, dict)
                 and raw_motion.get("homeReferenceVersion") == ICF_HOME_REFERENCE_VERSION,
             )
+            if not work_origin_update:
+                # 旧设置页/快照只能保留未改动坐标的证明，不能自行激活旧计数或偏移。
+                old_motion = old_config.get("motion", {})
+                old_origin = old_motion.get("origin", {})
+                origin = config["motion"].get("origin", {})
+                old_offset = old_motion.get("workOriginOffset", {})
+                offset = config["motion"]["workOriginOffset"]
+                for side in ("left", "right"):
+                    old_pulses = old_origin.get(f"{side}Pulse", [])
+                    new_pulses = origin.get(f"{side}Pulse", [])
+                    same_pulses = [isinstance(old_pulses, list) and len(old_pulses) == 6
+                                   and isinstance(new_pulses, list) and len(new_pulses) == 6
+                                   and old_pulses[i] == new_pulses[i] for i in range(6)]
+                    ids = axis_instance_ids(old_origin, f"{side}AxisInstanceId")
+                    origin[f"{side}AxisInstanceId"] = [ids[i] if same_pulses[i] else "" for i in range(6)]
+                    key = f"previous{side.title()}AxisInstanceId"
+                    previous_pulses = f"previous{side.title()}Pulse"
+                    origin[key] = axis_instance_ids(old_origin, key) if old_origin.get(previous_pulses) == origin.get(previous_pulses) else [""] * 6
+                    kinds = offset_reference_kinds(old_offset, side)
+                    old_deltas = old_offset.get(f"{side}PulseDelta", [])
+                    offset[f"{side}AxisReferenceKind"] = [
+                        kinds[i] if same_pulses[i]
+                        and isinstance(old_deltas, list) and len(old_deltas) == 6
+                        and old_deltas[i] == offset[f"{side}PulseDelta"][i]
+                        else "" for i in range(6)
+                    ]
             if not home_reference_update:
                 # 普通设置保存/旧快照不能伪造或恢复寻零完成标记；改目标脉冲则撤销确认。
                 previous = old_config.get("motion", {}).get("homeReference", {})

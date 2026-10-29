@@ -73,6 +73,8 @@ using DmcSetElMode = short(__stdcall*)(unsigned short, unsigned short, unsigned 
 using DmcSetHomeMode =
     short(__stdcall*)(unsigned short, unsigned short, unsigned short, double, unsigned short, unsigned short);
 using DmcSetHomePinLogic = short(__stdcall*)(unsigned short, unsigned short, unsigned short, double);
+using DmcSetHomePositionUnit = short(__stdcall*)(unsigned short, unsigned short, unsigned short, double);
+using DmcGetHomePositionUnit = short(__stdcall*)(unsigned short, unsigned short, unsigned short*, double*);
 using DmcHomeMove = short(__stdcall*)(unsigned short, unsigned short);
 using DmcGetHomeResult = short(__stdcall*)(unsigned short, unsigned short, unsigned short*);
 using DmcWriteSevonPin = short(__stdcall*)(unsigned short, unsigned short, unsigned short);
@@ -94,6 +96,8 @@ DmcSetPulseOutmode dmcSetPulseOutmode = nullptr;
 DmcSetElMode dmcSetElMode = nullptr;
 DmcSetHomeMode dmcSetHomeMode = nullptr;
 DmcSetHomePinLogic dmcSetHomePinLogic = nullptr;
+DmcSetHomePositionUnit dmcSetHomePositionUnit = nullptr;
+DmcGetHomePositionUnit dmcGetHomePositionUnit = nullptr;
 DmcHomeMove dmcHomeMove = nullptr;
 DmcGetHomeResult dmcGetHomeResult = nullptr;
 DmcWriteSevonPin dmcWriteSevonPin = nullptr;
@@ -485,6 +489,8 @@ bool LTDMCDriver::initialize() {
   dmcSetElMode = reinterpret_cast<DmcSetElMode>(GetProcAddress(ltdmcModule, "dmc_set_el_mode"));
   dmcSetHomeMode = reinterpret_cast<DmcSetHomeMode>(GetProcAddress(ltdmcModule, "dmc_set_homemode"));
   dmcSetHomePinLogic = reinterpret_cast<DmcSetHomePinLogic>(GetProcAddress(ltdmcModule, "dmc_set_home_pin_logic"));
+  dmcSetHomePositionUnit = reinterpret_cast<DmcSetHomePositionUnit>(GetProcAddress(ltdmcModule, "dmc_set_home_position_unit"));
+  dmcGetHomePositionUnit = reinterpret_cast<DmcGetHomePositionUnit>(GetProcAddress(ltdmcModule, "dmc_get_home_position_unit"));
   dmcHomeMove = reinterpret_cast<DmcHomeMove>(GetProcAddress(ltdmcModule, "dmc_home_move"));
   dmcGetHomeResult = reinterpret_cast<DmcGetHomeResult>(GetProcAddress(ltdmcModule, "dmc_get_home_result"));
   dmcWriteSevonPin = reinterpret_cast<DmcWriteSevonPin>(GetProcAddress(ltdmcModule, "dmc_write_sevon_pin"));
@@ -944,9 +950,16 @@ std::array<bool, 6> LTDMCDriver::homeSide(
     throw std::runtime_error("hardware home requires at least one selected axis");
   }
   std::array<bool, 6> limitReferenceAxes{};
+  if (side == Side::Left && homeConfig.referenceMode == ReferenceSeekMode::OriginSignal
+      && (enabledAxes[0] || enabledAxes[1])) {
+    throw std::runtime_error("execution-arm X/Y have no ORG switches; select positive-limit reference explicitly");
+  }
 #if defined(_WIN32) && defined(APPSTATION_ENABLE_VENDOR_SDKS)
-  if (!dmcHomeMove || !dmcGetHomeResult || !dmcCheckDone || !dmcGetPosition || !dmcStop
-      || !dmcSetPulseOutmode || !dmcSetElMode || !dmcSetHomeMode || !dmcSetHomePinLogic || !dmcSetProfile) {
+  const bool positiveLimit = homeConfig.referenceMode == ReferenceSeekMode::PositiveLimit;
+  if (!dmcCheckDone || !dmcGetPosition || !dmcStop || !dmcSetPulseOutmode || !dmcSetElMode || !dmcSetProfile
+      || (positiveLimit && (!dmcPMove || !dmcAxisIoStatus || !dmcGetStopReason))
+      || (!positiveLimit && (!dmcHomeMove || !dmcGetHomeResult || !dmcSetHomeMode || !dmcSetHomePinLogic
+          || !dmcSetHomePositionUnit || !dmcGetHomePositionUnit))) {
     throw std::runtime_error("required LTDMC home exports missing");
   }
   // Selected axes are configured individually below; do not rewrite HOME parameters on unselected axes.
@@ -965,6 +978,7 @@ std::array<bool, 6> LTDMCDriver::homeSide(
       }
     }
   }
+  std::array<long, 6> searchPulse{};
   for (int axisIndex = 0; axisIndex < 6; ++axisIndex) {
     if (!enabledAxes[axisIndex]) continue;
     const auto axis = static_cast<SemanticAxis>(axisIndex);
@@ -974,6 +988,11 @@ std::array<bool, 6> LTDMCDriver::homeSide(
     const auto axisNo = static_cast<unsigned short>(physicalAxis(side, axis));
     if (dmcCheckDone(card, axisNo) != 1) {
       throw std::runtime_error(dmcAxisFailureMessage("axis busy before dmc_home_move", -1, card, axisNo));
+    }
+    searchPulse[axisIndex] = std::abs(checkedMotionPulse(uiToPulse(homeConfig.axes[axisIndex].maxSearchUi, side, axis)));
+    if (positiveLimit) {
+      if (searchPulse[axisIndex] == 0) throw std::runtime_error("positive-limit search distance rounds to zero pulses");
+      checkedMotionPulse(static_cast<double>(dmcGetPosition(card, axisNo)) + searchPulse[axisIndex]);
     }
   }
 
@@ -985,6 +1004,8 @@ std::array<bool, 6> LTDMCDriver::homeSide(
       const auto axis = static_cast<SemanticAxis>(axisIndex);
       const auto axisNo = static_cast<unsigned short>(physicalAxis(side, axis));
       const auto& config = homeConfig.axes[axisIndex];
+      const auto searchDirection = positiveLimit ? 1 : config.direction;
+      const auto maxSearchPulse = searchPulse[axisIndex];
       const auto beforePulse = dmcGetPosition(card, axisNo);
       const auto beforeUi = pulseToUi(static_cast<double>(beforePulse), side, axis);
       const auto startAxisIo = dmcAxisIoStatus
@@ -1003,26 +1024,42 @@ std::array<bool, 6> LTDMCDriver::homeSide(
       if (retPulse != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_set_pulse_outmode", retPulse, card, axisNo));
       const auto retEl = dmcSetElMode(card, axisNo, 1, 1, 0);
       if (retEl != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_set_el_mode", retEl, card, axisNo));
-      const auto retHome = dmcSetHomeMode(card, axisNo, config.direction,
-          static_cast<double>(config.velocityMode), config.mode, config.ezCount);
-      if (retHome != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_set_homemode", retHome, card, axisNo));
-      const auto retLogic = dmcSetHomePinLogic(card, axisNo, config.logic, 0.0);
-      if (retLogic != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_set_home_pin_logic", retLogic, card, axisNo));
+      if (!positiveLimit) {
+        const auto retHome = dmcSetHomeMode(card, axisNo, config.direction,
+            static_cast<double>(config.velocityMode), config.mode, config.ezCount);
+        if (retHome != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_set_homemode", retHome, card, axisNo));
+        const auto retLogic = dmcSetHomePinLogic(card, axisNo, config.logic, 0.0);
+        if (retLogic != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_set_home_pin_logic", retLogic, card, axisNo));
+        // 参考寻位保留计数基准，不执行控制卡自动偏移，便于标定并返回原工作位置。
+        const auto retPosition = dmcSetHomePositionUnit(card, axisNo, 0, 0.0);
+        if (retPosition != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_set_home_position_unit", retPosition, card, axisNo));
+        unsigned short clearMode = 0xffff;
+        double automaticOffset = std::numeric_limits<double>::quiet_NaN();
+        const auto retReadPosition = dmcGetHomePositionUnit(card, axisNo, &clearMode, &automaticOffset);
+        if (retReadPosition != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_get_home_position_unit", retReadPosition, card, axisNo));
+        if (clearMode != 0 || automaticOffset != 0.0) {
+          throw std::runtime_error("hardware reference seek requires no counter reset and no automatic offset");
+        }
+      }
       const auto lowPulse = velocityToPulsePerSec(side, axis, config.lowVelocityUi);
       const auto highPulse = velocityToPulsePerSec(side, axis, config.highVelocityUi);
-      const auto retProfile = dmcSetProfile(card, axisNo, lowPulse, highPulse,
+      const auto maxVelocityPulse = positiveLimit && config.velocityMode == 0 ? lowPulse : highPulse;
+      const auto retProfile = dmcSetProfile(card, axisNo, lowPulse, maxVelocityPulse,
           config.accTimeSec, config.decTimeSec, 0.0);
       if (retProfile != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_set_profile hardware home", retProfile, card, axisNo));
       if (dmcSetSProfile) dmcSetSProfile(card, axisNo, 0, 0.0);
 
-      logHardwareHomeDiagnostic("home_start", side, axis, card, axisNo, config.direction,
+      logHardwareHomeDiagnostic("home_start", side, axis, card, axisNo, searchDirection,
           beforePulse, beforeUi, enabledAxes, beforePulse, beforeUi, 0);
       checkMotionCommand(estopSequenceAtStart);
-      const auto retStart = dmcHomeMove(card, axisNo);
+      // 限位测量不运行 ORG 寻零：沿控制卡正方向做有界相对运动，避免自动反找或清零计数。
+      const auto retStart = positiveLimit
+          ? dmcPMove(card, axisNo, maxSearchPulse, 0)
+          : dmcHomeMove(card, axisNo);
       checkMotionCommand(estopSequenceAtStart);
-      if (retStart != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_home_move", retStart, card, axisNo));
+      if (retStart != 0) throw std::runtime_error(dmcAxisFailureMessage(
+          positiveLimit ? "dmc_pmove positive-limit search" : "dmc_home_move", retStart, card, axisNo));
 
-      const auto maxSearchPulse = std::abs(checkedMotionPulse(uiToPulse(config.maxSearchUi, side, axis)));
       const auto selectedVelocity = config.velocityMode == 0 ? config.lowVelocityUi : config.highVelocityUi;
       const auto timeoutSeconds = std::clamp(config.maxSearchUi / selectedVelocity + 5.0, 5.0, 120.0);
       const auto deadline = std::chrono::steady_clock::now()
@@ -1033,7 +1070,7 @@ std::array<bool, 6> LTDMCDriver::homeSide(
       while (!complete) {
         checkMotionCommand(estopSequenceAtStart);
         unsigned short homed = 0;
-        const auto homeRet = dmcGetHomeResult(card, axisNo, &homed);
+        const auto homeRet = positiveLimit ? 0 : dmcGetHomeResult(card, axisNo, &homed);
         if (homeRet != 0 || homed > 1) {
           throw std::runtime_error(dmcAxisFailureMessage("dmc_get_home_result", homeRet, card, axisNo));
         }
@@ -1043,9 +1080,6 @@ std::array<bool, 6> LTDMCDriver::homeSide(
         }
         const auto currentPulse = dmcGetPosition(card, axisNo);
         if (homed == 1 && done == 1) {
-          if (homeConfig.referenceMode == ReferenceSeekMode::PositiveLimit) {
-            throw std::runtime_error("positive-limit reference ended on ORG instead of EL+; reference not saved");
-          }
           complete = true;
           break;
         }
@@ -1071,8 +1105,8 @@ std::array<bool, 6> LTDMCDriver::homeSide(
             const auto stopAxisIo = dmcAxisIoStatus
                 ? std::optional<unsigned long>(dmcAxisIoStatus(card, axisNo)) : std::nullopt;
             if (homeConfig.referenceMode == ReferenceSeekMode::PositiveLimit) {
-              const bool expectedReason = reason == 201
-                  || (side == Side::Left && (axis == SemanticAxis::X || axis == SemanticAxis::Y) && reason == 22);
+              // DMC5X10 手册第 298 页：5 为正硬限位立即停止，与上面的 EL 制动模式 0 一致。
+              const bool expectedReason = reason == 5;
               const bool edgeObserved = startAxisIo && ((*startAxisIo & kElPositive) == 0U)
                   && stopAxisIo && ((*stopAxisIo & kUnsafeLimitInputs) == kElPositive);
               if (!expectedReason || !edgeObserved) {
@@ -1084,6 +1118,11 @@ std::array<bool, 6> LTDMCDriver::homeSide(
                         << " stopAxisIo=" << (stopAxisIo ? std::to_string(*stopAxisIo) : "unavailable");
                 throw std::runtime_error(message.str());
               }
+              std::cout << "[HAL] INFO component=MOTION event=positive_limit_verified"
+                        << " side=" << sideName(side) << " semanticAxis=" << axisName(axis)
+                        << " card=" << card << " physicalAxis=" << axisNo
+                        << " stopReason=" << reason << " startAxisIo=" << *startAxisIo
+                        << " stopAxisIo=" << *stopAxisIo << " stopPulse=" << currentPulse << std::endl;
               limitReferenceAxes[axisIndex] = true;
               complete = true;
               break;
@@ -1116,7 +1155,7 @@ std::array<bool, 6> LTDMCDriver::homeSide(
       const auto afterUi = pulseToUi(static_cast<double>(afterPulse), side, axis);
       logHardwareHomeDiagnostic(
           limitReferenceAxes[axisIndex] ? "limit_reference_done" : "home_done",
-          side, axis, card, axisNo, config.direction, beforePulse, beforeUi,
+          side, axis, card, axisNo, searchDirection, beforePulse, beforeUi,
           enabledAxes, afterPulse, afterUi, 0);
       checkMotionCommand(estopSequenceAtStart);
     }
@@ -1140,7 +1179,8 @@ std::array<bool, 6> LTDMCDriver::homeSide(
 #endif
   checkMotionCommand(estopSequenceAtStart);
   teleopTargetActive_.fill(false);
-  publishStateSnapshotLocked();
+  // 完成应答前重新读卡；无采样时间的命令快照会被后端正确拒绝，不能当作到位反馈。
+  refreshOriginStateLocked(estopSequenceAtStart);
   return limitReferenceAxes;
 }
 

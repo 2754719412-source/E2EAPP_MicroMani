@@ -91,6 +91,14 @@ std::string HalCommandDispatcher::handle(const std::string& name, const std::str
       throw std::runtime_error("HAL command cancelled by emergency stop");
     }
   };
+  if (name == "motion.home_all" || name == "motion.home_origin_side" || name == "motion.return_home_reference"
+      || name == "motion.teleop_target_update" || name == "motion.replay_absolute_target") {
+    // 新调用方携带坐标所属实例；即使校验后 HAL 恰好重启，也不能执行旧计数目标。
+    const auto expectedInstance = jsonStringValueOr(bodyText, "expectedInstanceId", "");
+    if (!expectedInstance.empty() && expectedInstance != motion_.health(0).instanceId) {
+      throw std::runtime_error("motion coordinate reference belongs to another controller instance");
+    }
+  }
   // DDS command request 使用和 Python backend 相同的 command name；
   // 这里复用既有 HTTP 路由语义，避免两套控制面出现行为分叉。
   if (name == "hal.reconnect") {
