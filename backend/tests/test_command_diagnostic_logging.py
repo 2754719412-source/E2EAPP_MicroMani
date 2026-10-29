@@ -363,7 +363,8 @@ def test_return_motion_origin_side_stops_manual_teleop_connect_before_home(
     assert hal.commands == [
         (
             "motion.home_origin_side",
-            {"side": "left", "pulse": [1, 2, 3, 4, 5, 6], "enabledAxes": [True, True, True, True, True, True]},
+            {"side": "left", "pulse": [1, 2, 3, 4, 5, 6], "enabledAxes": [True, True, True, True, True, True],
+             "expectedInstanceId": "test-hal-instance"},
         )
     ]
 

@@ -223,6 +223,21 @@ def _disable_rotation_work_limits(config: dict[str, Any]) -> None:
     config["motion"]["rotationWorkLimits"]["enabled"] = False
 
 
+REAL_TEST_HAL_INSTANCE = "real-test-hal-instance"
+
+
+async def _real_hal_health() -> HalHealth:
+    """真实模式测试用健康状态：带实例号与原点实例校验能力。"""
+    return HalHealth(ltdmc_ok=True, omega7_ok=False, version="fake-hal", uptime_s=1.0, connected=True,
+                     mode="real", capabilities=["work_origin_instance_guard_v1"], instance_id=REAL_TEST_HAL_INSTANCE)
+
+
+def _bind_origin_to_instance(origin: dict[str, Any], instance_id: str = REAL_TEST_HAL_INSTANCE) -> None:
+    """把测试原点标记为在当前控制器实例中记录。"""
+    origin["leftAxisInstanceId"] = [instance_id] * 6
+    origin["rightAxisInstanceId"] = [instance_id] * 6
+
+
 def _set_home_reference_to_origin(config: dict[str, Any]) -> None:
     origin = config["motion"]["origin"]
     left_valid = bool(origin.get("leftValid", origin.get("valid", False)))
@@ -1726,6 +1741,9 @@ def test_motion_side_enable_and_home_routes(tmp_path: Path, monkeypatch: MonkeyP
     right_enable_response = client.post("/api/motion/right/enable_all")
     assert right_enable_response.status_code == 200
 
+    # 机械寻零后，缺少参考类型的旧原点不再自动恢复，需要在当前位置重新记录。
+    capture_response = client.post("/api/motion/right/origin/capture", json={"confirmLargeDrift": True})
+    assert capture_response.status_code == 200
     origin_response = client.post("/api/motion/right/return_origin")
     assert origin_response.status_code == 200
     assert origin_response.json()["data"]["command"] == "motion.home_origin_side"
@@ -2017,6 +2035,7 @@ def test_home_all_requires_and_sends_captured_work_origin(tmp_path: Path, monkey
         "rightPulse": [0.0] * 6,
         "leftEnabledAxes": [True] * 6,
         "rightEnabledAxes": [True] * 6,
+        "expectedInstanceId": "test-hal-instance",
     }
 
 
@@ -2026,6 +2045,9 @@ def test_home_all_sends_work_origin_without_auto_enabling_motion_sides(
     monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
 
     class FakeHal:
+        async def health(self) -> HalHealth:
+            return await _real_hal_health()
+
         def __init__(self) -> None:
             self.commands: list[tuple[str, dict[str, Any]]] = []
 
@@ -2059,10 +2081,11 @@ def test_home_all_sends_work_origin_without_auto_enabling_motion_sides(
     }
     config = client.app.state.settings.get_config()
     config["motion"]["origin"] = origin
+    _bind_origin_to_instance(origin)
     _set_home_reference_to_origin(config)
     config["motion"]["leftSoftLimits"] = _wide_motion_soft_limits()
     config["motion"]["rightSoftLimits"] = _wide_motion_soft_limits()
-    client.app.state.settings.save_config(config, emit_log=False)
+    client.app.state.settings.save_config(config, emit_log=False, work_origin_update=True)
 
     response = client.post("/api/motion/home_all")
 
@@ -2075,6 +2098,7 @@ def test_home_all_sends_work_origin_without_auto_enabling_motion_sides(
                 "rightPulse": origin["rightPulse"],
                 "leftEnabledAxes": [True] * 6,
                 "rightEnabledAxes": [True] * 6,
+                "expectedInstanceId": REAL_TEST_HAL_INSTANCE,
             },
         ),
     ]
@@ -2084,6 +2108,9 @@ def test_home_all_refuses_disabled_side_without_auto_enable(tmp_path: Path, monk
     monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
 
     class FakeHal:
+        async def health(self) -> HalHealth:
+            return await _real_hal_health()
+
         def __init__(self) -> None:
             self.commands: list[tuple[str, dict[str, Any]]] = []
 
@@ -2113,10 +2140,11 @@ def test_home_all_refuses_disabled_side_without_auto_enable(tmp_path: Path, monk
     }
     config = client.app.state.settings.get_config()
     config["motion"]["origin"] = origin
+    _bind_origin_to_instance(origin)
     _set_home_reference_to_origin(config)
     config["motion"]["leftSoftLimits"] = _wide_motion_soft_limits()
     config["motion"]["rightSoftLimits"] = _wide_motion_soft_limits()
-    client.app.state.settings.save_config(config, emit_log=False)
+    client.app.state.settings.save_config(config, emit_log=False, work_origin_update=True)
 
     response = client.post("/api/motion/home_all")
 
@@ -2131,6 +2159,9 @@ def test_return_origin_side_sends_work_origin_without_auto_enabling_side(
     monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
 
     class FakeHal:
+        async def health(self) -> HalHealth:
+            return await _real_hal_health()
+
         def __init__(self) -> None:
             self.commands: list[tuple[str, dict[str, Any]]] = []
 
@@ -2164,9 +2195,10 @@ def test_return_origin_side_sends_work_origin_without_auto_enabling_side(
     }
     config = client.app.state.settings.get_config()
     config["motion"]["origin"] = origin
+    _bind_origin_to_instance(origin)
     _set_home_reference_to_origin(config)
     config["motion"]["rightSoftLimits"] = _wide_motion_soft_limits()
-    client.app.state.settings.save_config(config, emit_log=False)
+    client.app.state.settings.save_config(config, emit_log=False, work_origin_update=True)
 
     response = client.post("/api/motion/right/return_origin")
 
@@ -2178,6 +2210,7 @@ def test_return_origin_side_sends_work_origin_without_auto_enabling_side(
                 "side": "right",
                 "pulse": origin["rightPulse"],
                 "enabledAxes": [True] * 6,
+                "expectedInstanceId": REAL_TEST_HAL_INSTANCE,
             },
         ),
     ]
@@ -2216,6 +2249,9 @@ def test_return_origin_side_refuses_disabled_side_without_auto_enable(
     monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
 
     class FakeHal:
+        async def health(self) -> HalHealth:
+            return await _real_hal_health()
+
         def __init__(self) -> None:
             self.commands: list[tuple[str, dict[str, Any]]] = []
 
@@ -2245,9 +2281,10 @@ def test_return_origin_side_refuses_disabled_side_without_auto_enable(
     }
     config = client.app.state.settings.get_config()
     config["motion"]["origin"] = origin
+    _bind_origin_to_instance(origin)
     _set_home_reference_to_origin(config)
     config["motion"]["rightSoftLimits"] = _wide_motion_soft_limits()
-    client.app.state.settings.save_config(config, emit_log=False)
+    client.app.state.settings.save_config(config, emit_log=False, work_origin_update=True)
 
     response = client.post("/api/motion/right/return_origin")
 
@@ -2417,18 +2454,19 @@ def test_home_motion_side_refreshes_home_reference_and_shifts_work_origin(
         "leftPulseDelta": left_offset,
         "rightPulseDelta": [0.0] * 6,
         "updatedAt": 123,
+        "leftAxisReferenceKind": ["positive_limit", "positive_limit", "origin", "origin", "origin", "origin"],
     }
     config["motion"]["leftSoftLimits"] = _wide_motion_soft_limits()
     config["motion"]["origin"]["leftPulse"] = old_origin
     config["motion"]["origin"]["leftValid"] = True
     config["motion"]["origin"]["valid"] = False
-    settings.save_config(config, emit_log=False)
+    settings.save_config(config, emit_log=False, work_origin_update=True)
     baseline = settings.get_config()
     left_soft_limits_before = json.loads(json.dumps(baseline["motion"]["leftSoftLimits"]))
 
     from backend.tests.test_control_watchdog import confirm_mock_browser_lease
     session = asyncio.run(confirm_mock_browser_lease(client.app.state.control_watchdog))
-    response = client.post("/api/motion/left/home", json={"axes": ["X", "Y", "Z", "Roll", "Pitch", "Yaw"]},
+    response = client.post("/api/motion/left/home", json={"axes": ["Z", "Roll", "Pitch", "Yaw"]},
                            headers={"X-Control-Session": session})
 
     assert response.status_code == 200
@@ -2437,17 +2475,18 @@ def test_home_motion_side_refreshes_home_reference_and_shifts_work_origin(
     command_name, payload = fake_hal.commands[0]
     assert command_name == "motion.home_side"
     assert payload["side"] == "left"
-    assert payload["enabledAxes"] == [True] * 6
+    assert payload["enabledAxes"] == [False, False, True, True, True, True]
     assert payload["referenceMode"] == "origin"
     assert payload["homeDirection"] == [0] * 6
     assert payload["homeMaxSearchUi"] == [55000.0, 82500.0, 82500.0, 90.0, 90.0, 90.0]
     assert fake_hal.motion_state_calls == 1
     saved = settings.get_config()
-    assert saved["motion"]["homeReference"]["leftPulse"] == new_left_ref
+    assert saved["motion"]["homeReference"]["leftPulse"] == old_left_ref[:2] + new_left_ref[2:]
     assert saved["motion"]["workOriginOffset"]["leftPulseDelta"] == left_offset
-    assert saved["motion"]["origin"]["leftPulse"] == [
-        new_left_ref[index] + left_offset[index] for index in range(6)
+    assert saved["motion"]["origin"]["leftPulse"] == old_origin[:2] + [
+        new_left_ref[index] + left_offset[index] for index in range(2, 6)
     ]
+    assert saved["motion"]["origin"]["leftAxisInstanceId"][2:] == ["home-refresh-instance"] * 4
     assert saved["motion"]["leftSoftLimits"] == left_soft_limits_before
     _assert_rotation_window_from_home_reference(saved, "left")
 
@@ -2498,6 +2537,9 @@ def test_motion_origin_capture_rejects_work_origin_outside_hardware_zero_limit(
     monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
 
     class FakeHal:
+        async def health(self) -> HalHealth:
+            return await _real_hal_health()
+
         async def motion_state(self) -> dict[str, Any]:
             return {
                 "timestamp_ms": now_ms(),
