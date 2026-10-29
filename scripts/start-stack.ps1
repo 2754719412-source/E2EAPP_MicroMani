@@ -6,7 +6,8 @@
 param(
   [int]$BackendPort = 18082,
   [int]$FrontendPort = 5174,
-  [int]$HalPort = 8091
+  [int]$HalPort = 8091,
+  [switch]$RestartHal
 )
 
 $ErrorActionPreference = "Stop"
@@ -94,8 +95,20 @@ if ($frontendPid) {
 }
 
 $activeHalPort = $HalPort
+# 控制卡计数在 HAL 进程重启后不变，但参考点和工作原点按 HAL 实例确认；
+# 本仓库的 HAL 仍在运行时直接复用，避免每次打开程序都要重新建参考。
+$halExePath = Join-Path $repo "hal\build\HalServer.exe"
+$runningHal = Get-NetTCPConnection -LocalPort $HalPort -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -First 1 |
+  ForEach-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue }
+$reuseHal = (-not $RestartHal) -and $runningHal -and ($runningHal.Path -eq $halExePath)
 try {
-  & (Join-Path $PSScriptRoot "start-hal.ps1") -Restart -Port $activeHalPort | Out-Host
+  if ($reuseHal) {
+    Write-Host "Reusing running HAL pid=$($runningHal.Id) on port $HalPort (references stay valid)"
+    & (Join-Path $PSScriptRoot "start-hal.ps1") -Port $activeHalPort | Out-Host
+  } else {
+    & (Join-Path $PSScriptRoot "start-hal.ps1") -Restart -Port $activeHalPort | Out-Host
+  }
 } catch {
   $halStartError = $_.Exception.Message
   # 仅监听端口失败时换端口，初始化超时或崩溃应保留首次诊断。

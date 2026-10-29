@@ -6,7 +6,9 @@
 param(
   [int]$BackendPort = 18082,
   [int]$FrontendPort = 5174,
-  [int]$HalPort = 8091
+  [int]$HalPort = 8091,
+  # 需要重启 HAL（换了 HAL 程序或 HAL 异常）时加这个参数；重启后要重新建参考。
+  [switch]$RestartHal
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,7 +63,7 @@ function Get-RecordStatus([int]$TimeoutSeconds) {
 }
 
 function Start-AppStack {
-  $script:stackInfo = & (Join-Path $PSScriptRoot "start-stack.ps1") -BackendPort $BackendPort -FrontendPort $FrontendPort -HalPort $HalPort
+  $script:stackInfo = & (Join-Path $PSScriptRoot "start-stack.ps1") -BackendPort $BackendPort -FrontendPort $FrontendPort -HalPort $HalPort -RestartHal:$RestartHal
   $script:stackInfo | Out-Host
 }
 
@@ -184,7 +186,7 @@ try {
     throw "App browser process was not detected after launch."
   }
 
-  Write-Host "App is running. Close the App window to stop frontend, backend, and HAL."
+  Write-Host "App is running. Close the App window to stop frontend and backend; HAL keeps running."
   $backendHealthFailures = 0
   $backendHealthFailureLimit = 15
   while (@(Get-AppBrowserProcesses).Count -gt 0) {
@@ -207,6 +209,6 @@ try {
     Start-Sleep -Seconds 1
   }
 } finally {
-  Write-Host "Stopping frontend, backend, and HAL..."
-  & (Join-Path $PSScriptRoot "stop-stack.ps1") | Out-Host
+  Write-Host "Stopping frontend and backend; HAL keeps running (it emergency-stops when the control lease lapses)..."
+  & (Join-Path $PSScriptRoot "stop-stack.ps1") -KeepHal | Out-Host
 }

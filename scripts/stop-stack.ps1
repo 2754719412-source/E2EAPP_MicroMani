@@ -3,6 +3,11 @@
 # 先看：Stop-ProcessTree → Stop-BackendProcessTrees → Stop-HalRuntimeProcessTrees。
 # 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
 
+param(
+  # 只停前后端；HAL 失去控制租约后会自行急停，保留进程以保持参考点有效。
+  [switch]$KeepHal
+)
+
 $ErrorActionPreference = "Stop"
 $currentPid = $PID
 $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -102,7 +107,8 @@ function Stop-HalRuntimeProcessTrees {
   }
 }
 
-foreach ($port in @(5173, 5174, 18080, 18082, 8091, 8092)) {
+$stopPorts = if ($KeepHal) { @(5173, 5174, 18080, 18082) } else { @(5173, 5174, 18080, 18082, 8091, 8092) }
+foreach ($port in $stopPorts) {
   $pidsOnPort = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty OwningProcess |
     Sort-Object -Unique)
@@ -124,5 +130,7 @@ foreach ($port in @(5173, 5174, 18080, 18082, 8091, 8092)) {
   }
 }
 
-Stop-HalRuntimeProcessTrees
+if (-not $KeepHal) {
+  Stop-HalRuntimeProcessTrees
+}
 Stop-BackendProcessTrees
