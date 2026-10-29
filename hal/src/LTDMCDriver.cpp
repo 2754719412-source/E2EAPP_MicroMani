@@ -1008,6 +1008,10 @@ std::array<bool, 6> LTDMCDriver::homeSide(
   }
 #if defined(_WIN32) && defined(APPSTATION_ENABLE_VENDOR_SDKS)
   const bool positiveLimit = homeConfig.referenceMode == ReferenceSeekMode::PositiveLimit;
+  const bool stagedLimit = positiveLimit && side == Side::Left;
+  if (stagedLimit) homeConfig.validatePositiveLimit();
+  const auto limitDeadline = std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(static_cast<long long>((stagedLimit ? homeConfig.positiveLimitTimeoutSec : 60.0) * 1000));
   if (!dmcCheckDone || !dmcGetPosition || !dmcStop || !dmcSetPulseOutmode || !dmcSetElMode || !dmcSetProfile
       || (positiveLimit && (!dmcPMove || !dmcAxisIoStatus || !dmcGetStopReason))
       || (!positiveLimit && (!dmcHomeMove || !dmcGetHomeResult || !dmcSetHomeMode || !dmcSetHomePinLogic
@@ -1045,6 +1049,11 @@ std::array<bool, 6> LTDMCDriver::homeSide(
     if (positiveLimit) {
       if (searchPulse[axisIndex] == 0) throw std::runtime_error("positive-limit search distance rounds to zero pulses");
       checkedMotionPulse(static_cast<double>(dmcGetPosition(card, axisNo)) + searchPulse[axisIndex]);
+      if (stagedLimit) {
+        const auto backoff = std::abs(checkedMotionPulse(uiToPulse(homeConfig.positiveLimitBackoffUi, side, axis)));
+        if (backoff == 0 || homeConfig.axes[axisIndex].maxSearchUi < homeConfig.positiveLimitBackoffUi + 1000)
+          throw std::runtime_error("positive-limit backoff rounds to zero or final search exceeds travel budget");
+      }
     }
   }
 
@@ -1076,6 +1085,95 @@ std::array<bool, 6> LTDMCDriver::homeSide(
       if (retPulse != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_set_pulse_outmode", retPulse, card, axisNo));
       const auto retEl = dmcSetElMode(card, axisNo, 1, 1, 0);
       if (retEl != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_set_el_mode", retEl, card, axisNo));
+      if (stagedLimit) {
+        // 三段共享本次请求的期限；只有慢速段成功后才确认参考。所有失败仍进入原有急停清理。
+        const auto runSegment = [&](const char* stage, long distance, double velocityUi, bool seekLimit) {
+          checkMotionCommand(estopSequenceAtStart);
+          const auto start = dmcGetPosition(card, axisNo);
+          const auto target = checkedMotionPulse(static_cast<double>(start) + distance);
+          const auto startIo = dmcAxisIoStatus(card, axisNo);
+          const auto expectedIo = seekLimit ? 0UL : kElPositive;
+          if ((startIo & kUnsafeLimitInputs) != expectedIo)
+            throw std::runtime_error("positive-limit segment started with unexpected safety/limit inputs");
+          if (std::chrono::steady_clock::now() >= limitDeadline)
+            throw std::runtime_error("positive-limit request timeout");
+          const auto profileRet = dmcSetProfile(card, axisNo,
+              velocityToPulsePerSec(side, axis, (std::min)(config.lowVelocityUi, velocityUi)),
+              velocityToPulsePerSec(side, axis, velocityUi), config.accTimeSec, config.decTimeSec, 0.0);
+          if (profileRet != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_set_profile limit segment", profileRet, card, axisNo));
+          if (dmcSetSProfile) dmcSetSProfile(card, axisNo, 0, 0.0);
+          checkMotionCommand(estopSequenceAtStart);
+          if (std::chrono::steady_clock::now() >= limitDeadline)
+            throw std::runtime_error("positive-limit request timeout");
+          const auto ret = dmcPMove(card, axisNo, distance, 0);
+          checkMotionCommand(estopSequenceAtStart);
+          if (ret != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_pmove limit segment", ret, card, axisNo));
+          const auto segmentStarted = std::chrono::steady_clock::now();
+          std::optional<std::chrono::steady_clock::time_point> stoppedSince;
+          std::optional<long> stoppedPulse, firstElPulse;
+          long lastClearPulse = start;
+          for (;;) {
+            checkMotionCommand(estopSequenceAtStart);
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= limitDeadline) throw std::runtime_error("positive-limit request timeout");
+            const auto done = dmcCheckDone(card, axisNo);
+            if (done != 0 && done != 1) throw std::runtime_error(dmcAxisFailureMessage("dmc_check_done", done, card, axisNo));
+            const auto io = dmcAxisIoStatus(card, axisNo);
+            const auto currentPulse = dmcGetPosition(card, axisNo);
+            if (seekLimit && !firstElPulse) {
+              if ((io & kElPositive) != 0) firstElPulse = currentPulse;
+              else lastClearPulse = currentPulse;
+            }
+            if ((io & (kUnsafeLimitInputs & ~kElPositive)) != 0)
+              throw std::runtime_error("positive-limit segment interrupted by safety/limit input");
+            const auto travel = static_cast<long long>(currentPulse) - start;
+            if ((distance > 0 && (travel < 0 || travel > distance))
+                || (distance < 0 && (travel > 0 || travel < distance)))
+              throw std::runtime_error("positive-limit segment exceeded configured travel or moved in wrong direction");
+            if (done == 1) {
+              if (!stoppedPulse || *stoppedPulse != currentPulse) {
+                stoppedPulse = currentPulse;
+                stoppedSince = now;
+              } else if (now - *stoppedSince >= std::chrono::milliseconds(500)) {
+                long reason = -1;
+                const auto readRet = dmcGetStopReason(card, axisNo, &reason);
+                if (readRet != 0) throw std::runtime_error(dmcAxisFailureMessage("dmc_get_stop_reason", readRet, card, axisNo));
+                if (seekLimit ? (reason != 5 || (io & kUnsafeLimitInputs) != kElPositive || !firstElPulse)
+                              : (reason != 0 || (io & kUnsafeLimitInputs) != 0 || currentPulse != target))
+                  throw std::runtime_error("positive-limit segment stopped without valid EL+ edge or complete backoff");
+                checkMotionCommand(estopSequenceAtStart);
+                if (std::chrono::steady_clock::now() >= limitDeadline)
+                  throw std::runtime_error("positive-limit request timeout");
+                // 仅段结束时记录；首次观测 EL+ 的计数不是硬件锁存的触发位置。
+                std::cout << "[HAL] INFO component=MOTION event=positive_limit_segment_verified"
+                    << " side=" << sideName(side) << " semanticAxis=" << axisName(axis) << " stage=" << stage
+                    << " velocityUi=" << velocityUi << " startPulse=" << start << " stopPulse=" << currentPulse
+                    << " stopReason=" << reason << " stopAxisIo=" << io << " lastClearPulse=" << lastClearPulse
+                    << " firstElPulse=" << (firstElPulse ? std::to_string(*firstElPulse) : "unavailable")
+                    << " elapsedMs=" << std::chrono::duration<double, std::milli>(now - segmentStarted).count() << std::endl;
+                return;
+              }
+            } else {
+              stoppedPulse.reset();
+              stoppedSince.reset();
+            }
+            lock.unlock();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            lock.lock();
+          }
+        };
+        const auto backoffPulse = std::abs(checkedMotionPulse(uiToPulse(homeConfig.positiveLimitBackoffUi, side, axis)));
+        const auto slowSearchPulse = std::abs(checkedMotionPulse(uiToPulse(homeConfig.positiveLimitBackoffUi + 1000, side, axis)));
+        runSegment("fast", maxSearchPulse, homeConfig.positiveLimitFastVelocityUi, true);
+        runSegment("backoff", -backoffPulse, 1000.0, false);
+        runSegment("slow", slowSearchPulse, 1000.0, true);
+        limitReferenceAxes[axisIndex] = true;
+        const auto afterPulse = dmcGetPosition(card, axisNo);
+        pulse_[stateIndex(side, axis)] = static_cast<double>(afterPulse);
+        logHardwareHomeDiagnostic("limit_reference_done", side, axis, card, axisNo, searchDirection,
+            beforePulse, beforeUi, enabledAxes, afterPulse, pulseToUi(afterPulse, side, axis), 0);
+        continue;
+      }
       if (!positiveLimit) {
         const auto retHome = dmcSetHomeMode(card, axisNo, config.direction,
             static_cast<double>(config.velocityMode), config.mode, config.ezCount);

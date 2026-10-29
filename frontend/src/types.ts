@@ -563,6 +563,9 @@ export interface ManualControlState {
 }
 
 export interface HardwareHomeSideConfig {
+  positiveLimitFastVelocityUi?: number
+  positiveLimitBackoffUi?: number
+  positiveLimitTimeoutSec?: number
   direction: number[]
   velocityMode: number[]
   mode: number[]

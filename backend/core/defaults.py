@@ -397,6 +397,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "homeReference": deepcopy(ICF_HOME_REFERENCE_DEFAULTS),
         "hardwareHome": {
             "left": {
+                "positiveLimitFastVelocityUi": 4000.0,
+                "positiveLimitBackoffUi": 2000.0,
+                "positiveLimitTimeoutSec": 60.0,
                 "direction": [0] * 6,
                 "velocityMode": [1] * 6,
                 "mode": [0] * 6,

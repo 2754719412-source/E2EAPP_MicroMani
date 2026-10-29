@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <iomanip>
+#include <limits>
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
@@ -568,6 +569,14 @@ HardwareHomeConfig jsonHardwareHomeConfig(const std::string& body) {
   if (mode == "origin") config.referenceMode = ReferenceSeekMode::OriginSignal;
   else if (mode == "positive_limit") config.referenceMode = ReferenceSeekMode::PositiveLimit;
   else throw std::runtime_error("invalid hardware home referenceMode");
+  const auto limitNumber = [&body](const char* key, double fallback) {
+    return body.find(std::string("\"") + key + "\"") == std::string::npos ? fallback
+        : jsonNumberValue(body, key, std::numeric_limits<double>::quiet_NaN());
+  };
+  config.positiveLimitFastVelocityUi = limitNumber("positiveLimitFastVelocityUi", 4000);
+  config.positiveLimitBackoffUi = limitNumber("positiveLimitBackoffUi", 2000);
+  config.positiveLimitTimeoutSec = limitNumber("positiveLimitTimeoutSec", 60);
+  if (config.referenceMode == ReferenceSeekMode::PositiveLimit) config.validatePositiveLimit();
 
   const std::array<double, 6> zero{};
   const std::array<double, 6> one{1, 1, 1, 1, 1, 1};

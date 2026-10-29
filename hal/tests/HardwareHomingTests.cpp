@@ -54,6 +54,13 @@ short homePositionSetReturn = 0;
 short homePositionReadReturn = 0;
 unsigned short homePositionReadMode = 0;
 double homePositionReadOffset = 0.0;
+bool stagedFake = false;
+int failStage = -1;
+std::string stageFailure;
+struct Segment { unsigned short axis; long distance; double speed; };
+std::vector<Segment> segments;
+std::array<int, 16> segmentIndex{};
+std::array<long, 16> segmentStart{}, segmentTarget{};
 
 
 void require(bool value, const char* message) {
@@ -112,6 +119,17 @@ short __stdcall startHome(unsigned short card, unsigned short axis) {
 }
 short __stdcall pointMove(unsigned short card, unsigned short axis, long distance, unsigned short mode) {
   require(card == expectedCard, "limit seek started on wrong card");
+  if (stagedFake) {
+    require(mode == 0, "staged reference must preserve counts using relative moves");
+    if (!started.empty()) require(polls[started.back()] >= 3, "next segment started before stop");
+    segmentStart[axis] = segmentIndex[axis] == 0 ? initialPulse + axis : segmentTarget[axis];
+    const int stage = segmentIndex[axis]++;
+    segmentTarget[axis] = stage == 1 ? segmentStart[axis] + distance : initialPulse + axis + (stage == 0 ? 300 : 296);
+    polls[axis] = 0;
+    started.push_back(axis);
+    segments.push_back({axis, distance, configuredHighVelocity[axis]});
+    return stage == failStage && stageFailure == "start" ? -7 : 0;
+  }
   require(mode == 0 && distance > 0, "limit seek must use bounded positive relative pulses");
   if (!started.empty()) require(polls[started.back()] >= 3, "limit axes moved concurrently");
   started.push_back(axis);
@@ -121,6 +139,15 @@ short __stdcall pointMove(unsigned short card, unsigned short axis, long distanc
 }
 short __stdcall checkDone(unsigned short, unsigned short axis) {
   if (!wasStarted(axis)) return 1;
+  if (stagedFake) {
+    ++polls[axis];
+    if (segmentIndex[axis] - 1 == failStage) {
+      if (stageFailure == "estop") current->latchEmergencyStop();
+      if (stageFailure == "lease") current->failControlLease();
+      if (stageFailure == "done") return -8;
+    }
+    return polls[axis] >= 3 ? 1 : 0;
+  }
   if (std::find(pointStarted.begin(), pointStarted.end(), axis) != pointStarted.end()) {
     ++polls[axis];
     if (behavior == Behavior::TripEstop) current->latchEmergencyStop();
@@ -133,6 +160,12 @@ short __stdcall checkDone(unsigned short, unsigned short axis) {
 }
 long __stdcall position(unsigned short, unsigned short axis) {
   if (!wasStarted(axis)) return initialPulse + axis;
+  if (stagedFake) {
+    auto value = segmentStart[axis] + (segmentTarget[axis] - segmentStart[axis]) * (std::min)(polls[axis], 3) / 3;
+    if (segmentIndex[axis] - 1 == failStage && stageFailure == "distance") value += 1000000;
+    if (segmentIndex[axis] - 1 == failStage && stageFailure == "short" && polls[axis] >= 3) value += 20;
+    return value;
+  }
   if (behavior == Behavior::Travel) return initialPulse + axis + polls[axis] * 1000;
   if (std::find(pointStarted.begin(), pointStarted.end(), axis) != pointStarted.end()) {
     return initialPulse + axis + (std::min)(polls[axis], 3) * 100;
@@ -154,10 +187,22 @@ short __stdcall homeResult(unsigned short, unsigned short axis, unsigned short* 
 }
 unsigned long __stdcall axisIo(unsigned short card, unsigned short axis) {
   require(card == expectedCard, "axis IO read from wrong card");
+  if (stagedFake) {
+    if (!wasStarted(axis)) return startIo;
+    const int stage = segmentIndex[axis] - 1;
+    if (stage == failStage && stageFailure == "io") return stage == 1 ? 4114 : 4112;
+    return stage == 1 ? (polls[axis] < 2 ? 4114 : 4112) : (polls[axis] >= 3 ? 4114 : 4112);
+  }
   return wasStarted(axis) ? stopIo : startIo;
 }
-short __stdcall getStopReason(unsigned short card, unsigned short, long* reason) {
+short __stdcall getStopReason(unsigned short card, unsigned short axis, long* reason) {
   require(card == expectedCard, "stop reason read from wrong card");
+  if (stagedFake) {
+    const int stage = segmentIndex[axis] - 1;
+    *reason = stage == 1 ? 0 : 5;
+    if (stage == failStage && stageFailure == "reason") *reason = 9;
+    return stage == failStage && stageFailure == "read" ? -9 : 0;
+  }
   *reason = stopReasonValue;
   return 0;
 }
@@ -188,6 +233,11 @@ HardwareHomeConfig config(ReferenceSeekMode mode = ReferenceSeekMode::OriginSign
 }
 
 void setup(LTDMCDriver& motion, Behavior next = Behavior::Success) {
+  stagedFake = false;
+  failStage = -1;
+  stageFailure.clear();
+  segments.clear();
+  segmentIndex.fill(0);
   behavior = next;
   started.clear();
   pointStarted.clear();
@@ -349,20 +399,99 @@ void positiveLimitRejectsOtherStopReasonsDespiteElSignal() {
 
 void positiveLimitSeekPreservesCounterAndIgnoresOrgSearchDirection() {
   LTDMCDriver motion; setup(motion, Behavior::StoppedNoHome);
+  stagedFake = true;
   expectedCard = 1;
   auto positive = config(ReferenceSeekMode::PositiveLimit);
-  positive.axes[0].maxSearchUi = 2000;
+  positive.axes[0].maxSearchUi = 5000;
   positive.axes[0].velocityMode = 0;
   positive.axes[1].maxSearchUi = 3000;
   const auto selection = std::array<bool, 6>{true, true, false, false, false, false};
   require(motion.homeSide(Side::Left, selection, positive) == selection, "X/Y limit references missing");
-  require(pointStarted == std::vector<unsigned short>{0, 1}, "positive limit still used ORG search");
-  require(pointDistance[0] == 10000 && pointDistance[1] == 15000, "limit search distance/sign is wrong");
-  require(configuredHighVelocity[0] == 1500 && configuredHighVelocity[1] == 5000,
-      "limit seek ignored the selected low/high velocity mode");
+  require(started == std::vector<unsigned short>{0, 0, 0, 1, 1, 1}, "X/Y must each finish fast/backoff/slow in order");
+  require(segments[0].distance == 25000 && segments[3].distance == 15000, "fast seek lost configured travel bound");
+  for (int base : {0, 3}) {
+    require(segments[base].speed == 20000 && segments[base + 1].speed == 5000 && segments[base + 2].speed == 5000,
+        "expected 4 mm/s fast and 1 mm/s backoff/final seek");
+    require(segments[base + 1].distance == -10000 && segments[base + 2].distance == 15000,
+        "expected 2 mm backoff and bounded 3 mm final search");
+  }
   require(homeResultCalls == 0 && configuredHomeMode[0] == 999 && configuredHomeMode[1] == 999,
       "limit seek configured or polled ORG homing; counter reset/reversal is possible");
-  require(position(1, 0) == initialPulse + 300, "limit seek lost the original counter basis");
+  require(motion.latestState().axes[0].pulse == initialPulse + 296, "reference must use final slow stop, without resetting counts");
+}
+
+void stagedLimitFailuresNeverStartLaterSegments() {
+  for (int stage = 0; stage < 3; ++stage) {
+    for (const auto* failure : {"estop", "lease", "done", "start", "io", "reason", "read", "distance"}) {
+      LTDMCDriver motion; setup(motion); stagedFake = true; expectedCard = 1;
+      failStage = stage; stageFailure = failure;
+      bool rejected = false;
+      try { motion.homeSide(Side::Left, {true, true, false, false, false, false}, config(ReferenceSeekMode::PositiveLimit)); }
+      catch (const std::runtime_error&) { rejected = true; }
+      require(rejected && motion.estopActive() && stopCalls > 0 && segments.size() == stage + 1,
+          "stage failure did not stop/latch or allowed later movement");
+    }
+  }
+  LTDMCDriver motion; setup(motion); stagedFake = true; expectedCard = 1;
+  failStage = 1; stageFailure = "short";
+  bool rejected = false;
+  try { motion.homeSide(Side::Left, {true, true, false, false, false, false}, config(ReferenceSeekMode::PositiveLimit)); }
+  catch (const std::runtime_error&) { rejected = true; }
+  require(rejected && motion.estopActive() && segments.size() == 2, "short backoff accepted as fixed-distance retreat");
+}
+
+void stagedLimitBoundsRejectBeforeAnyMovement() {
+  for (int field = 0; field < 3; ++field) {
+    for (double bad : {0.0, -1.0, std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN(), 999999.0}) {
+      LTDMCDriver motion; setup(motion); stagedFake = true; expectedCard = 1;
+      auto home = config(ReferenceSeekMode::PositiveLimit);
+      double* fields[]{&home.positiveLimitFastVelocityUi, &home.positiveLimitBackoffUi, &home.positiveLimitTimeoutSec};
+      *fields[field] = bad;
+      bool rejected = false;
+      try { motion.homeSide(Side::Left, {true, true, false, false, false, false}, home); }
+      catch (const std::runtime_error&) { rejected = true; }
+      require(rejected && segments.empty(), "invalid staged parameter started motion");
+    }
+  }
+  for (int invalid = 0; invalid < 3; ++invalid) {
+    LTDMCDriver motion; setup(motion); stagedFake = true; expectedCard = 1;
+    auto home = config(ReferenceSeekMode::PositiveLimit);
+    if (invalid == 0) home.axes[1].maxSearchUi = 2999;
+    if (invalid == 1) home.positiveLimitBackoffUi = 0.01;
+    if (invalid == 2) startIo = 4114;
+    bool rejected = false;
+    try { motion.homeSide(Side::Left, {true, true, false, false, false, false}, home); }
+    catch (const std::runtime_error&) { rejected = true; }
+    require(rejected && segments.empty(), "invalid travel or active EL+ started motion");
+  }
+}
+
+void stagedLimitUsesOneDeadlineForAllAxes() {
+  for (double timeout : {0.02, 0.8, 2.0}) {
+    LTDMCDriver motion; setup(motion); stagedFake = true; expectedCard = 1;
+    auto home = config(ReferenceSeekMode::PositiveLimit);
+    home.positiveLimitTimeoutSec = timeout;
+    std::string error;
+    const auto start = std::chrono::steady_clock::now();
+    try { motion.homeSide(Side::Left, {true, true, false, false, false, false}, home); }
+    catch (const std::runtime_error& exc) { error = exc.what(); }
+    require(error.find("timeout") != std::string::npos && motion.estopActive() && stopCalls > 0,
+        "request deadline not enforced across stages and axes");
+    require(segments.size() <= 4 && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < timeout + 1,
+        "timeout budget was restarted for a later stage/axis");
+  }
+}
+
+void stagedLimitUsesConfiguredFastSpeedAndBackoff() {
+  LTDMCDriver motion; setup(motion); stagedFake = true; expectedCard = 1;
+  auto home = config(ReferenceSeekMode::PositiveLimit);
+  home.positiveLimitFastVelocityUi = 2000;
+  home.positiveLimitBackoffUi = 1500;
+  motion.homeSide(Side::Left, {false, true, false, false, false, false}, home);
+  require(segments.size() == 3 && segments[0].axis == 1 && segments[0].speed == 10000,
+      "configured fast speed or selected Y axis ignored");
+  require(segments[1].distance == -7500 && segments[2].distance == 12500 && segments[2].speed == 5000,
+      "configured retreat or fixed slow speed ignored");
 }
 
 void positiveLimitFailureNeverStartsNextAxis() {
@@ -476,6 +605,10 @@ int main() {
     positiveLimitModeRejectsUnsupportedAxis();
     positiveLimitRejectsOtherStopReasonsDespiteElSignal();
     positiveLimitSeekPreservesCounterAndIgnoresOrgSearchDirection();
+    stagedLimitFailuresNeverStartLaterSegments();
+    stagedLimitBoundsRejectBeforeAnyMovement();
+    stagedLimitUsesOneDeadlineForAllAxes();
+    stagedLimitUsesConfiguredFastSpeedAndBackoff();
     positiveLimitFailureNeverStartsNextAxis();
     positiveLimitInvalidBudgetAndMissingReadbackNeverMove();
     maxSearchTravelStopsRunaway();
@@ -483,7 +616,7 @@ int main() {
     missingExportsAndEmptyMaskNeverMove();
     emergencyVendorFailuresAreReported();
     homeFailureIncludesEmergencyVendorFailure();
-    std::cout << "HardwareHomingTests passed (15 groups, including 6 counter-mode rejection cases)" << std::endl;
+    std::cout << "HardwareHomingTests passed (19 groups, including staged limit failures and shared deadlines)" << std::endl;
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "HardwareHomingTests failed: " << error.what() << std::endl;

@@ -472,10 +472,25 @@ class CommandService:
             acc = float(values["accTimeSec"][index]); dec = float(values["decTimeSec"][index]); search = float(values["maxSearchUi"][index])
             if low <= 0 or high <= 0 or low > high or acc <= 0 or dec <= 0 or search <= 0:
                 raise RuntimeError(f"hardware HOME velocity/ramp/search must be positive and ordered for {side} {AXIS_ORDER[index]}")
+        limit_parameters: dict[str, float] = {}
+        if side == "left" and reference_mode == "positive_limit":
+            for key, default, maximum in (
+                ("positiveLimitFastVelocityUi", 4000.0, 4000.0),
+                ("positiveLimitBackoffUi", 2000.0, 5000.0),
+                ("positiveLimitTimeoutSec", 60.0, 60.0),
+            ):
+                value = side_cfg.get(key, default)
+                if type(value) not in (int, float) or not math.isfinite(float(value)) or not 0 < value <= maximum:
+                    raise RuntimeError(f"motion.hardwareHome.left.{key} must be finite and in (0, {maximum}]")
+                limit_parameters[key] = float(value)
+            for index, selected in enumerate(enabled_axes):
+                if selected and float(values["maxSearchUi"][index]) < limit_parameters["positiveLimitBackoffUi"] + 1000:
+                    raise RuntimeError("positiveLimit final search exceeds configured travel budget")
         return {
             "side": side,
             "enabledAxes": enabled_axes,
             "referenceMode": reference_mode,
+            **limit_parameters,
             "homeDirection": values["direction"],
             "homeVelocityMode": values["velocityMode"],
             "homeMode": values["mode"],

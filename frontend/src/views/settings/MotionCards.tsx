@@ -494,6 +494,8 @@ export function MotionCard({
   const referencePulses = reference[hardwareSide === 'left' ? 'leftPulse' : 'rightPulse']
   const unconfirmedSelection = selectedAxes.filter((axis) => confirmedAxes[REFERENCE_AXES.indexOf(axis)] !== true)
   const positiveLimitAxes: ManualControlAxis[] = hardwareSide === 'right' ? ['X', 'Z'] : ['X', 'Y']
+  const limitHome = config.motion.hardwareHome?.left
+  const limitFastMmS = (limitHome?.positiveLimitFastVelocityUi ?? 4000) / 1000
   const originSwitchAxes = hardwareSide === 'left' ? REFERENCE_AXES.filter((axis) => axis !== 'X' && axis !== 'Y') : REFERENCE_AXES
   const selectableReferenceAxes = referenceAction === 'limit' ? positiveLimitAxes : referenceAction === 'seek' ? originSwitchAxes : REFERENCE_AXES
   const invalidPositiveLimitSelection = selectedAxes.filter((axis) => !positiveLimitAxes.includes(axis))
@@ -881,6 +883,11 @@ export function MotionCard({
               <UiButton onClick={() => setSelectedAxes([])}>{'\u6e05\u7a7a\u9009\u62e9'}</UiButton>
             </UiSpace>
             {referenceAction === 'seek' && hardwareSide === 'left' && <p>X、Y 未安装原点开关，请使用“正限位建参考”；机械寻零只作用于 Z 和旋转轴。</p>}
+            {referenceAction === 'limit' && hardwareSide === 'left' && <p>X、Y 可同时选择，按 X、Y 顺序逐轴执行快接近、固定距离退开、1 mm/s 慢接近；仅以慢速停止位置建立参考。</p>}
+            {referenceAction === 'limit' && hardwareSide === 'left' && <>
+              <p>当前快段 {limitFastMmS.toFixed(1)} mm/s，退开 {((limitHome?.positiveLimitBackoffUi ?? 2000) / 1000).toFixed(1)} mm，慢段 1 mm/s，整次超时 {limitHome?.positiveLimitTimeoutSec ?? 60} 秒。</p>
+              {limitFastMmS <= 1 && <p>当前为低速验证档，长行程请分别选择 X 或 Y，避免双轴累计超时。</p>}
+            </>}
             <p>{referenceAction === 'seek'
               ? '\u7ef4\u62a4\u64cd\u4f5c\uff1a\u6240\u9009\u8f74\u6309\u987a\u5e8f\u6267\u884c\u4e25\u683c ORG \u5bfb\u96f6\uff0c\u4e0d\u4f1a\u628a\u9650\u4f4d\u505c\u6b62\u5f53\u6210 HOME \u6210\u529f\u3002'
               : referenceAction === 'limit'

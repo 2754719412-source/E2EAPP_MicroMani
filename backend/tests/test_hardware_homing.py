@@ -12,6 +12,40 @@ from backend.hal_client.client import HalHealth
 from backend.services import command_service
 
 
+def test_execution_xy_limit_payload_defaults_and_overrides():
+    selected = [True, True, False, False, False, False]
+    payload = command_service.CommandService._hardware_home_payload(None, {}, "left", selected, "positive_limit")
+    assert [payload[key] for key in ("positiveLimitFastVelocityUi", "positiveLimitBackoffUi", "positiveLimitTimeoutSec")] == [4000, 2000, 60]
+    config = {"motion": {"hardwareHome": {"left": {"positiveLimitFastVelocityUi": 2000,
+              "positiveLimitBackoffUi": 1500, "positiveLimitTimeoutSec": 45}}}}
+    payload = command_service.CommandService._hardware_home_payload(None, config, "left", selected, "positive_limit")
+    assert payload["positiveLimitFastVelocityUi"] == 2000
+    assert payload["positiveLimitBackoffUi"] == 1500
+    assert payload["positiveLimitTimeoutSec"] == 45
+    origin = command_service.CommandService._hardware_home_payload(None, config, "left", selected, "origin")
+    assert "positiveLimitFastVelocityUi" not in origin
+
+
+@pytest.mark.parametrize("key,upper", [("positiveLimitFastVelocityUi", 4000), ("positiveLimitBackoffUi", 5000), ("positiveLimitTimeoutSec", 60)])
+@pytest.mark.parametrize("bad", [0, -1, float("nan"), float("inf"), True, "2000", None, "over"])
+def test_execution_xy_limit_rejects_invalid_parameters(key, upper, bad):
+    value = upper + 1 if bad == "over" else bad
+    config = {"motion": {"hardwareHome": {"left": {key: value}}}}
+    with pytest.raises(RuntimeError, match="positiveLimit"):
+        command_service.CommandService._hardware_home_payload(None, config, "left", [True, True, False, False, False, False], "positive_limit")
+
+
+def test_execution_xy_limit_sent_as_one_request(tmp_path, monkeypatch):
+    client, hal, _ = setup_homing(tmp_path, monkeypatch)
+    hal.command.return_value = {"response": {"homeCompleted": True, "limitReferenceAxes": [True, True, False, False, False, False]}}
+    response = client.post("/api/motion/left/positive_limit_reference", json={"axes": ["X", "Y"]})
+    assert response.status_code == 200, response.text
+    calls = [c for c in hal.command.call_args_list if c.args[0] == "motion.home_side"]
+    assert len(calls) == 1
+    assert calls[0].args[1]["enabledAxes"] == [True, True, False, False, False, False]
+    assert calls[0].args[1]["positiveLimitFastVelocityUi"] == 4000
+
+
 def setup_homing(tmp_path, monkeypatch):
     monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
     state = {"pulses": list(range(100, 112)), "moving": [False] * 12,

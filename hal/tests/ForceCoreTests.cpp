@@ -474,6 +474,24 @@ void testForceConfigJson() {
 
 }  // namespace
 
+void testPositiveLimitConfigJson() {
+  using appstation::hal::jsonHardwareHomeConfig;
+  const auto defaults = jsonHardwareHomeConfig(R"({"referenceMode":"positive_limit"})");
+  require(defaults.positiveLimitFastVelocityUi == 4000 && defaults.positiveLimitBackoffUi == 2000
+      && defaults.positiveLimitTimeoutSec == 60, "positive-limit defaults mismatch");
+  const auto configured = jsonHardwareHomeConfig(R"({"referenceMode":"positive_limit","positiveLimitFastVelocityUi":2000,"positiveLimitBackoffUi":1500,"positiveLimitTimeoutSec":45})");
+  require(configured.positiveLimitFastVelocityUi == 2000 && configured.positiveLimitBackoffUi == 1500
+      && configured.positiveLimitTimeoutSec == 45, "positive-limit configuration not parsed");
+  for (const auto* key : {"positiveLimitFastVelocityUi", "positiveLimitBackoffUi", "positiveLimitTimeoutSec"}) {
+    for (const auto* bad : {"0", "-1", "999999", "1e999", "null", "true", "\"2000\""}) {
+      bool rejected = false;
+      try { (void)jsonHardwareHomeConfig(std::string("{\"referenceMode\":\"positive_limit\",\"") + key + "\":" + bad + "}"); }
+      catch (const std::runtime_error&) { rejected = true; }
+      require(rejected, "invalid positive-limit JSON parameter accepted");
+    }
+  }
+}
+
 int main() {
   try {
     const auto participation = appstation::hal::jsonNativeTeleopConfig(R"({"leftGripperParticipating":false,"rightGripperParticipating":true})");
@@ -489,6 +507,7 @@ int main() {
     testNidaqRuntimeDoesNotLatchForceSafetyForManualEstop();
     testMotionAcknowledge();
     testForceConfigJson();
+    testPositiveLimitConfigJson();
     std::cout << "ForceCoreTests passed\n";
     return 0;
   } catch (const std::exception& error) {

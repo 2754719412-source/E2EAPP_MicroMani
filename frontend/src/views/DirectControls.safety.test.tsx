@@ -219,6 +219,32 @@ describe('直接 API 页面入口的安全约束', () => {
 
 
 describe('机械参考点选轴', () => {
+  it('显示执行臂实际快段参数，低速验证档提示逐轴测试', () => {
+    const state = useTelemetryStore.getState()
+    state.config.motion.hardwareHome!.left.positiveLimitFastVelocityUi = 1000
+    state.config.motion.hardwareHome!.left.positiveLimitBackoffUi = 2000
+    state.config.motion.hardwareHome!.left.positiveLimitTimeoutSec = 60
+    renderMotionCard('right')
+    fireEvent.click(screen.getByRole('button', { name: '正限位建参考' }))
+    expect(screen.getByText(/当前快段 1.0 mm\/s，退开 2.0 mm/)).toBeInTheDocument()
+    expect(screen.getByText(/当前为低速验证档，长行程请分别选择 X 或 Y/)).toBeInTheDocument()
+  })
+  it('执行臂 X/Y 可同时选择，以一次请求顺序执行快慢参考', async () => {
+    const reference = { ...useTelemetryStore.getState().config.motion.homeReference,
+      leftAxisLimitReference: [true, true, false, false, false, false] }
+    const limit = vi.spyOn(api, 'referencePositiveLimitSide').mockResolvedValue({ ok: true, data: { homeReference: reference } })
+    vi.spyOn(api, 'fetchMotionOrigin').mockResolvedValue({ ok: true, data: { homeReference: reference } })
+    const { requestComparison } = renderMotionCard('right')
+    fireEvent.click(screen.getByRole('button', { name: '正限位建参考' }))
+    fireEvent.click(screen.getByRole('button', { name: '全选可用轴' }))
+    expect(screen.getByRole('checkbox', { name: 'X' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Y' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Z' })).toBeDisabled()
+    expect(screen.getByText(/X、Y 可同时选择/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '审阅限位参考动作' }))
+    await act(async () => { await requestComparison.mock.calls[0][0].onConfirm() })
+    expect(limit).toHaveBeenCalledExactlyOnceWith('left', ['X', 'Y'])
+  })
   it('限位建立的参考点在完成信息中明确标识', async () => {
     const reference = {
       ...useTelemetryStore.getState().config.motion.homeReference,

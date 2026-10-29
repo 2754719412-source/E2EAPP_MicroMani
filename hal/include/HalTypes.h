@@ -7,6 +7,7 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -51,6 +52,15 @@ struct HardwareHomeAxisConfig {
 struct HardwareHomeConfig {
   ReferenceSeekMode referenceMode{ReferenceSeekMode::OriginSignal};
   std::array<HardwareHomeAxisConfig, 6> axes{};
+  double positiveLimitFastVelocityUi{4000.0};
+  double positiveLimitBackoffUi{2000.0};
+  double positiveLimitTimeoutSec{60.0};
+  void validatePositiveLimit() const {
+    if (!std::isfinite(positiveLimitFastVelocityUi) || positiveLimitFastVelocityUi <= 0 || positiveLimitFastVelocityUi > 4000
+        || !std::isfinite(positiveLimitBackoffUi) || positiveLimitBackoffUi <= 0 || positiveLimitBackoffUi > 5000
+        || !std::isfinite(positiveLimitTimeoutSec) || positiveLimitTimeoutSec <= 0 || positiveLimitTimeoutSec > 60)
+      throw std::runtime_error("positive-limit fast velocity/backoff/timeout must be finite, positive and <= 4000 um/s, 5000 um, 60 s");
+  }
 };
 
 // 单个语义轴的实时状态。pulse 是控制卡脉冲，uiPosition 是换算后的 UI 单位。
