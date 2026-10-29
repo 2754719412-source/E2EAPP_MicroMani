@@ -145,6 +145,8 @@ ASSEMBLY_QUEUE_MAX_FRAMES = 120
 ASSEMBLY_QUEUE_PUT_TIMEOUT_S = 1.0
 NATIVE_WRITER_COMMAND_TIMEOUT_S = 5.0
 NATIVE_SAVE_EPISODE_TIMEOUT_S = 60.0
+# 打开数据集会启动独立视频编码进程（spawn 后重新加载 LeRobot，进程自身上限 30 秒），不能用普通命令的 5 秒。
+NATIVE_OPEN_TIMEOUT_S = 40.0
 RECORDING_QUEUE_DRAIN_TIMEOUT_S = 30.0
 SAMPLER_START_LEAD_S = 0.05
 RECORDER_HARDWARE_WARMUP_S = 0.5
@@ -2235,6 +2237,8 @@ class DatasetRecorderService:
     def _native_writer_command_timeout_seconds(self, kind: str) -> float:
         if kind == "save_episode":
             return float(getattr(self, "_native_save_episode_timeout_s", NATIVE_SAVE_EPISODE_TIMEOUT_S))
+        if kind == "open":
+            return float(getattr(self, "_native_open_timeout_s", NATIVE_OPEN_TIMEOUT_S))
         return float(getattr(self, "_native_writer_command_timeout_s", NATIVE_WRITER_COMMAND_TIMEOUT_S))
 
     async def _try_begin_native_dataset(self, config: dict[str, Any]) -> bool:

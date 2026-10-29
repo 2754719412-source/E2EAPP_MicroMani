@@ -461,6 +461,27 @@ def test_native_writer_command_times_out_when_writer_does_not_complete() -> None
     asyncio.run(run_case())
 
 
+def test_native_writer_open_uses_open_timeout() -> None:
+    class DelayedWriter:
+        def is_alive(self) -> bool:
+            return True
+
+        def submit(self, _kind: str) -> Future[object]:
+            future: Future[object] = Future()
+            asyncio.get_running_loop().call_later(0.05, future.set_result, 0)
+            return future
+
+    async def run_case() -> None:
+        recorder = object.__new__(DatasetRecorderService)
+        recorder._writer_thread = DelayedWriter()
+        recorder._native_writer_command_timeout_s = 0.01
+        recorder._native_open_timeout_s = 0.2
+
+        assert await recorder._native_writer_command("open") == 0
+
+    asyncio.run(run_case())
+
+
 def test_native_writer_save_episode_uses_save_timeout() -> None:
     class DelayedWriter:
         def is_alive(self) -> bool:
