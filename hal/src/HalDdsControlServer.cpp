@@ -30,7 +30,6 @@
 #include "LocalDdsTransport.h"
 #include <fastrtps/types/TypesBase.h>
 
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -41,6 +40,9 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#if defined(__x86_64__) || defined(_M_X64)
+#include <immintrin.h>
+#endif
 
 namespace appstation::hal {
 namespace {
@@ -105,6 +107,28 @@ struct HalCommandReplySample {
   std::string result_json;
   std::string error;
 };
+
+void preciseSleepUntil(std::chrono::steady_clock::time_point target) {
+  // 先休眠让出 CPU，最后一段自旋减小唤醒抖动；调度延迟仍可能超过提前量。
+#if defined(_WIN32)
+  constexpr auto kSpinMargin = std::chrono::microseconds(1500);
+#else
+  constexpr auto kSpinMargin = std::chrono::microseconds(150);
+#endif
+  const auto now = std::chrono::steady_clock::now();
+  if (target - now > kSpinMargin) {
+    std::this_thread::sleep_until(target - kSpinMargin);
+  }
+  while (std::chrono::steady_clock::now() < target) {
+#if defined(__x86_64__) || defined(_M_X64)
+    _mm_pause();
+#elif defined(__aarch64__) && !defined(_MSC_VER)
+    asm volatile("yield" ::: "memory");
+#else
+    std::this_thread::yield();
+#endif
+  }
+}
 
 std::uint64_t unixMs() {
   const auto now = std::chrono::system_clock::now().time_since_epoch();
@@ -483,20 +507,33 @@ struct HalDdsControlServer::Impl {
   }
 
   void telemetryLoop() {
-    auto nextTelemetryAt = std::chrono::steady_clock::now();
-    auto nextForceAt = nextTelemetryAt;
+    using clock = std::chrono::steady_clock;
+    constexpr auto kBaseTick = std::chrono::milliseconds(5);
+    auto nextTickAt = clock::now();
+    std::uint64_t tickCount = 0;
     while (running) {
-      const auto now = std::chrono::steady_clock::now();
-      if (now >= nextTelemetryAt) {
-        // 普通遥测 100 Hz、力状态 200 Hz；只有本线程写入这些 topic。
+      // 系统晚醒跨过完整节拍时，先跳过过期槽位，再按当前节拍决定是否发布。
+      const auto lateTicks = (clock::now() - nextTickAt) / kBaseTick;
+      if (lateTicks > 0) {
+        nextTickAt += lateTicks * kBaseTick;
+        tickCount += static_cast<std::uint64_t>(lateTicks);
+      }
+      nextTickAt += kBaseTick;
+      ++tickCount;
+      // 力状态 200 Hz，普通遥测按偶数节拍发布为 100 Hz；只有本线程写入这些 topic。
+      publishForceState();
+      if (tickCount % 2 == 0) {
         publishTelemetry();
-        nextTelemetryAt = now + std::chrono::milliseconds(10);
       }
-      if (now >= nextForceAt) {
-        publishForceState();
-        nextForceAt = now + std::chrono::milliseconds(5);
+
+      const auto now = clock::now();
+      if (now > nextTickAt) {
+        // 跳到未来节拍，避免过载后连续补发；同步计数以保持二分频相位。
+        const auto missedTicks = (now - nextTickAt) / kBaseTick + 1;
+        nextTickAt += missedTicks * kBaseTick;
+        tickCount += static_cast<std::uint64_t>(missedTicks);
       }
-      std::this_thread::sleep_until((std::min)(nextTelemetryAt, nextForceAt));
+      preciseSleepUntil(nextTickAt);
     }
   }
 
@@ -642,7 +679,10 @@ struct HalDdsControlServer::Impl {
       const double uptime =
           std::chrono::duration<double>(std::chrono::steady_clock::now() - started_).count();
       publishJson(healthWriter_, jsonHealth(motion_.health(uptime), omega_.ok(), omega_.lastError()));
-      publishJson(motionWriter_, jsonMotionState(motion_.latestState()));
+      const auto motionState = motion_.latestState();
+      // 运动消息统一携带读卡时间，重复发布缓存不改变采样时刻。
+      publishJson(motionWriter_, jsonMotionState(motionState),
+          motionState.readTimestampMs, motionState.readMonotonicMs);
       publishJson(omegaWriter_, jsonOmegaState(omega_.readState()));
       publishJson(nativeTeleopWriter_, nativeTeleop_.telemetryJson());
   }
@@ -654,12 +694,17 @@ struct HalDdsControlServer::Impl {
   }
 
   void publishJson(DataWriter* writer, const std::string& payloadJson) {
+    publishJson(writer, payloadJson, unixMs(), monotonicMs());
+  }
+
+  void publishJson(DataWriter* writer, const std::string& payloadJson,
+      std::int64_t stampUnixMs, std::int64_t stampMonotonicMs) {
     if (!writer) {
       return;
     }
     JsonEnvelopeSample sample;
-    sample.stamp_unix_ms = unixMs();
-    sample.stamp_monotonic_ms = monotonicMs();
+    sample.stamp_unix_ms = stampUnixMs;
+    sample.stamp_monotonic_ms = stampMonotonicMs;
     sample.source = "hal-cpp";
     sample.payload_json = payloadJson;
     if (!writer->write(&sample)) {

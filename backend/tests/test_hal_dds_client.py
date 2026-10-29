@@ -119,7 +119,7 @@ def test_dds_hal_client_reads_health_from_topic_cache() -> None:
 def test_dds_hal_client_reads_motion_state_from_topic_cache() -> None:
     transport = FakeDdsTransport()
     transport.latest[TOPIC_HAL_MOTION_STATE] = JsonEnvelope(
-        stamp_unix_ms=100_000,
+        stamp_unix_ms=99_900,
         stamp_monotonic_ms=456,
         source="bridge",
         payload_json='{"timestamp_ms":99900,"sample_cached":true,"positions":[1,2,3]}',
@@ -133,9 +133,43 @@ def test_dds_hal_client_reads_motion_state_from_topic_cache() -> None:
     assert state["sample_cached"] is True
     assert state["monotonicMs"] == 456
     assert state["monotonic_s"] == pytest.approx(0.456)
-    assert state["dds_stamp_unix_ms"] == 100_000
+    assert state["dds_stamp_unix_ms"] == 99_900
     assert state["dds_stamp_monotonic_ms"] == 456
     assert "received_monotonic_ms" not in state
+
+
+def test_dds_hal_client_rejects_motion_publication_time_as_sample_time() -> None:
+    client = object.__new__(DdsHalClient)
+    envelope = JsonEnvelope(
+        stamp_unix_ms=100_000,
+        stamp_monotonic_ms=456,
+        source="hal-cpp",
+        payload_json='{"timestamp_ms":99900,"positions":[1,2,3]}',
+    )
+    with pytest.raises(RuntimeError, match="controller sample timestamp"):
+        client._payload_from_envelope(envelope, TOPIC_HAL_MOTION_STATE)
+
+
+def test_dds_hal_client_repeated_motion_cache_keeps_read_time_and_expires(monkeypatch) -> None:
+    client = object.__new__(DdsHalClient)
+    envelope = JsonEnvelope(
+        stamp_unix_ms=99_900,
+        stamp_monotonic_ms=356,
+        source="hal-cpp",
+        payload_json='{"timestamp_ms":99900,"sample_cached":true,"positions":[1,2,3]}',
+    )
+    first = client._payload_from_envelope(envelope, TOPIC_HAL_MOTION_STATE)
+    monkeypatch.setattr("backend.hal_client.dds_client.now_unix_ms", lambda: 100_400)
+    repeated = client._payload_from_envelope(envelope, TOPIC_HAL_MOTION_STATE)
+    assert first == repeated
+    assert repeated["monotonic_s"] == pytest.approx(0.356)
+    monkeypatch.setattr("backend.hal_client.dds_client.now_unix_ms", lambda: 100_401)
+    with pytest.raises(RuntimeError, match="stale"):
+        client._payload_from_envelope(envelope, TOPIC_HAL_MOTION_STATE)
+    fresh = JsonEnvelope(100_401, 857, "hal-cpp", '{"timestamp_ms":100401,"positions":[4,5,6]}')
+    recovered = client._payload_from_envelope(fresh, TOPIC_HAL_MOTION_STATE)
+    assert recovered["positions"] == [4, 5, 6]
+    assert recovered["monotonic_s"] == pytest.approx(0.857)
 
 
 @pytest.mark.parametrize("payload", [

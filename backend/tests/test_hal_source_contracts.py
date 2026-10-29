@@ -478,10 +478,13 @@ def test_hal_dds_motion_state_telemetry_publishes_at_100hz() -> None:
     loop_body = source.split("void telemetryLoop()", 1)[1].split("void emergencyLoop()", 1)[0]
     telemetry_body = source.split("void publishTelemetry()", 1)[1].split("void publishJson", 1)[0]
 
-    assert "publishJson(motionWriter_, jsonMotionState(motion_.latestState()))" in telemetry_body
+    assert "const auto motionState = motion_.latestState();" in telemetry_body
+    assert "publishJson(motionWriter_, jsonMotionState(motionState)," in telemetry_body
+    assert "motionState.readTimestampMs, motionState.readMonotonicMs" in telemetry_body
     assert "100 Hz" in loop_body
-    assert "std::chrono::milliseconds(10)" in loop_body
-    assert "std::chrono::milliseconds(50)" not in loop_body
+    assert "std::chrono::milliseconds(5)" in loop_body
+    assert "nextTelemetryAt" not in loop_body
+    assert "nextForceAt" not in loop_body
 
 
 def test_hal_dds_telemetry_is_independent_of_synchronous_command_dispatch() -> None:
@@ -2658,7 +2661,8 @@ def test_motion_telemetry_uses_cached_hardware_sample_without_duplicate_vendor_r
         "void LTDMCDriver::publishStateSnapshotLocked(const MotionState& state)", 1
     )[0]
     assert "MotionState latestState() const;" in header
-    assert "jsonMotionState(motion_.latestState())" in dds
+    assert "const auto motionState = motion_.latestState();" in dds
+    assert "jsonMotionState(motionState)" in dds
     assert "jsonMotionState(motion_.readState())" not in dds
     assert "state.readTimestampMs = 0;" in synthetic
     assert "state.sampleCached = true;" in synthetic

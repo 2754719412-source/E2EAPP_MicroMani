@@ -21,7 +21,7 @@ import time
 import uuid
 from bisect import bisect_left
 from collections import deque
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from concurrent.futures import Future
 from copy import deepcopy
 from dataclasses import dataclass, replace
@@ -109,7 +109,7 @@ ORIGIN_MOVE_POSITION_NAMES: tuple[str, ...] = (
     "right_x_um", "right_y_um", "right_z_um",
     "right_roll_mdeg", "right_pitch_mdeg", "right_yaw_mdeg",
 )
-ORIGIN_MOVE_SAMPLE_PERIOD_S = 0.01
+ORIGIN_MOVE_WRITE_BATCH_SIZE = 256
 FORCE_FEATURE_NAMES: tuple[str, ...] = ("fx", "fy", "fz", "mx", "my", "mz")
 CAMERA_SOURCE_KEYS: dict[str, str] = {key: f"camera_{key}" for key in CAMERA_KEYS}
 CAMERA_KEY_BY_SOURCE: dict[str, str] = {source: key for key, source in CAMERA_SOURCE_KEYS.items()}
@@ -253,6 +253,10 @@ class LeRobotWriterThread:
         self._thread = Thread(target=self._run, name="lerobot-writer", daemon=True)
         self._dataset: Any | None = None
         self._error = ""
+        self._origin_move_identity: tuple[Path, int, float] | None = None
+        self._origin_move_writer: Any | None = None
+        self._origin_move_pending: list[tuple[float, tuple[float, ...]]] = []
+        self._origin_move_error = ""
 
     def start(self) -> None:
         """启动负责串行写入 LeRobotDataset 的后台线程。"""
@@ -277,20 +281,23 @@ class LeRobotWriterThread:
 
     def _run(self) -> None:
         """循环消费写入队列，分发控制命令或落盘帧数据。"""
-        while True:
-            item = self._queue.get()
-            try:
-                if item is None:
-                    return
-                if isinstance(item, WriterCommand):
-                    self._handle_command(item)
-                    continue
-                self._write_frame(item.frame)
-            except Exception as exc:  # noqa: BLE001
-                self._error = str(exc)
-                self._recorder.logs.error("[LEROBOT]", f"writer recovered: {exc}")
-            finally:
-                self._queue.task_done()
+        try:
+            while True:
+                item = self._queue.get()
+                try:
+                    if item is None:
+                        return
+                    if isinstance(item, WriterCommand):
+                        self._handle_command(item)
+                        continue
+                    self._write_frame(item.frame)
+                except Exception as exc:  # noqa: BLE001
+                    self._error = str(exc)
+                    self._recorder.logs.error("[LEROBOT]", f"writer recovered: {exc}")
+                finally:
+                    self._queue.task_done()
+        finally:
+            self._discard_origin_move()
 
     def _handle_command(self, command: WriterCommand) -> None:
         """执行打开、保存、清空和 finalize 等写线程控制命令。"""
@@ -316,16 +323,24 @@ class LeRobotWriterThread:
                 latest = getattr(meta, "latest_episode", None)
                 command.future.set_result(deepcopy(latest) if isinstance(latest, dict) else {})
             elif command.kind == "clear_episode":
+                self._discard_origin_move()
                 if self._dataset is not None:
                     self._dataset.clear_episode_buffer()
                 self._error = ""
                 command.future.set_result(None)
-            elif command.kind == "write_origin_move":
+            elif command.kind in {"append_origin_move", "write_origin_move"}:
                 if command.payload is None:
                     raise ValueError("missing origin_move payload")
-                self._write_origin_move(command.payload)
+                if command.kind == "append_origin_move":
+                    self._append_origin_move(command.payload)
+                else:
+                    self._write_origin_move(command.payload)
+                command.future.set_result(None)
+            elif command.kind == "discard_origin_move":
+                self._discard_origin_move()
                 command.future.set_result(None)
             elif command.kind == "finalize":
+                self._discard_origin_move()
                 dataset = self._dataset
                 self._dataset = None
                 if dataset is not None:
@@ -335,17 +350,36 @@ class LeRobotWriterThread:
                 raise RuntimeError(f"unknown writer command: {command.kind}")
         except Exception as exc:  # noqa: BLE001
             # Sidecar failures must not poison subsequent LeRobot frame/episode writes.
-            if command.kind != "write_origin_move":
+            if command.kind == "append_origin_move":
+                self._origin_move_error = str(exc)
+            elif not command.kind.endswith("origin_move"):
                 self._error = str(exc)
+                if command.kind == "save_episode":
+                    self._discard_origin_move()
             command.future.set_exception(exc)
 
-    def _write_origin_move(self, payload: OriginMoveWrite) -> None:
-        """在 writer 线程中独立持久化原始 HAL 位置，不触碰 native 数据集。"""
+    def _append_origin_move(self, payload: OriginMoveWrite) -> None:
+        """复用写线程分批追加，内存不保存整段运动历史。"""
+        if self._origin_move_error:
+            raise RuntimeError(self._origin_move_error)
+        identity = (payload.dataset_dir, payload.episode_index, payload.start_monotonic_s)
+        if self._origin_move_identity is None:
+            self._origin_move_identity = identity
+        elif self._origin_move_identity != identity:
+            raise RuntimeError("origin_move episode changed before save or discard")
+        for sample in payload.samples:
+            self._origin_move_pending.append(sample)
+            if len(self._origin_move_pending) >= ORIGIN_MOVE_WRITE_BATCH_SIZE:
+                self._flush_origin_move()
+
+    def _flush_origin_move(self) -> None:
+        assert self._origin_move_identity is not None
+        dataset_dir, episode_index, start_s = self._origin_move_identity
         pa = importlib.import_module("pyarrow")
         parquet = importlib.import_module("pyarrow.parquet")
         columns = {
             "timestamp_s": pa.array(
-                [sample_s - payload.start_monotonic_s for sample_s, _ in payload.samples],
+                [sample_s - start_s for sample_s, _ in self._origin_move_pending],
                 type=pa.float64(),
             )
         }
@@ -353,16 +387,44 @@ class LeRobotWriterThread:
             # HAL 原始值是 um/degree；只换算旋转单位，不交换硬件左右侧。
             scale = 1000.0 if name.endswith("_mdeg") else 1.0
             columns[name] = pa.array(
-                [positions[index] * scale for _, positions in payload.samples], type=pa.float64()
+                [positions[index] * scale for _, positions in self._origin_move_pending], type=pa.float64()
             )
-        path = payload.dataset_dir / "origin_move" / f"episode_{payload.episode_index:06d}.parquet"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = path.with_suffix(".parquet.tmp")
+        table = pa.table(columns)
+        if self._origin_move_writer is None:
+            path = dataset_dir / "origin_move" / f"episode_{episode_index:06d}.parquet.tmp"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self._origin_move_writer = parquet.ParquetWriter(path, table.schema)
+        self._origin_move_writer.write_table(table)
+        self._origin_move_pending.clear()
+
+    def _write_origin_move(self, payload: OriginMoveWrite) -> None:
+        """补写缓存尾部，仅在 native 保存成功后封口并发布文件。"""
         try:
-            parquet.write_table(pa.table(columns), tmp_path)
-            os.replace(tmp_path, path)
+            self._append_origin_move(payload)
+            if self._origin_move_pending or self._origin_move_writer is None:
+                self._flush_origin_move()
+            self._origin_move_writer.close()
+            self._origin_move_writer = None
+            path = payload.dataset_dir / "origin_move" / f"episode_{payload.episode_index:06d}.parquet"
+            os.replace(path.with_suffix(".parquet.tmp"), path)
         finally:
-            tmp_path.unlink(missing_ok=True)
+            self._discard_origin_move()
+
+    def _discard_origin_move(self) -> None:
+        identity, writer = self._origin_move_identity, self._origin_move_writer
+        self._origin_move_identity = self._origin_move_writer = None
+        self._origin_move_pending.clear()
+        self._origin_move_error = ""
+        try:
+            try:
+                if writer is not None:
+                    writer.close()
+            finally:
+                if identity is not None:
+                    dataset_dir, episode_index, _ = identity
+                    (dataset_dir / "origin_move" / f"episode_{episode_index:06d}.parquet.tmp").unlink(missing_ok=True)
+        except Exception as exc:  # noqa: BLE001
+            self._recorder.logs.warning("[ORIGIN_MOVE]", f"temporary file cleanup failed: {exc}")
 
     def _write_frame(self, frame: dict[str, Any]) -> None:
         """将仍属于当前 episode 的帧转换为 native payload 并写入数据集。"""
@@ -530,8 +592,8 @@ class TimedRingBuffer:
         self._samples: deque[TimedSample] = deque()
         self._lock = Lock()
 
-    def append(self, sample: TimedSample) -> None:
-        """按采样时间插入样本，并裁剪过期或超长缓存。"""
+    def append(self, sample: TimedSample) -> list[TimedSample]:
+        """按时间插入并裁剪缓存，返回被淘汰样本供旁路增量写出。"""
         with self._lock:
             if not self._samples or sample.monotonic_s >= self._samples[-1].monotonic_s:
                 self._samples.append(sample)
@@ -542,9 +604,15 @@ class TimedRingBuffer:
                 self._samples = deque(samples)
             # 缓存始终按时间排序，高频追加无需反复扫描整个历史。
             latest_s = self._samples[-1].monotonic_s
-            self._prune_locked(latest_s - self.retention_s)
+            evicted = self._prune_locked(latest_s - self.retention_s)
             while len(self._samples) > self.maxlen:
-                self._samples.popleft()
+                evicted.append(self._samples.popleft())
+            return evicted
+
+    def snapshot(self) -> tuple[TimedSample, ...]:
+        """结束 episode 时读取缓存剩余尾部，不改变对齐缓存。"""
+        with self._lock:
+            return tuple(self._samples)
 
     def nearest(self, target_s: float, max_skew_s: float, *, valid_only: bool = False,
                 valid_at_unix_ms: float | None = None) -> TimedSample | None:
@@ -599,10 +667,12 @@ class TimedRingBuffer:
                 "nearby": [describe(sample) for sample in samples[max(0, index - 3):index + 3]],
                 "latest": describe(samples[-1]) if samples else None}
 
-    def _prune_locked(self, before_s: float) -> None:
+    def _prune_locked(self, before_s: float) -> list[TimedSample]:
         """在持锁状态下移除早于指定时间的旧样本。"""
+        evicted = []
         while self._samples and self._samples[0].monotonic_s < before_s:
-            self._samples.popleft()
+            evicted.append(self._samples.popleft())
+        return evicted
 
     def clear(self) -> None:
         """清空所有已缓存的时间样本。"""
@@ -711,8 +781,9 @@ class DatasetRecorderService:
         self._source_sample_indices: dict[str, int] = {key: 0 for key in SOURCE_KEYS}
         self._sample_buffers: dict[str, TimedRingBuffer] = self._new_sample_buffers({})
         self._origin_move_lock = Lock()
-        self._origin_move_buffer: list[tuple[float, tuple[float, ...]]] = []
-        self._origin_move_last_t: float | None = None
+        self._origin_move_closed = True
+        self._origin_move_last_s: float | None = None
+        self._origin_move_error = ""
         self._frame_assembler = FrameAssembler(self)
         self._quality_tracker = RecordingQualityTracker(self)
         self._last_saved_episode: dict[str, Any] | None = None
@@ -1992,7 +2063,7 @@ class DatasetRecorderService:
         return settings.get_config() if settings is not None else {}
 
     async def _episode_clock_pair(self, config: dict[str, Any]) -> tuple[float, float]:
-        """返回 (HAL 采样时间, Python 调度时间)，采样时间优先来自 DDS steady_clock。"""
+        """用同次读卡的时钟对换算当前 HAL 时间，与 Python 调度时刻对应。"""
         schedule_now_s = time.monotonic()
         sample_clock_now_s = schedule_now_s
         hal = getattr(self, "hal", None)
@@ -2000,7 +2071,12 @@ class DatasetRecorderService:
         if self._real_hardware_mode(config) and callable(motion_state):
             try:
                 state = await motion_state()
+                schedule_now_s = time.monotonic()
                 sample_clock_now_s = self._source_sample_monotonic(state, schedule_now_s)
+                sample_unix_ms = self._coerce_float(state.get("timestamp_ms")) if isinstance(state, dict) else None
+                if sample_unix_ms is not None and sample_unix_ms > 0:
+                    # 只推进录制起点的时钟换算，不能把缓存年龄当作两进程时钟偏移。
+                    sample_clock_now_s += time.time() - sample_unix_ms / 1000.
             except Exception as exc:  # noqa: BLE001
                 warning = getattr(getattr(self, "logs", None), "warning", None)
                 if callable(warning):
@@ -2069,6 +2145,9 @@ class DatasetRecorderService:
             self._episode_started_at = self._record_loop_start_monotonic_s
             self._episode_source_time0_s = self._episode_start_monotonic_s - self._sampler_start_monotonic_s
             self._accepting_frame_jobs = True
+            if hasattr(self, "_origin_move_lock"):
+                with self._origin_move_lock:
+                    self._origin_move_closed = False
             # 数据通路先就绪，遥操作放行应答前界面仍保持准备中。
             self.telemetry.recording = False
 
@@ -2183,18 +2262,17 @@ class DatasetRecorderService:
     async def _save_native_episode(self) -> None:
         """保存当前 native episode，并缓存尚未 finalize 的视频元数据映射。"""
         origin_move: OriginMoveWrite | None = None
+        origin_error = ""
         if hasattr(self, "_origin_move_lock"):
             try:
                 with self._origin_move_lock:
-                    # Hardware warmup can re-anchor episode zero after samplers start.
-                    start_s = self._episode_start_monotonic_s
-                    origin_move = OriginMoveWrite(
-                        self._require_dataset_dir(),
-                        self._episode_index,
-                        start_s,
-                        tuple(item for item in self._origin_move_buffer if item[0] >= start_s),
-                    )
+                    # 与 HAL 缓存淘汰交接互斥，封住新批次后只补剩余尾部。
+                    self._origin_move_closed = True
+                    origin_error = self._origin_move_error
+                    buffer = self._sample_buffers.get("hal")
+                    origin_move = self._origin_move_payload(buffer.snapshot() if buffer is not None else ())
             except Exception as exc:  # noqa: BLE001
+                origin_error = str(exc)
                 self.logs.warning("[ORIGIN_MOVE]", f"episode snapshot failed: {exc}")
         try:
             total_frames = await self._native_writer_command("save_episode")
@@ -2205,7 +2283,13 @@ class DatasetRecorderService:
         except Exception as exc:  # noqa: BLE001
             self._native_error = str(exc)
             raise DatasetSaveError(f"native LeRobot save_episode failed: {exc}") from exc
-        if origin_move is not None:
+        if origin_error:
+            try:
+                await self._native_writer_command("discard_origin_move")
+            except Exception as exc:  # noqa: BLE001
+                self.logs.warning("[ORIGIN_MOVE]", f"temporary file cleanup failed: {exc}")
+            self.logs.warning("[ORIGIN_MOVE]", f"incomplete episode sidecar discarded: {origin_error}")
+        elif origin_move is not None:
             try:
                 await self._native_writer_command("write_origin_move", origin_move)
             except Exception as exc:  # noqa: BLE001
@@ -2215,8 +2299,9 @@ class DatasetRecorderService:
         """请求写线程清空未保存的 native episode 缓冲区。"""
         if hasattr(self, "_origin_move_lock"):
             with self._origin_move_lock:
-                self._origin_move_buffer.clear()
-                self._origin_move_last_t = None
+                self._origin_move_closed = True
+                self._origin_move_last_s = None
+                self._origin_move_error = ""
         try:
             await self._native_writer_command("clear_episode")
         except Exception as exc:  # noqa: BLE001
@@ -2449,9 +2534,10 @@ class DatasetRecorderService:
                                     wake_lateness_ms=max(0, read_started - original_schedule_s) * 1000)
                 if sample_epoch_s != self._sampler_start_monotonic_s or self._source_sampler_paused(source):
                     continue
-                self._sample_buffers.setdefault(source, TimedRingBuffer()).append(sample)
                 if source == "hal":
-                    self._tap_origin_move(sample, target_s)
+                    self._append_hal_sample(sample)
+                else:
+                    self._sample_buffers.setdefault(source, TimedRingBuffer()).append(sample)
                 sample_index += 1
                 self._source_sample_indices[source] = sample_index
             except Exception as exc:  # noqa: BLE001
@@ -2461,25 +2547,41 @@ class DatasetRecorderService:
                     self.logs.warning("[LEROBOT]", f"{source} sampler recovered: {exc}")
                 self._sampler_stop_event.wait(0.1)
 
-    def _tap_origin_move(self, sample: TimedSample, target_s: float) -> None:
-        """只缓存 HAL 原始 positions，按目标采样时间最多保留 100Hz。"""
-        if not self._recording or not sample.ok or sample.monotonic_s < self._episode_start_monotonic_s:
-            return
-        positions = sample.value.get("positions") if isinstance(sample.value, dict) else None
-        if not isinstance(positions, list) or len(positions) != 12:
-            return
-        try:
-            raw_positions = tuple(float(value) for value in positions)
-        except (TypeError, ValueError):
-            return
+    def _append_hal_sample(self, sample: TimedSample) -> None:
+        """沿用采样循环，将对齐缓存淘汰的样本交给既有有界写队列。"""
         with self._origin_move_lock:
-            if not self._recording or sample.monotonic_s < self._episode_start_monotonic_s:
+            evicted = self._sample_buffers.setdefault("hal", TimedRingBuffer()).append(sample)
+            if not evicted or self._origin_move_closed:
                 return
-            last_t = self._origin_move_last_t
-            if last_t is not None and target_s - last_t < ORIGIN_MOVE_SAMPLE_PERIOD_S - 1e-9:
-                return
-            self._origin_move_buffer.append((sample.monotonic_s, raw_positions))
-            self._origin_move_last_t = target_s
+            try:
+                payload = self._origin_move_payload(evicted)
+                if payload.samples:
+                    self._writer_thread.submit("append_origin_move", payload)
+            except Exception as exc:  # noqa: BLE001
+                # 不能为旁路阻塞采样或无限积压；不把缺块文件伪装成完整结果。
+                self._origin_move_closed = True
+                self._origin_move_error = str(exc)
+                self.logs.warning("[ORIGIN_MOVE]", f"incremental write stopped: {exc}")
+
+    def _origin_move_payload(self, samples: Iterable[TimedSample]) -> OriginMoveWrite:
+        rows = []
+        last_s = self._origin_move_last_s
+        for sample in samples:
+            if (not sample.ok or sample.monotonic_s < self._episode_start_monotonic_s
+                    or (last_s is not None and sample.monotonic_s <= last_s)):
+                continue
+            positions = sample.value.get("positions") if isinstance(sample.value, dict) else None
+            if not isinstance(positions, list) or len(positions) != 12:
+                continue
+            try:
+                raw_positions = tuple(float(value) for value in positions)
+            except (TypeError, ValueError):
+                continue
+            rows.append((sample.monotonic_s, raw_positions))
+            last_s = sample.monotonic_s
+        self._origin_move_last_s = last_s
+        return OriginMoveWrite(self._require_dataset_dir(), self._episode_index,
+                               self._episode_start_monotonic_s, tuple(rows))
 
     def _source_sample_timestamp_s(self, source: str, sample_index: int, config: dict[str, Any]) -> float:
         """根据采样序号和源频率计算相对采样时间。"""
@@ -3239,7 +3341,7 @@ class DatasetRecorderService:
         finished = time.monotonic()
         elapsed_ms = (finished - started) * 1000.0
         fallback_sample_time = finished if ok else target_monotonic_s
-        source_ts = (self._coerce_float(value.get("dds_stamp_unix_ms")) or 0.) if isinstance(value, dict) else 0.
+        source_ts = (self._coerce_float(value.get("timestamp_ms")) or 0.) if isinstance(value, dict) else 0.
         sample = SourceSample(
             source,
             self._source_sample_monotonic(value, fallback_sample_time),
@@ -3628,8 +3730,9 @@ class DatasetRecorderService:
         self._gripper_target_buffer = TimedRingBuffer(retention_s=retention_s, maxlen=max(300, int(retention_s * 200)))
         if hasattr(self, "_origin_move_lock"):
             with self._origin_move_lock:
-                self._origin_move_buffer.clear()
-                self._origin_move_last_t = None
+                self._origin_move_closed = True
+                self._origin_move_last_s = None
+                self._origin_move_error = ""
         self._source_sample_indices = {key: 0 for key in SOURCE_KEYS}
         self._source_warnings = []
         self._last_native_gripper_sample = None

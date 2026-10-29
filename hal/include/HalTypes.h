@@ -69,6 +69,8 @@ struct MotionState {
   bool estopActive{};
   // Timestamp of the last real controller sample. Cached responses must preserve it.
   std::int64_t readTimestampMs{};
+  // 同次读卡完成时的单调时间，用于 DDS 与录制对齐；缓存不得刷新。
+  std::int64_t readMonotonicMs{};
   bool sampleCached{};
 };
 

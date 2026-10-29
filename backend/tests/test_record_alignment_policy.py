@@ -114,16 +114,49 @@ def test_new_gripper_status_packets_do_not_renew_old_measurement(monkeypatch):
     assert not recorder._feedback_is_valid(second)
 
 
-def test_hal_validity_uses_original_dds_timestamp(monkeypatch):
+def test_hal_validity_uses_controller_read_timestamp(monkeypatch):
     recorder = make_recorder(monkeypatch)
     async def read():
         return {"positions": [1.]*12, "pulses": [123.]*12,
-                "dds_stamp_unix_ms": 999_800, "monotonic_s": 9.8}
+                "timestamp_ms": 999_700, "dds_stamp_unix_ms": 999_800, "monotonic_s": 9.7}
     observed = asyncio.run(recorder._timed_source("hal", read(), 10., record_quality=False))
-    assert observed.valid_until_unix_ms == 1_000_300
+    assert observed.valid_until_unix_ms == 1_000_200
+    assert observed.measurement_unix_ms == {"source": 999_700}
     assert recorder._feedback_is_valid(observed)
-    monkeypatch.setattr(recording, "now_ms", lambda: 1_000_301)
+    monkeypatch.setattr(recording, "now_ms", lambda: 1_000_201)
     assert not recorder._feedback_is_valid(observed)
+
+
+def test_motion_frame_selects_nearest_read_despite_delayed_dds_delivery(monkeypatch):
+    import json
+    from backend.hal_client.dds_client import DdsHalClient
+    from backend.hal_client.dds_types import JsonEnvelope, TOPIC_HAL_MOTION_STATE
+
+    recorder = make_recorder(monkeypatch)
+    client = object.__new__(DdsHalClient)
+    monkeypatch.setattr("backend.hal_client.dds_client.now_unix_ms", lambda: 1_000_050)
+
+    async def collect():
+        # 后收到的包仍携带读卡时刻，不能按到达顺序或到达时刻挑选。
+        for read_ms, positions in ((10_001, 2.), (9_970, 1.)):
+            unix_ms = 990_000 + read_ms
+            envelope = JsonEnvelope(unix_ms, read_ms, "hal-cpp", json.dumps({
+                "timestamp_ms": unix_ms, "positions": [positions] * 12, "pulses": [positions * 100] * 12,
+            }))
+
+            async def read():
+                return client._payload_from_envelope(envelope, TOPIC_HAL_MOTION_STATE)
+
+            item = await recorder._timed_source("hal", read(), 10., record_quality=False)
+            recorder._sample_buffers["hal"].append(item)
+
+    asyncio.run(collect())
+    recorder._sample_buffers["gripper"].append(sample("gripper", 10.))
+    frame = recording.FrameAssembler(recorder).assemble({}, 10., 30)
+    assert frame["timestamp"] == 1.
+    assert frame["observation.pulses"] == [200.] * 12
+    assert frame["observation.state"][7] == 2.
+    assert frame["alignmentExceptions"] == []
 
 
 def _alignment_episode(frames, skews):

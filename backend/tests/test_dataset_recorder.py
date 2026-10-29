@@ -12,7 +12,7 @@ import queue
 import time
 from concurrent.futures import Future
 from pathlib import Path
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 from types import SimpleNamespace
 
 import pytest
@@ -1727,6 +1727,8 @@ def test_dataset_recorder_collect_frame_uses_timed_buffers() -> None:
 @pytest.mark.parametrize("source", ["hal", "omega", "force"])
 def test_dataset_sampler_reuses_event_loop_and_closes_it_on_stop(source, monkeypatch) -> None:
     recorder = object.__new__(DatasetRecorderService)
+    recorder._origin_move_lock = Lock()
+    recorder._origin_move_closed = True
     loops = []
     recorder._session_active = True
     recorder._sampler_stop_event = Event()
@@ -1916,6 +1918,24 @@ def test_dataset_recorder_alignment_time_uses_warmup_plus_dataset_timestamp() ->
 
     assert recorder._record_target_timestamp_s(0) == pytest.approx(100.5)
     assert recorder._record_target_timestamp_s(15) == pytest.approx(101.0)
+
+
+@pytest.mark.parametrize("sample_age_ms", [0, 150, 400])
+def test_episode_clock_pair_does_not_treat_cached_read_age_as_clock_offset(monkeypatch, sample_age_ms) -> None:
+    recorder = object.__new__(DatasetRecorderService)
+    recorder._real_hardware_mode = lambda config: True
+    monkeypatch.setattr(dataset_recorder_module, "time", SimpleNamespace(monotonic=lambda: 1000., time=lambda: 2000.))
+
+    async def motion_state():
+        return {
+            "timestamp_ms": 2_000_000 - sample_age_ms,
+            "monotonic_s": 456. - sample_age_ms / 1000.,
+        }
+
+    recorder.hal = SimpleNamespace(motion_state=motion_state)
+    sample_now, schedule_now = asyncio.run(recorder._episode_clock_pair({}))
+    assert sample_now == pytest.approx(456.)
+    assert schedule_now == 1000.
 
 
 def test_dataset_recorder_begin_episode_uses_hal_clock_for_targets_and_python_clock_for_schedule() -> None:

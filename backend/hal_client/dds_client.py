@@ -317,6 +317,9 @@ class DdsHalClient(HalClient):
             if (type(sample_ms) is not int or sample_ms <= 0
                     or not -_DDS_STATE_MAX_FUTURE_MS <= current_ms - sample_ms <= _DDS_STATE_MAX_AGE_MS):
                 raise RuntimeError("DDS motion controller sample timestamp is stale or unavailable")
+            # 运动信封和 payload 必须来自同次读卡，拒绝旧 HAL 用发布时间冒充采样时间。
+            if sample_ms != stamp_unix_ms or stamp_monotonic_ms <= 0:
+                raise RuntimeError("DDS motion controller sample timestamp does not match envelope; rebuild HAL")
         payload.setdefault("timestamp_ms", stamp_unix_ms)
         payload.setdefault("monotonicMs", stamp_monotonic_ms)
         payload.setdefault("monotonic_s", stamp_monotonic_ms / 1000.0)

@@ -288,6 +288,29 @@ void replayAbsoluteTargetsDoNotAccumulate() {
   rejects([&] { f.executor.applyExternal(target, f.epoch(), true); });
 }
 
+void motionCachePreservesCompletedReadTimestamps() {
+  Fixture f;
+  const auto before = std::chrono::steady_clock::now();
+  const auto measured = f.motion.readState();
+  const auto after = std::chrono::steady_clock::now();
+  const auto beforeMs = std::chrono::duration_cast<std::chrono::milliseconds>(before.time_since_epoch()).count();
+  const auto afterMs = std::chrono::duration_cast<std::chrono::milliseconds>(after.time_since_epoch()).count();
+  require(measured.readTimestampMs > 0 && measured.readMonotonicMs >= beforeMs
+      && measured.readMonotonicMs <= afterMs, "读卡完成时间未使用同一次读取的时钟");
+  std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  const auto cached = f.motion.latestState();
+  require(cached.sampleCached && cached.readTimestampMs == measured.readTimestampMs
+      && cached.readMonotonicMs == measured.readMonotonicMs, "读取缓存刷新了读卡时间");
+  require(jsonNumberValue(jsonMotionState(cached), "timestamp_ms", 0) == measured.readTimestampMs,
+      "运动 JSON 丢失读卡时间");
+  f.executor.enableSide(Side::Left, false, allAxes, f.epoch());
+  const auto commandOnly = f.motion.latestState();
+  require(commandOnly.readTimestampMs == 0 && commandOnly.readMonotonicMs == 0,
+      "命令状态伪造了读卡时间");
+  const auto next = f.motion.readState();
+  require(next.readMonotonicMs > measured.readMonotonicMs, "新读取未更新采样时间");
+}
+
 void failedGripperReadKeepsSuccessTimestampAndReportsTiming() {
   Fixture f;
   Omega7Driver omega;
@@ -315,6 +338,7 @@ void failedGripperReadKeepsSuccessTimestampAndReportsTiming() {
 int main() {
   try {
     cardZeroYawUsesUpdatedPulseEquivalent();
+    motionCachePreservesCompletedReadTimestamps();
     failedGripperReadKeepsSuccessTimestampAndReportsTiming();
     replayAbsoluteTargetsDoNotAccumulate();
     nativeExcludesOtherSources();

@@ -605,6 +605,8 @@ MotionState LTDMCDriver::readStateLocked() {
   }
   // Timestamp the completed full-controller read, not the start of a potentially slow vendor scan.
   state.readTimestampMs = unixTimeMs();
+  state.readMonotonicMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
   publishStateSnapshotLocked(state);
   return state;
 }
