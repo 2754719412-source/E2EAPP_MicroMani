@@ -103,19 +103,20 @@ export function TeleopHandCard({
  const setForceFeedback = (value: boolean) => updateTeleop(side === 'left' ? { leftForceFeedback: value } : { rightForceFeedback: value })
  /** 璁剧疆褰撳墠娴佺▼鐨勫搴旂姸鎬併€?*/
  const setGravityScale = (value: number) => updateTeleop(side === 'left' ? { leftGravityScale: value } : { rightGravityScale: value })
-  const axisOutputScale = side === 'left' ? config.teleop.leftAxisOutputScale : config.teleop.rightAxisOutputScale
-  const enabledAxes = side === 'left' ? config.teleop.leftEnabledAxes : config.teleop.rightEnabledAxes
+  // HAL 按目标硬件臂读取轴缩放和轴开关；卡片按操作视角排列，交换通道时必须写目标硬件侧。
+  const axisOutputScale = hardwareSide === 'left' ? config.teleop.leftAxisOutputScale : config.teleop.rightAxisOutputScale
+  const enabledAxes = hardwareSide === 'left' ? config.teleop.leftEnabledAxes : config.teleop.rightEnabledAxes
  /** 设置当前流程的对应状态。 */
  const setAxisOutputScale = (axisIndex: number, value: number) => {
     const next = [...axisOutputScale]
     next[axisIndex] = value
-    updateTeleop(side === 'left' ? { leftAxisOutputScale: next } : { rightAxisOutputScale: next })
+    updateTeleop(hardwareSide === 'left' ? { leftAxisOutputScale: next } : { rightAxisOutputScale: next })
   }
  /** 设置当前流程的对应状态。 */
  const setEnabledAxis = (axisIndex: number, value: boolean) => {
     const next = [...enabledAxes]
     next[axisIndex] = value
-    updateTeleop(side === 'left' ? { leftEnabledAxes: next } : { rightEnabledAxes: next })
+    updateTeleop(hardwareSide === 'left' ? { leftEnabledAxes: next } : { rightEnabledAxes: next })
   }
   const physicalConnected = Boolean(handState?.connected)
   const liveReadOk = logicalConnected && physicalConnected && Boolean(handState?.lastReadOk)
