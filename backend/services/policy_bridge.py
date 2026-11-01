@@ -19,8 +19,13 @@ MOTION_INDICES = {
 }
 
 
+def lerobot_motion_from_ui(joint_positions: list[float]) -> list[float]:
+    """12 维运动状态，数据集侧别顺序（operator_left 6 + operator_right 6），即 14 维状态去掉两个夹爪位。"""
+    return ui_to_lerobot_state(hardware_to_dataset_motion(joint_positions))
+
+
 def lerobot_state_from_ui(joint_positions: list[float], gripper_positions: list[float]) -> list[float]:
-    motion = ui_to_lerobot_state(hardware_to_dataset_motion(joint_positions))
+    motion = lerobot_motion_from_ui(joint_positions)
     grippers = hardware_to_dataset_grippers(gripper_positions)
     return motion[:6] + [float(grippers[0])] + motion[6:12] + [float(grippers[1])]
 

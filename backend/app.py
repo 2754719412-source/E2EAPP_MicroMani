@@ -61,7 +61,7 @@ from backend.services.dataset_replay import DatasetReplayService
 from backend.services.control_watchdog import ControlLeaseUnavailable, ControlWatchdog
 from backend.services.gripper_backend import native_teleop_enabled
 from backend.services.pico_network import PicoNetworkDetectionError, detect_pico_network
-from backend.services.policy_bridge import build_policy_action_plan, lerobot_state_from_ui
+from backend.services.policy_bridge import build_policy_action_plan, lerobot_motion_from_ui, lerobot_state_from_ui
 from backend.services.policy_gripper_observation import PolicyGripperObservation, PolicyGripperFeedbackUnavailable
 from backend.services.teleop_mapping import SideName
 
@@ -1507,32 +1507,51 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             logs.error("[HAL]", f"manual_axis_move failed: {exc}")
             raise HTTPException(status_code=503, detail={"code": "MOTION_UNAVAILABLE", "message": str(exc)}) from exc
 
+    async def _current_motion_positions(config: dict[str, Any]) -> tuple[list[float], list[float] | None]:
+        """HAL 运动卡当前状态：相对工作原点的位置（硬件 UI 顺序）与数据集侧别顺序的脉冲。只读运动卡，不涉及夹爪。"""
+        joint_positions = list(telemetry.motion_positions)
+        pulses: list[float] | None = None
+        if _real_hardware_mode(config):
+            motion_state = await hal.motion_state()
+            raw_positions = motion_state.get("positions")
+            raw_pulses = motion_state.get("pulses")
+            if isinstance(raw_positions, list) and len(raw_positions) == 12:
+                joint_positions = [float(value) for value in raw_positions]
+            if isinstance(raw_pulses, list) and len(raw_pulses) == 12:
+                pulses = [float(value) for value in raw_pulses]
+                joint_positions = relative_motion_positions(config, joint_positions, pulses)
+                pulses = hardware_to_dataset_motion(pulses)
+            telemetry.motion_positions = list(joint_positions)
+        return joint_positions, pulses
+
+    # 当前机械臂位置（数据集侧别顺序 12 维：operator_left 6 + operator_right 6）。只读运动卡，不触碰夹爪反馈采样配置，
+    # 供摆放助手等只需位置的工具在录制期间轮询（/api/policy/observation 会按 controlledSides 重配夹爪反馈）。
+    @app.get("/api/motion/positions")
+    async def motion_positions() -> ApiEnvelope:
+        config = await get_config_async()
+        try:
+            joint_positions, _ = await _current_motion_positions(config)
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "MOTION_POSITIONS_UNAVAILABLE", "message": str(exc)},
+            ) from exc
+        return envelope({"motion": lerobot_motion_from_ui(joint_positions)})
+
     @app.get("/api/policy/observation")
     async def policy_observation(controlledSides: Annotated[list[str] | None, Query()] = None) -> ApiEnvelope:
         config = await get_config_async()
         sides = controlledSides if controlledSides is not None else ["left", "right"]
         if not sides or any(side not in {"left", "right"} for side in sides):
             raise HTTPException(status_code=400, detail={"code": "BAD_POLICY_SIDES", "message": "controlledSides must include left or right"})
-        joint_positions = list(telemetry.motion_positions)
-        pulses: list[float] | None = None
-        if _real_hardware_mode(config):
-            try:
-                motion_state = await hal.motion_state()
-                raw_positions = motion_state.get("positions")
-                raw_pulses = motion_state.get("pulses")
-                if isinstance(raw_positions, list) and len(raw_positions) == 12:
-                    joint_positions = [float(value) for value in raw_positions]
-                if isinstance(raw_pulses, list) and len(raw_pulses) == 12:
-                    pulses = [float(value) for value in raw_pulses]
-                    joint_positions = relative_motion_positions(config, joint_positions, pulses)
-                    pulses = hardware_to_dataset_motion(pulses)
-                telemetry.motion_positions = list(joint_positions)
-            except RuntimeError as exc:
-                logs.error("[POLICY]", f"policy observation failed: {exc}")
-                raise HTTPException(
-                    status_code=503,
-                    detail={"code": "POLICY_OBSERVATION_UNAVAILABLE", "message": str(exc)},
-                ) from exc
+        try:
+            joint_positions, pulses = await _current_motion_positions(config)
+        except RuntimeError as exc:
+            logs.error("[POLICY]", f"policy observation failed: {exc}")
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "POLICY_OBSERVATION_UNAVAILABLE", "message": str(exc)},
+            ) from exc
         grippers, gripper_feedback = await _policy_gripper_state(config, sides, ensure_sampling=True)
         force_left = list(getattr(telemetry, "force_left", [0.0] * 6))[:6]
         force_right = list(getattr(telemetry, "force_right", [0.0] * 6))[:6]
