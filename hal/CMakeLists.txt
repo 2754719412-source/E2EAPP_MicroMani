@@ -132,6 +132,7 @@ if(BUILD_TESTING AND NOT APPSTATION_ENABLE_VENDOR_SDKS)
     tests/MotionExecutorTests.cpp
     src/HalCommandDispatcher.cpp
     src/HalJson.cpp
+    src/TeleopHardwareTargetExecutor.cpp
   )
   target_link_libraries(MotionExecutorTests PRIVATE appstation_hal_core)
   if(MSVC)

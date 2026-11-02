@@ -1,6 +1,8 @@
 #include "OfflineMotion.h"
 #include "HalCommandDispatcher.h"
 #include "HalJson.h"
+#include "TeleopHardwareTargetExecutor.h"
+#include "WorkerExceptionBoundary.h"
 
 #include <chrono>
 #include <cmath>
@@ -335,8 +337,119 @@ void failedGripperReadKeepsSuccessTimestampAndReportsTiming() {
   require(jsonStringValue(status, "lastReadMessage") == "native gripper teleop disabled", "read failure reason lost");
 }
 
+void disabledTeleopAxisStopsButCanRecover() {
+  for (int side = 0; side < 2; ++side) {
+    for (int axis = 0; axis < 6; ++axis) {
+      Fixture f;
+      const auto hardwareSide = side == 0 ? Side::Left : Side::Right;
+      f.motion.requireControlLease();
+      f.motion.renewControlLease("test-session", 1);
+      f.motion.emergencyStop();
+      f.motion.completeControlLeaseStop(f.motion.pollControlLease());
+      f.motion.acknowledgeEmergencyStop();
+      f.executor.enableSide(hardwareSide, true, allAxes, f.epoch());
+      f.executor.beginNative(0, f.epoch());
+      std::array<bool, 6> disabledAxis{};
+      disabledAxis[axis] = true;
+      f.executor.enableSide(hardwareSide, false, disabledAxis, f.epoch());
+      ForceControlRuntime force([]() {}, []() {});
+      ForceRuntimeConfig config;
+      config.source = "hkvl_serial";
+      config.safety.watchdogMs = 1000;
+      force.configure(config, 0);
+      ForceControlRuntimeTestAccess::markCalibrationReady(force);
+      const auto healthyForce = [&](double now) {
+        for (double offset : {0.0, 501.0}) {
+          for (int sensor = 0; sensor < 2; ++sensor) force.acceptSample(sensor, {}, {}, now + offset, 1000);
+        }
+      };
+      healthyForce(1);
+      force.acknowledgeEmergencyStop(502);
+      Omega7Driver omega;
+      JodellGripperDriver gripper;
+      NativeTeleopController native(f.motion, f.executor, omega, gripper);
+      std::string diagnostic;
+      TeleopHardwareTargetExecutor follower(f.motion, f.executor, force,
+          [&](const char* message) {
+            diagnostic = message;
+            native.reportControlFailure(message);
+          });
+      auto target = f.target(1, side);
+      target.deltas = {};
+      target.deltas[axis] = 1;
+      bool listening = true;
+      const auto deliver = [&]() {
+        runWorkerBoundary([&]() { if (listening) follower.apply(target); }, [&](const char* error) {
+          listening = false;
+          follower.reportControlFailure(error);
+        });
+      };
+      deliver();
+      require(listening, "disabled servo must not kill the follower listener");
+      require(f.motion.estopActive() && force.safetyLatched(), "disabled servo must latch a safety stop");
+      static constexpr const char* names[]{"X", "Y", "Z", "Roll", "Pitch", "Yaw"};
+      require(diagnostic.find(std::string("hardwareSide=") + (side == 0 ? "left" : "right")) != std::string::npos
+          && diagnostic.find(std::string("axis=") + names[axis]) != std::string::npos,
+          "servo rejection must identify the hardware side and semantic axis");
+      require(force.forceStateJson(0).find(diagnostic) != std::string::npos,
+          "servo diagnostic must reach safety telemetry");
+      const auto stoppedPulse = f.motion.readState().axes[stateIndex(hardwareSide, static_cast<SemanticAxis>(axis))].pulse;
+      f.motion.renewControlLease("test-session", 2);
+      require(f.motion.controlLeaseFresh() && f.motion.estopActive(), "lease renewal must not clear the safety stop");
+      target.sequence = 2;
+      target.stampUnixMs = f.motion.lastEmergencyStopUnixMs() + 1;
+      deliver();
+      rejects([&] { f.executor.enableSide(hardwareSide, true, allAxes, f.epoch()); });
+      rejects([&] { f.executor.beginNative(2, f.epoch()); });
+      require(f.motion.readState().axes[stateIndex(hardwareSide, static_cast<SemanticAxis>(axis))].pulse == stoppedPulse,
+          "targets must not move the arm before acknowledgement");
+      const auto recoveryTime = forceMonotonicMilliseconds() + 1;
+      healthyForce(recoveryTime);
+      force.acknowledgeEmergencyStop(recoveryTime + 501, [&]() { f.motion.acknowledgeEmergencyStop(); });
+      require(!f.motion.readState().axes[stateIndex(hardwareSide, static_cast<SemanticAxis>(axis))].enabled,
+          "acknowledgement must not enable the servo");
+      f.executor.enableSide(hardwareSide, true, allAxes, f.epoch());
+      deliver();
+      require(f.motion.readState().axes[stateIndex(hardwareSide, static_cast<SemanticAxis>(axis))].pulse == stoppedPulse,
+          "acknowledgement and enabling must not resume the old native session");
+      f.executor.beginNative(2, f.epoch());
+      deliver();
+      require(f.motion.readState().axes[stateIndex(hardwareSide, static_cast<SemanticAxis>(axis))].pulse == stoppedPulse,
+          "new native session must reject queued targets from the old session");
+      target.sequence = 3;
+      deliver();
+      require(listening && !f.motion.estopActive()
+          && f.motion.readState().axes[stateIndex(hardwareSide, static_cast<SemanticAxis>(axis))].pulse != stoppedPulse,
+          "explicitly recovered session must execute a fresh target without restarting HAL");
+    }
+  }
+}
+
+void unexpectedFollowerFailureStillBlocksRecovery(bool stopFails) {
+  Fixture f;
+  ForceControlRuntime force([]() {}, []() {});
+  TeleopHardwareTargetExecutor follower(f.motion, f.executor, force, [&](const char*) {
+    if (stopFails) throw std::runtime_error("injected stop failure");
+  });
+  f.executor.beginNative(0, f.epoch());
+  if (stopFails) f.executor.enableSide(Side::Left, false, allAxes, f.epoch());
+  auto target = f.target(1, stopFails ? 0 : 99);
+  bool listening = true;
+  runWorkerBoundary([&]() { follower.apply(target); }, [&](const char* error) {
+    listening = false;
+    follower.reportControlFailure(error);
+  });
+  require(!listening && f.motion.estopActive() && !f.motion.controlLeaseFresh(),
+      "unexpected follower failure must still disable the listener and control lease");
+  rejects([&] { f.motion.renewControlLease("test-session", 1); });
+  rejects([&] { f.motion.acknowledgeEmergencyStop(); });
+}
+
 int main() {
   try {
+    disabledTeleopAxisStopsButCanRecover();
+    unexpectedFollowerFailureStillBlocksRecovery(false);
+    unexpectedFollowerFailureStillBlocksRecovery(true);
     cardZeroYawUsesUpdatedPulseEquivalent();
     motionCachePreservesCompletedReadTimestamps();
     failedGripperReadKeepsSuccessTimestampAndReportsTiming();
@@ -354,7 +467,7 @@ int main() {
     revokeRejectsAlreadyWaitingFollower();
     dispatcherEmergencyBypassesBothExecutionAndDriverLocks();
     emergencyCancelsCommandAlreadyAdmittedBeforeDriverAccess();
-    std::cout << "MotionExecutorTests passed (16 cases, offline)\n";
+    std::cout << "MotionExecutorTests passed (offline, including recovery for all 12 axes)\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "MotionExecutorTests failed: " << error.what() << '\n';

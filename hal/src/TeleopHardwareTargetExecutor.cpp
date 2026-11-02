@@ -46,7 +46,19 @@ void TeleopHardwareTargetExecutor::apply(const TeleopHardwareTarget& target) {
   deltas[2] += compliance.correctionUm[1];
 
   // Follower 端只做最终落地，不改变 Mapping 端算好的步长、死区、速度和软限位。
-  const auto applied = executor_.applyNative(target, deltas);
+  std::optional<TeleopTargetUpdateResult> applied;
+  try {
+    applied = executor_.applyNative(target, deltas);
+  } catch (const TeleopAxisNotEnabled& error) {
+    // 保留 DDS 接收和续租能力，但锁存停车、撤销旧会话；不能自动使能或继续旧目标。
+    // 停止动作若失败，仍交给外层 worker 边界永久撤销控制权限。
+    motion_.latchEmergencyStop();
+    executor_.revokeNative();
+    if (failureCallback_) failureCallback_(error.what());
+    motion_.emergencyStop();
+    forceRuntime_.recordExternalEmergencyStop(error.what(), forceMonotonicMilliseconds());
+    return;
+  }
   if (!applied) return;
   const auto& result = *applied;
   // 按驱动实际应用的位移回写柔顺累计量，避免软限位裁剪后继续累计未执行的修正。

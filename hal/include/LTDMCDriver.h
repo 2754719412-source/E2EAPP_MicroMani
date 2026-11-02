@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 
 #include "HalTypes.h"
@@ -19,6 +20,12 @@
 #include "MotionTiming.h"
 
 namespace appstation::hal {
+
+// 轴未使能属于可确认后恢复的运动拒绝，不表示执行线程已经损坏。
+class TeleopAxisNotEnabled : public std::runtime_error {
+ public:
+  using std::runtime_error::runtime_error;
+};
 
 // LTDMCDriver 封装雷赛 LTDMC 控制卡访问。外部只使用语义轴和 UI 单位，
 // 具体控制卡号、物理轴号、脉冲方向和 vendor SDK 调用都被限制在本类内部。

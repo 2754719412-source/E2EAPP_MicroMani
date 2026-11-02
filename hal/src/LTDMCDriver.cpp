@@ -1813,7 +1813,9 @@ TeleopTargetUpdateResult LTDMCDriver::updateTeleopTargetUi(
       continue;
     }
     if (!axisMotionEnabled(side, axis)) {
-      throw std::runtime_error("teleop axis is not servo-enabled");
+      throw TeleopAxisNotEnabled(std::string("teleop axis is not servo-enabled; hardwareSide=")
+          + sideName(side) + " axis=" + axisName(axis)
+          + " card=" + std::to_string(card) + " physicalAxis=" + std::to_string(axisNo));
     }
     const auto maxVelocityUiPerSec = rotation ? rotationVelocityUiPerSec : translationVelocityUiPerSec;
     const auto requestedStartVelocity =

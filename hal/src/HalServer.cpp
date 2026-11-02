@@ -103,8 +103,8 @@ int runHalServer() {
       started);
   TeleopLeaderPublisher leaderPublisher;
   TeleopMappingNode teleopMapping(nativeTeleop);
-  TeleopHardwareTargetExecutor teleopExecutor(motion, motionExecutor, forceRuntime, [&motion, &nativeTeleop](const char* error) {
-    motion.failControlLease();
+  TeleopHardwareTargetExecutor teleopExecutor(motion, motionExecutor, forceRuntime, [&nativeTeleop](const char* error) {
+    // 不可恢复的 follower 故障由 executor 自行撤销租约；此处只停止原生控制。
     nativeTeleop.reportControlFailure(error);
   });
   TeleopFollowerTargetSubscriber followerSubscriber(teleopExecutor);
