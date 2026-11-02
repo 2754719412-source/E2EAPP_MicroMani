@@ -27,7 +27,7 @@ from backend.core.gripper_protection import (
     icf_target_protection_enabled,
     protected_gripper_target_mm,
 )
-from backend.core.logging import LogService, now_ms
+from backend.core.logging import LogService, now_ms, stable_config_hash
 from backend.core.motion_limits import (
     WorkOriginMissing,
     effective_limits_ui,
@@ -39,8 +39,9 @@ from backend.core.motion_limits import (
 from backend.core.schemas import GripperCommandRequest, ManualAxisMoveRequest, SettingsCommandRequest
 from backend.core.motion_safety import MotionSafetyGate, motion_operation
 from backend.core.units import motion_pulse_per_unit, pulse_to_ui
-from backend.core.work_origin import axis_instance_ids, offset_reference_kinds, require_current_work_origin
+from backend.core.work_origin import PreviousOriginInstance, axis_instance_ids, offset_reference_kinds, require_current_work_origin
 from backend.hal_client.client import HalClient
+from backend.services.control_watchdog import request_control_session
 from backend.services.gripper_backend import (
     NativeGripperAdapter,
     hal_response_message,
@@ -87,6 +88,12 @@ class MotionOriginDriftConfirmationRequired(RuntimeError):
     def __init__(self, drift: dict[str, object]) -> None:
         super().__init__("motion work origin drift requires explicit confirmation")
         self.drift = drift
+
+
+class OriginContinuityConfirmationRequired(RuntimeError):
+    def __init__(self, message: str, confirmation: str):
+        super().__init__(message)
+        self.confirmation = confirmation
 
 
 class CommandService:
@@ -319,7 +326,8 @@ class CommandService:
         return result
 
     @motion_operation("side")
-    async def return_motion_origin_side(self, side: str, axes: list[str] | None = None) -> dict[str, object]:
+    async def return_motion_origin_side(self, side: str, axes: list[str] | None = None,
+                                        *, confirm_unchanged_counts: str | None = None) -> dict[str, object]:
         safety_token = self.safety.capture(side)
         self.safety.check(safety_token)
         self._validate_side(side)
@@ -345,7 +353,31 @@ class CommandService:
         if axes is not None and (not axes or len(set(axes)) != len(axes) or any(axis not in AXIS_ORDER for axis in axes)):
             raise RuntimeError("invalid work origin return axes")
         enabled_axes = [axis in axes for axis in AXIS_ORDER] if axes is not None else self._home_enabled_axes(side, config)
-        instance_id = await require_current_work_origin(config, self.hal, (side,), enabled_axes)
+        try:
+            instance_id = await require_current_work_origin(config, self.hal, (side,), enabled_axes)
+        except PreviousOriginInstance as exc:
+            self._ensure_origin_mutation_allowed()
+            self.require_stationary_motion(motion_state)
+            confirmation = stable_config_hash([exc.current, side, enabled_axes, config["motion"],
+                                               safety_token.generation, request_control_session.get()])
+            if confirm_unchanged_counts is None:
+                raise OriginContinuityConfirmationRequired(str(exc), confirmation) from exc
+            if confirm_unchanged_counts != confirmation:
+                raise RuntimeError("确认期间控制器、坐标或安全状态已变化，请重新点击回工作原点") from exc
+            instance_id = exc.current
+            original_config_hash = stable_config_hash(config)
+            # 先只修改内存副本。旧参考未确认或来自另一次计数基准时，不能随工作原点恢复。
+            motion = config["motion"]
+            ref = motion["homeReference"]
+            key = f"{side}AxisInstanceId"
+            for i, selected in enumerate(enabled_axes):
+                if selected:
+                    motion["origin"][key][i] = instance_id
+                    if ref[f"{side}AxisConfirmed"][i] and ref[key][i] == exc.previous:
+                        ref[key][i] = instance_id
+        else:
+            if confirm_unchanged_counts is not None:
+                raise RuntimeError("原确认已失效，请重新点击回工作原点")
         await self._stop_manual_teleop_connect_before_motion_return()
         self._validate_work_origin_target(config, side, enabled_axes)
         self._validate_motion_axes_enabled_for_work_origin(motion_state, side, enabled_axes)
@@ -373,6 +405,18 @@ class CommandService:
             },
         )
         await self._confirm_work_origin({side: pulse}, requested_at, safety_token, enabled_axes)
+        if confirm_unchanged_counts is not None:
+            await require_current_work_origin(config, self.hal, (side,), enabled_axes)
+
+            def check_before_save() -> None:
+                self.safety.check(safety_token)
+                self._ensure_origin_mutation_allowed()
+                if stable_config_hash(self.settings.get_config()) != original_config_hash:
+                    raise RuntimeError("回工作原点期间配置已变化，未保存坐标确认")
+
+            await asyncio.to_thread(self.settings.save_config, config, emit_log=False, before_commit=check_before_save,
+                                    home_reference_update=True, work_origin_update=True)
+            self.logs.info("[HAL]", f"{side} 已按操作员确认沿用工作原点计数，HAL={instance_id}")
         self.telemetry.home_side(side, enabled_axes)
         self._log_work_origin_moves(config, op_id, "home_origin_side", "complete", side, pulse, enabled_axes)
         self.logs.event(

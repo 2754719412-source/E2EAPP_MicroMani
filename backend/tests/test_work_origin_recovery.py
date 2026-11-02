@@ -22,10 +22,81 @@ def test_work_origin_return_rejects_controller_restart_before_dispatch(tmp_path,
     hal.command.side_effect = command
     response = client.post("/api/motion/right/return_origin")
 
-    assert response.status_code == 503, response.text
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "CONFIRM_ORIGIN_CONTINUITY"
     assert "工作原点未在当前控制器会话恢复" in response.text
     hal.command.assert_not_awaited()
     assert client.app.state.settings.get_config()["motion"] == before
+
+
+def test_operator_confirmed_hal_restart_returns_and_keeps_only_matching_references(tmp_path, monkeypatch):
+    client, hal, state = setup_homing(tmp_path, monkeypatch)
+    assert client.post("/api/motion/left/origin/capture", json={"confirmLargeDrift": True}).is_success
+    settings = client.app.state.settings
+    config = settings.get_config()
+    config["motion"]["homeReference"]["leftAxisInstanceId"][1] = "older-reference"
+    settings.save_config(config, home_reference_update=True, work_origin_update=True)
+    before = deepcopy(settings.get_config()["motion"])
+    hal.instance["id"] = "new-hal"
+    state["pulses"][0] += 1000  # 重启时不要求停在工作原点，目标必须仍然是已记录的坐标。
+    url = "/api/motion/left/return_origin"
+    detail = client.post(url).json()["detail"]
+    hal.command.assert_not_awaited()
+    async def move(name, payload):
+        assert name == "motion.home_origin_side" and payload["expectedInstanceId"] == "new-hal"
+        assert payload["pulse"] == before["origin"]["leftPulse"]
+        state["pulses"][:6] = payload["pulse"]
+        return {"response": {"ok": True}}
+    hal.command.side_effect = move
+    accepted = client.post(url, json={"confirmUnchangedCounts": detail["confirmation"]})
+    assert accepted.status_code == 200, accepted.text
+    assert hal.command.await_count == 1
+    after = settings.get_config()["motion"]
+    expected = deepcopy(before)
+    expected["origin"]["leftAxisInstanceId"] = ["new-hal"] * 6
+    expected["homeReference"]["leftAxisInstanceId"] = ["new-hal", "older-reference"] + ["new-hal"] * 4
+    assert after == expected
+    assert client.post(url).status_code == 200
+
+
+@pytest.mark.parametrize("change", ["restart", "side", "axes", "missing", "moving", "stop", "edit", "refused", "restart_after_move"])
+def test_operator_confirmation_cannot_cross_change_or_save_a_failed_return(tmp_path, monkeypatch, change):
+    client, hal, state = setup_homing(tmp_path, monkeypatch)
+    assert client.post("/api/motion/left/origin/capture", json={"confirmLargeDrift": True}).is_success
+    hal.instance["id"] = "new-hal"
+    url = "/api/motion/left/return_origin"
+    body = {"confirmUnchangedCounts": client.post(url).json()["detail"]["confirmation"]}
+    settings = client.app.state.settings
+    if change == "restart":
+        hal.instance["id"] = "newer-hal"
+    if change == "side":
+        url = url.replace("left", "right")
+    if change == "axes":
+        body["axes"] = ["X"]
+    if change == "moving":
+        state["moving"][0] = True
+    if change == "stop":
+        client.app.state.commands.safety.interrupt("left")
+    if change in ("edit", "missing"):
+        cfg = settings.get_config()
+        if change == "edit":
+            cfg["motion"]["origin"]["leftPulse"][0] += 1
+        else:
+            cfg["motion"]["origin"]["leftAxisInstanceId"][0] = ""
+        settings.save_config(cfg, work_origin_update=True)
+    if change == "refused":
+        hal.command.side_effect = RuntimeError("limit active")
+    if change == "restart_after_move":
+        async def move_then_restart(name, payload):
+            state["pulses"][:6] = payload["pulse"]
+            hal.instance["id"] = "newer-hal"
+            return {"response": {"ok": True}}
+        hal.command.side_effect = move_then_restart
+    before = deepcopy(settings.get_config()["motion"])
+    assert client.post(url, json=body).status_code >= 400
+    if change not in {"refused", "restart_after_move"}:
+        hal.command.assert_not_awaited()
+    assert settings.get_config()["motion"] == before
 
 
 def calibrated_xy(tmp_path, monkeypatch):
@@ -133,7 +204,7 @@ def test_failed_recovery_retains_calibration_but_cannot_return(tmp_path, monkeyp
     assert after["origin"] == before["origin"]
     assert after["workOriginOffset"] == before["workOriginOffset"]
     hal.command.reset_mock()
-    assert client.post("/api/motion/left/return_origin", json={"axes": ["X", "Y"]}).status_code == 503
+    assert client.post("/api/motion/left/return_origin", json={"axes": ["X", "Y"]}).status_code == 409
     hal.command.assert_not_awaited()
 
 

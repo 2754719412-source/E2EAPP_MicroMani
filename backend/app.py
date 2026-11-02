@@ -44,6 +44,7 @@ from backend.core.schemas import (
     GripperCommandRequest,
     ManualAxisMoveRequest,
     HardwareHomeRequest,
+    WorkOriginReturnRequest,
     SettingsCommandRequest,
     SnapshotCreateRequest,
     SnapshotScope,
@@ -54,6 +55,7 @@ from backend.hal_client.dds_client import DdsHalClient
 from backend.hal_client.dds_types import DEFAULT_DDS_DOMAIN_ID
 from backend.services.command_service import (
     MotionOriginDriftConfirmationRequired,
+    OriginContinuityConfirmationRequired,
     normalize_motion_axis_enabled,
 )
 from backend.services.dataset_recorder import DatasetSaveError, RecordingBlocksOriginReturn
@@ -1479,15 +1481,21 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail={"code": "MOTION_UNAVAILABLE", "message": str(exc)}) from exc
 
     @app.post("/api/motion/{side}/return_origin")
-    async def return_motion_origin_side(side: str, request: HardwareHomeRequest | None = None) -> ApiEnvelope:
+    async def return_motion_origin_side(side: str, request: WorkOriginReturnRequest | None = None) -> ApiEnvelope:
         if side not in {"left", "right"}:
             raise HTTPException(status_code=400, detail={"code": "BAD_SIDE", "message": "side must be left or right"})
         try:
             recorder.require_work_origin_return_allowed()
-            result = await commands.return_motion_origin_side(side, request.axes) if request else await commands.return_motion_origin_side(side)
+            if request:
+                result = await commands.return_motion_origin_side(side, request.axes, confirm_unchanged_counts=request.confirmUnchangedCounts)
+            else:
+                result = await commands.return_motion_origin_side(side)
             if request is None or len(request.axes) == 6:
                 recorder.mark_reset_origin_returned(side)
             return envelope(result)
+        except OriginContinuityConfirmationRequired as exc:
+            raise HTTPException(status_code=409, detail={"code": "CONFIRM_ORIGIN_CONTINUITY", "message": str(exc),
+                                                        "confirmation": exc.confirmation}) from exc
         except RecordingBlocksOriginReturn as exc:
             raise HTTPException(status_code=409, detail={"code": "RECORDING_ACTIVE", "message": str(exc)}) from exc
         except ControlLeaseUnavailable as exc:

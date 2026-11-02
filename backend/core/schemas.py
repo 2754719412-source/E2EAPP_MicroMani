@@ -210,6 +210,11 @@ class HardwareHomeRequest(BaseModel):
         return axes
 
 
+class WorkOriginReturnRequest(HardwareHomeRequest):
+    axes: list[ManualAxis] = Field(default_factory=lambda: ["X", "Y", "Z", "Roll", "Pitch", "Yaw"], min_length=1, max_length=6)
+    confirmUnchangedCounts: str | None = Field(default=None, min_length=1, max_length=64)
+
+
 class ManualAxisMoveRequest(BaseModel):
     side: ManualSide
     axis: ManualAxis

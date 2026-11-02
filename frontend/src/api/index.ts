@@ -6,6 +6,7 @@ import type { Participation } from '../types'
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 import { defaultConfig } from '../data'
+import { askOriginContinuity } from '../stores/originContinuity'
 import type {
   AppConfig,
   CameraTelemetry,
@@ -149,6 +150,7 @@ type ApiErrorPayload = {
     code?: unknown
     message?: unknown
     drift?: unknown
+    confirmation?: unknown
   }
 }
 
@@ -540,8 +542,25 @@ export const referencePositiveLimitSide = (side: ManualControlSide, axes: Manual
 export const returnHardwareReferenceSide = (side: ManualControlSide, axes: ManualControlAxis[]) =>
   postCommand(`/motion/${side}/return_home_reference`, { axes })
 /** 发送或封装对应的后端命令。 */
-export const returnMotionOriginSide = (side: ManualControlSide) =>
-  postCommand(`/motion/${side}/return_origin`)
+export async function returnMotionOriginSide(side: ManualControlSide) {
+  const path = `/motion/${side}/return_origin`
+  const session = controlSessionId()
+  try {
+    return await postCommand(path)
+  } catch (error) {
+    const e = error as ApiCommandError
+    const confirmation = (e.payload as ApiErrorPayload | undefined)?.detail?.confirmation
+    if (e.status !== 409 || e.code !== 'CONFIRM_ORIGIN_CONTINUITY' || typeof confirmation !== 'string') throw error
+    returnOriginPending = true
+    try {
+      if (!await askOriginContinuity(side)) throw new Error('已取消回工作原点；若电脑重启或计数不确定，请重新建参考')
+    } finally {
+      returnOriginPending = false
+    }
+    if (session !== controlSessionId()) throw new Error('控制会话已变化，请重新点击回工作原点')
+    return postCommand(path, { confirmUnchangedCounts: confirmation })
+  }
+}
 
 export interface MotionPreviousRestoreStatus {
   available: boolean

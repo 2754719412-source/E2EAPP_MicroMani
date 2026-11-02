@@ -28,6 +28,7 @@ import { ModuleErrorBoundary } from './ModuleErrorBoundary'
 import { SafetyOverlay } from './SafetyOverlay'
 import { StatusBar } from './StatusBar'
 import { ControlLeaseStatus } from './ControlLeaseStatus'
+import { OriginContinuityDialog } from './OriginContinuityDialog'
 import { controlLeaseBlockReason } from '../stores/controlLease'
 import { UiButton, UiSegmented, UiSpace, UiTag, UiText } from './ui'
 
@@ -93,6 +94,7 @@ function TopStatus({ clock }: { clock: string }) {
 }
 /** 渲染当前界面单元，并连接所需数据。 */
 export function AppLayout() {
+  const controlGeneration = useTelemetryStore((s) => s.controlSafety.generation)
   const triggerEmergencyStop = useTelemetryStore((state) => state.triggerEmergencyStop)
   const [clock, setClock] = useState(() => dayjs().format('HH:mm:ss'))
   const navigate = useNavigate()
@@ -169,6 +171,7 @@ export function AppLayout() {
       </div>
       <ModuleErrorBoundary name="底部状态"><StatusBar /></ModuleErrorBoundary>
       <ModuleErrorBoundary name="安全提示"><SafetyOverlay /></ModuleErrorBoundary>
+      <OriginContinuityDialog key={`${location.key}-${controlGeneration}`} />
     </div>
   )
 }
