@@ -76,6 +76,7 @@ export interface CameraTuningProfile {
 export interface Omega7Telemetry {
   side: 'left' | 'right'
   connected: boolean
+  physicalConnected?: boolean | null
   calibrated: boolean
   openId: number
   deviceId: number

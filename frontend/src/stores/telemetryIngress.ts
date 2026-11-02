@@ -35,6 +35,7 @@ export function parseTelemetryFrame(value: unknown): TelemetryFrame {
   if (!Array.isArray(value.teleopHands) || !value.teleopHands.every(hand => isWireRecord(hand)
     && ['left', 'right'].includes(String(hand.side)) && numericArray(hand.pose, 6)
     && ['connected', 'calibrated', 'clutchPressed', 'gripperPressed', 'lastReadOk'].every(key => typeof hand[key] === 'boolean')
+    && (hand.physicalConnected === undefined || nullableBoolean(hand.physicalConnected))
     && ['openId', 'deviceId'].every(key => finite(hand[key]))
     && ['serial', 'systemName', 'message'].every(key => typeof hand[key] === 'string')
     && nullableBoolean(hand.leftHanded) && (hand.gripperGapMm === null || finite(hand.gripperGapMm)))) fail('teleopHands')

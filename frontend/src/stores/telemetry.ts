@@ -688,6 +688,7 @@ function buildFrame(state: TelemetryStore): TelemetryFrame {
       {
         side: 'left',
         connected: leftTeleopConnected,
+        physicalConnected: true,
         calibrated: false,
         openId: state.config.teleop.leftOpenId,
         deviceId: 0,
@@ -713,6 +714,7 @@ function buildFrame(state: TelemetryStore): TelemetryFrame {
       {
         side: 'right',
         connected: rightTeleopConnected,
+        physicalConnected: true,
         calibrated: false,
         openId: state.config.teleop.rightOpenId,
         deviceId: 1,

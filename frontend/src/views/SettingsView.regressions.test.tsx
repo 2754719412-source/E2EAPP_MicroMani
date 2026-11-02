@@ -50,6 +50,31 @@ function returnButton(side: 'left' | 'right') {
 }
 
 describe('设置迁移回归', () => {
+  it('遥测断开后不再显示旧的物理状态，恢复后区分未知、在线和离线', async () => {
+    const report = (live: boolean, physicalConnected: boolean | null) => {
+      useTelemetryStore.setState((state) => ({
+        telemetryLink: { state: live ? 'live' : 'offline', lastFrameReceivedAt: Date.now() },
+        frame: { ...state.frame, wsOk: live, halOk: live, teleopHands: state.frame.teleopHands.map(
+          (hand) => ({ ...hand, connected: false, physicalConnected }),
+        ) },
+      }))
+    }
+    report(false, false)
+    await show('teleop-left')
+    const card = document.getElementById('teleop-left')!
+    for (const [live, physical] of [[false, false], [false, true], [true, null]] as const) {
+      await act(async () => report(live, physical))
+      expect(card).toHaveTextContent('物理状态未知')
+      expect(card).not.toHaveTextContent('物理离线')
+      expect(card).not.toHaveTextContent('连接失败')
+      expect(card).not.toHaveTextContent('物理在线')
+    }
+    await act(async () => report(true, true))
+    expect(card).toHaveTextContent('逻辑未连接 · 物理在线')
+    await act(async () => report(true, false))
+    expect(card).toHaveTextContent('主手物理离线')
+  })
+
   it('主手后台连接在物理反馈到达后解除等待，后续掉线仍可断开', async () => {
     const connect = vi.spyOn(api, 'connectTeleopHand').mockResolvedValue({
       data: { connected: true, backgroundSync: true, physicalConnected: false },

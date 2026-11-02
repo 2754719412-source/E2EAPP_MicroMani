@@ -394,7 +394,8 @@ class TelemetryHub:
             for idx, side in enumerate(sides):
                 raw = next(
                     (item for item in omega_hands if isinstance(item, dict) and item.get("side") == side),
-                    omega_hands[idx] if idx < len(omega_hands) and isinstance(omega_hands[idx], dict) else {},
+                    omega_hands[idx] if idx < len(omega_hands) and isinstance(omega_hands[idx], dict)
+                    and "side" not in omega_hands[idx] else {},
                 )
                 logical_connected = bool(config["teleop"].get(f"{side}Connected", False))
                 pose = raw.get("pose") if isinstance(raw, dict) else None
@@ -406,6 +407,7 @@ class TelemetryHub:
                     Omega7Telemetry(
                         side=side,
                         connected=logical_connected and bool(raw.get("connected", False)),
+                        physicalConnected=raw.get("connected") if isinstance(raw.get("connected"), bool) else None,
                         calibrated=logical_connected and bool(raw.get("calibrated", False)),
                         openId=int(raw.get("openId", config["teleop"][f"{side}OpenId"])),
                         deviceId=int(raw.get("deviceId", -1)),
@@ -433,6 +435,7 @@ class TelemetryHub:
             Omega7Telemetry(
                 side="left",
                 connected=left_connected,
+                physicalConnected=True,
                 calibrated=False,
                 openId=int(config["teleop"].get("leftOpenId", 0)),
                 deviceId=0,
@@ -458,6 +461,7 @@ class TelemetryHub:
             Omega7Telemetry(
                 side="right",
                 connected=right_connected,
+                physicalConnected=True,
                 calibrated=False,
                 openId=int(config["teleop"].get("rightOpenId", 1)),
                 deviceId=1,

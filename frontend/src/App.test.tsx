@@ -706,6 +706,7 @@ describe('AppStation M0 frontend', () => {
   it('marks a logically connected but physically offline teleop hand as an error state', async () => {
     window.history.pushState({}, '', '/settings#teleop-left')
     useTelemetryStore.setState((state) => ({
+      telemetryLink: { state: 'live', lastFrameReceivedAt: Date.now() },
       config: {
         ...state.config,
         teleop: { ...state.config.teleop, leftConnected: true },
@@ -714,7 +715,7 @@ describe('AppStation M0 frontend', () => {
         ...state.frame,
         teleopHands: state.frame.teleopHands.map((hand) =>
           hand.side === 'left'
-            ? { ...hand, connected: false, lastReadOk: false, message: 'physical device offline' }
+            ? { ...hand, physicalConnected: false, connected: false, lastReadOk: false, message: 'physical device offline' }
             : hand,
         ),
       },
@@ -734,6 +735,7 @@ describe('AppStation M0 frontend', () => {
   it('makes a physically offline teleop hand obvious even before logical connection', async () => {
     window.history.pushState({}, '', '/settings#teleop-left')
     useTelemetryStore.setState((state) => ({
+      telemetryLink: { state: 'live', lastFrameReceivedAt: Date.now() },
       config: {
         ...state.config,
         teleop: { ...state.config.teleop, leftConnected: false },
@@ -742,7 +744,7 @@ describe('AppStation M0 frontend', () => {
         ...state.frame,
         teleopHands: state.frame.teleopHands.map((hand) =>
           hand.side === 'left'
-            ? { ...hand, connected: false, lastReadOk: false, message: 'waiting for operator connection' }
+            ? { ...hand, physicalConnected: false, connected: false, lastReadOk: false, message: 'waiting for operator connection' }
             : hand,
         ),
       },
@@ -767,6 +769,7 @@ describe('AppStation M0 frontend', () => {
   it('uses live Omega telemetry for the displayed OpenID instead of the configured OpenID', async () => {
     window.history.pushState({}, '', '/settings#teleop-left')
     useTelemetryStore.setState((state) => ({
+      telemetryLink: { state: 'live', lastFrameReceivedAt: Date.now() },
       config: {
         ...state.config,
         teleop: { ...state.config.teleop, leftConnected: true, leftOpenId: 0 },
@@ -1058,6 +1061,7 @@ describe('AppStation M0 frontend', () => {
   it('does not show stale Omega pose values after the latest read failed', async () => {
     window.history.pushState({}, '', '/settings#teleop-left')
     useTelemetryStore.setState((state) => ({
+      telemetryLink: { state: 'live', lastFrameReceivedAt: Date.now() },
       config: {
         ...state.config,
         teleop: { ...state.config.teleop, leftConnected: true },

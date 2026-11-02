@@ -49,10 +49,6 @@ function commandErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
-function physicalText(connected: boolean) {
-  return connected ? '在线' : '离线'
-}
-
 export function TeleopHandCard({
   side,
   config,
@@ -77,7 +73,8 @@ export function TeleopHandCard({
   const mappedHardwareSide = hardwareSideForOperatorSide(side)
   const hardwareSide = config.teleop.swapTeleopChannels ? mappedHardwareSide : side
   const id = `teleop-${side}`
-  const handState = frame.teleopHands.find((item) => item.side === side)
+  const telemetryLive = useTelemetryStore((state) => state.telemetryLink.state === 'live' && state.frame.wsOk && state.frame.halOk)
+  const handState = telemetryLive ? frame.teleopHands.find((item) => item.side === side) : undefined
   const logicalConnected = side === 'left' ? config.teleop.leftConnected : config.teleop.rightConnected
   const connected = logicalConnected && Boolean(handState?.connected)
   const openId = side === 'left' ? config.teleop.leftOpenId : config.teleop.rightOpenId
@@ -118,8 +115,10 @@ export function TeleopHandCard({
     next[axisIndex] = value
     updateTeleop(hardwareSide === 'left' ? { leftEnabledAxes: next } : { rightEnabledAxes: next })
   }
-  const physicalConnected = Boolean(handState?.connected)
-  const liveReadOk = logicalConnected && physicalConnected && Boolean(handState?.lastReadOk)
+  // 旧后端的 connected=false 同时表示逻辑断开或物理离线，不能据此报告 USB 离线。
+  const physicalConnected = handState?.physicalConnected === undefined ? handState?.connected || null : handState.physicalConnected
+  const physicalLabel = physicalConnected === null ? '物理状态未知' : physicalConnected ? '物理在线' : '物理离线'
+  const liveReadOk = connected && Boolean(handState?.lastReadOk)
   const pose = liveReadOk ? (handState?.pose ?? [0, 0, 0, 0, 0, 0]) : [0, 0, 0, 0, 0, 0]
   const positionMm = pose.slice(0, 3).map((value) => value * 1000)
   const rotationDeg = pose.slice(3, 6)
@@ -127,28 +126,29 @@ export function TeleopHandCard({
   const startupReturnsToWorkOrigin = config.teleop.homeBeforeStart
   const targetWorkOriginBlocked = startupReturnsToWorkOrigin && !targetWorkOriginValid
   const targetWorkOriginLabel = hardwareSide === 'left' ? '目标硬件左臂' : '目标硬件右臂'
-  const readState: ConnectionState = !physicalConnected ? 'error' : targetWorkOriginBlocked ? 'warn' : !logicalConnected ? 'pending' : handState?.lastReadOk ? 'ok' : 'warn'
+  const readState: ConnectionState = physicalConnected === null ? 'pending' : !physicalConnected ? 'error' : targetWorkOriginBlocked ? 'warn' : !logicalConnected ? 'pending' : liveReadOk ? 'ok' : 'warn'
   const [connectionPending, setConnectionPending] = useState(false)
   const [connectSyncPending, setConnectSyncPending] = useState(false)
   const [connectionHint, setConnectionHint] = useState('')
   const teleopConnectPending = connectionPending || connectSyncPending
-  if (connectSyncPending && (!logicalConnected || physicalConnected)) {
+  if (connectSyncPending && (!logicalConnected || connected)) {
     setConnectSyncPending(false)
     setConnectionPending(false)
   }
   const liveOpenId = handState?.openId ?? openId
-  const omegaSummary = `OpenID ${liveOpenId} / device ${handState?.deviceId ?? '-'}`
+  const deviceId = physicalConnected === null ? '-' : handState?.deviceId ?? '-'
+  const omegaSummary = `OpenID ${liveOpenId} / device ${deviceId}`
   const handedText = handState?.leftHanded == null ? 'handedness -' : handState.leftHanded ? 'left-handed' : 'right-handed'
   const omegaDetail = `SN ${handState?.serial || '-'} · ${handedText} · Force Dimension USB`
-  const connectionSummary = logicalConnected
-    ? `逻辑已连接 · 物理${physicalText(physicalConnected)} · 读数${liveReadOk ? '正常' : '待恢复'}`
-    : `逻辑未连接 · 物理${physicalText(physicalConnected)}`
+  const readLabel = liveReadOk ? '读数正常' : '读数待恢复'
+  const connectionSummary = [
+    logicalConnected ? '逻辑已连接' : '逻辑未连接', physicalLabel,
+    logicalConnected && physicalConnected !== null ? readLabel : null,
+  ].filter(Boolean).join(' · ')
   const workOriginBlockMessage = `${targetWorkOriginLabel}工作原点未设置`
-  const connectionDetail = connectionHint || (targetWorkOriginBlocked ? '连接已阻止' : handState?.message) || (logicalConnected ? 'HAL-native 会等读数恢复后再放行动作' : '等待操作员连接')
-  const teleopConnectionTone: InlineStatusTone =
-    !physicalConnected ? 'error' : targetWorkOriginBlocked ? 'warn' : !logicalConnected ? 'pending' : handState?.lastReadOk ? 'ok' : 'warn'
-  const teleopDeviceTone: InlineStatusTone = physicalConnected ? 'ok' : 'error'
-  const teleopHasConnectionError = teleopConnectionTone === 'error' || teleopDeviceTone === 'error'
+  const connectionDetail = physicalConnected === null ? '等待 HAL 主手遥测' : connectionHint || (targetWorkOriginBlocked ? '连接已阻止' : handState?.message) || (logicalConnected ? 'HAL-native 会等读数恢复后再放行动作' : '等待操作员连接')
+  const teleopConnectionTone: InlineStatusTone = readState
+  const teleopDeviceTone: InlineStatusTone = physicalConnected === null ? 'pending' : physicalConnected ? 'ok' : 'error'
   const targetSideLabel = side === 'left' ? '左臂' : '右臂'
   const hardwareSideLabel = hardwareSide === 'left' ? '硬件左臂' : '硬件右臂'
   const teleopRouteHint = config.teleop.swapTeleopChannels ? `操作视角 · ${hardwareSideLabel}` : '同侧硬件通道'
@@ -282,11 +282,11 @@ export function TeleopHandCard({
       state={readState}
       badges={
         <UiSpace size={6} wrap>
-          <UiTag tone={physicalConnected ? (logicalConnected ? 'success' : 'warning') : 'error'}>
-            {physicalConnected ? (logicalConnected ? '已连接' : '物理在线') : '物理离线'}
+          <UiTag tone={physicalConnected === null ? 'muted' : physicalConnected ? (connected ? 'success' : 'warning') : 'error'}>
+            {connected ? '已连接' : physicalLabel}
           </UiTag>
-          <UiTag tone={connected && liveReadOk ? 'success' : !physicalConnected ? 'error' : logicalConnected ? 'warning' : 'muted'}>
-            {connected && liveReadOk ? '读数正常' : !physicalConnected ? '连接失败' : logicalConnected ? '未收到读数' : '逻辑断开'}
+          <UiTag tone={physicalConnected === null ? 'muted' : liveReadOk ? 'success' : !physicalConnected ? 'error' : logicalConnected ? 'warning' : 'muted'}>
+            {physicalConnected === null ? '等待遥测' : liveReadOk ? '读数正常' : !physicalConnected ? '连接失败' : logicalConnected ? '未收到读数' : '逻辑断开'}
           </UiTag>
           <UiTag>SN {handState?.serial || '-'}</UiTag>
           <UiTag>建议固定 USB 口顺序</UiTag>
@@ -334,7 +334,7 @@ export function TeleopHandCard({
       }
     >
       {controlBlockReason && <div role="status" className="ui-alert ui-alert-warning">{controlBlockReason}</div>}
-      {teleopHasConnectionError && (
+      {physicalConnected === false && (
         <div className="hardware-error-callout teleop-error-callout" role="alert">
           <b>{sideSpec.shortLabel}主手物理离线</b>
           <span>{connectionDetail}</span>
@@ -362,7 +362,7 @@ export function TeleopHandCard({
         <MetricBox label="X / Y / Z" value={liveReadOk ? `${positionMm[0].toFixed(1)}, ${positionMm[1].toFixed(1)}, ${positionMm[2].toFixed(1)} mm` : '-'} tone={liveReadOk ? 'ok' : 'warn'} />
         <MetricBox label="Roll / Pitch / Yaw" value={liveReadOk ? `${rotationDeg[0].toFixed(2)}, ${rotationDeg[1].toFixed(2)}, ${rotationDeg[2].toFixed(2)}°` : '-'} hint={`旋转比例 ${rotationScale}`} tone={liveReadOk ? 'ok' : 'warn'} />
         <MetricBox label="按钮 0 / 1" value={liveReadOk ? `${handState?.clutchPressed ? '按下' : '释放'} / ${handState?.gripperPressed ? '按下' : '释放'}` : '-'} />
-        <MetricBox label="设备" value={`id ${handState?.deviceId ?? -1} · ${handState?.systemName || 'Omega.7'}`} hint={handState?.message || undefined} tone={physicalConnected && !handState?.message ? 'ok' : 'warn'} />
+        <MetricBox label="设备" value={`id ${deviceId} · ${handState?.systemName || 'Omega.7'}`} hint={handState?.message || undefined} tone={physicalConnected && !handState?.message ? 'ok' : 'warn'} />
         <MetricBox label="夹爪间隙" value={handState?.gripperGapMm == null ? '-' : `${handState.gripperGapMm.toFixed(1)} mm`} />
         <MetricBox label="左右手属性" value={handState?.leftHanded == null ? '-' : handState.leftHanded ? 'Left-handed' : 'Right-handed'} />
       </div>

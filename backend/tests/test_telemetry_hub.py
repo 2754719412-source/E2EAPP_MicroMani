@@ -36,6 +36,23 @@ class FakeHardware:
     cameras = FakeCameras()
 
 
+def test_omega_physical_feedback_is_independent_of_logical_enable():
+    settings = FakeSettings()
+    settings.config["teleop"]["rightConnected"] = False
+    hub = TelemetryHub(settings, FakeHardware())
+    try:
+        for raw, expected in [
+            (None, [None, None]),
+            ([{"side": "right", "connected": True, "lastReadOk": True}], [None, True]),
+            ([{"side": "right", "connected": False}], [None, False]),
+        ]:
+            hands = hub.next_frame(hal_ok=True, omega_hands=raw).teleopHands
+            assert [hand.physicalConnected for hand in hands] == expected
+            assert not hands[1].connected and not hands[1].lastReadOk
+    finally:
+        hub.shutdown()
+
+
 def test_real_hal_ok_is_not_reported_faulted_when_force_probe_is_unavailable() -> None:
     settings = FakeSettings()
     settings.config["force"]["source"] = "nidaq"

@@ -10,11 +10,75 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows 进程生命周期")
+def test_formal_worker_survives_closing_its_invoker(tmp_path):
+    # 仅保留正式入口的调度部分；用文件标记替代所有设备和服务操作。
+    source = (REPO_ROOT / "deployment/gripper_feedback/start_formal.ps1").read_text(encoding="utf-8-sig")
+    prefix, marker, _ = source.partition("foreach ($p in @($R, $Py, $Dll,")
+    assert marker
+    prefix = re.sub(r"(?m)^\$R = .*?$", "$R = $PSScriptRoot", prefix)
+    script = tmp_path / "formal probe.ps1"
+    (tmp_path / "service.ps1").write_text("""
+Start-Sleep -Seconds 2
+Set-Content -LiteralPath (Join-Path $PSScriptRoot 'finished') -Value $args[0]
+""", encoding="utf-8-sig")
+    script.write_text(prefix + """
+$service = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList @(
+    '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $PSScriptRoot + '/service.ps1"'), $Mode)
+Set-Content -LiteralPath (Join-Path $PSScriptRoot 'started') -Value $PID
+$service.WaitForExit()
+if ($Mode -eq 'backend') { exit 7 }
+""", encoding="utf-8-sig")
+    command = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), "-Mode", "full", "-Execute"]
+    caller = subprocess.Popen(command)
+    try:
+        deadline = time.monotonic() + 15
+        while not (tmp_path / "started").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert (tmp_path / "started").exists()
+        subprocess.run(["taskkill.exe", "/f", "/t", "/pid", str(caller.pid)], check=True, capture_output=True, timeout=5)
+        caller.wait(timeout=5)
+        deadline = time.monotonic() + 5
+        while not (tmp_path / "finished").exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert (tmp_path / "finished").read_text().strip() == "full"
+    finally:
+        if caller.poll() is None:
+            caller.kill()
+            caller.wait(timeout=5)
+    assert subprocess.run(command, timeout=15).returncode == 0
+    command[command.index("full")] = "backend"
+    assert subprocess.run(command, timeout=15).returncode != 0
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows HAL 启动")
+def test_failed_formal_hal_restart_is_not_success_from_previous_listener(tmp_path):
+    source = (REPO_ROOT / "deployment/gripper_feedback/start_formal.ps1").read_text(encoding="utf-8-sig")
+    block = source[source.index("if ($Mode -eq 'full')"):source.index("$old = @(")]
+    script = tmp_path / "hal-restart.ps1"
+    script.write_text("""
+$ErrorActionPreference = 'Stop'
+$Mode = 'full'; $Execute = $true; $R = $PSScriptRoot
+function L($m) {}
+function Start-Process {
+    $p = [pscustomobject]@{ExitCode=1}
+    $p | Add-Member ScriptMethod WaitForExit {}
+    return $p
+}
+function Get-Process {}
+function Invoke-RestMethod { @{ltdmc_ok=$true} }
+""" + block, encoding="utf-8-sig")
+    proc = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+                          capture_output=True, timeout=10)
+    assert proc.returncode != 0 and b"HAL restart failed" in proc.stderr
 
 
 @pytest.mark.parametrize("scenario,domain,recovered_ports", [
@@ -434,7 +498,8 @@ def test_start_stack_only_changes_port_for_bind_failure(failure, ports, tmp_path
     harness = tmp_path / "test.ps1"
     harness.write_text(
         "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n"
-        "$ErrorActionPreference = 'Stop'\n$HalPort = 8091\ntry {\n"
+        "$ErrorActionPreference = 'Stop'\n$HalPort = 8091\n$repo = $PSScriptRoot\n"
+        "function Get-NetTCPConnection {}\ntry {\n"
         + source[start:end] + "\n} catch { Write-Output $_.Exception.Message }\n",
         encoding="utf-8-sig",
     )

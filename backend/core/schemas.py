@@ -86,6 +86,7 @@ class CameraTelemetry(BaseModel):
 class Omega7Telemetry(BaseModel):
     side: Literal["left", "right"]
     connected: bool
+    physicalConnected: bool | None = None
     calibrated: bool
     openId: int
     deviceId: int
