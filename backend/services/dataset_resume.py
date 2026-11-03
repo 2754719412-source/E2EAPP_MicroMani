@@ -8,6 +8,10 @@ from typing import Any
 from backend.core.data_contract import validate_data_contract
 from backend.core.participation import hardware_sides, participation
 
+# 续录时工作原点 W 的允许差（按物理量）：平移 0.01 mm；转角 0.02°，覆盖寻零重复误差（11-02 重建参考后 Roll 差 30 脉冲 ≈ 0.018°，
+# 首帧画面差 ≤ 0.11 px），X 正限位偏 0.38 mm 一类真实偏移仍会拦截。
+ORIGIN_TOLERANCE_BY_UNIT = {"mm": 0.01, "deg": 0.02}
+
 
 def _positive_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0
@@ -58,14 +62,22 @@ def resume_metadata_error(
     old_origin = saved.get("sessionOrigin")
     if not isinstance(old_origin, dict) or not isinstance(origin, dict):
         return "缺少工作原点 W 的记录"
+    kinematics = motion.get("kinematics") if isinstance(motion, dict) else None
+    units = kinematics.get("axisUnitSpec") if isinstance(kinematics, dict) else None
+    if not isinstance(units, list) or len(units) != 6 or any(u not in ORIGIN_TOLERANCE_BY_UNIT for u in units):
+        return "运动标定缺少可识别的轴单位，无法比较工作原点 W"
     for side in sides:
         for value in (old_origin, origin):
             if value.get(f"{side}Valid", value.get("valid")) is not True:
                 return f"硬件 {side} 侧工作原点 W 无效"
             if not _pulse_vector(value.get(f"{side}Pulse")):
                 return f"硬件 {side} 侧工作原点 W 含缺失或非有限数值"
-        if any(abs(a - b) > 0.5 for a, b in zip(old_origin[f"{side}Pulse"], origin[f"{side}Pulse"])):
-            return f"硬件 {side} 侧工作原点 W 已改变"
+        scale = kinematics.get(f"{side}SignedPulsePerUnit")
+        if not _pulse_vector(scale) or any(s == 0 for s in scale):
+            return f"运动标定 {side}SignedPulsePerUnit 缺失或无效"
+        for axis, a, b, s, unit in zip(kinematics.get("axisOrder", range(6)), old_origin[f"{side}Pulse"], origin[f"{side}Pulse"], scale, units):
+            if abs(a - b) / abs(s) > ORIGIN_TOLERANCE_BY_UNIT[unit]:
+                return f"硬件 {side} 侧工作原点 W 已改变（{axis} 差 {abs(a - b) / abs(s):.4f} {unit}）"
     old_features = info.get("features")
     if not isinstance(old_features, dict):
         return "缺少已有数据的字段格式"

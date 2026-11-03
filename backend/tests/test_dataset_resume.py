@@ -372,3 +372,21 @@ def test_save_discard_rerecord_restart_keeps_unique_ids_and_tombstones(tmp_path,
         from scripts.export_retained_dataset import export_plan
         assert export_plan(root, [])["keepNativeIndices"] == [1, 2]
     asyncio.run(run_case())
+
+
+def test_origin_within_homing_repeatability_resumes_and_real_shift_is_rejected(recorded):
+    recorder, root, config = recorded
+    scale = config["motion"]["kinematics"]["leftSignedPulsePerUnit"]
+    pulse = config["motion"]["origin"]["leftPulse"]
+    pulse[2] += 0.005 * abs(scale[2])      # z 0.005 mm
+    pulse[3] += 0.018 * abs(scale[3])      # roll 0.018°（11-02 重建参考后的寻零差）
+    assert recorder._dataset_resume_error(root, config) == ""
+    pulse[0] += 0.38 * abs(scale[0])       # x 0.38 mm（11-02 X 正限位偏移）
+    assert "工作原点 W 已改变" in recorder._dataset_resume_error(root, config)
+
+
+def test_resumed_native_dataset_writes_episode_metadata_on_every_save():
+    meta = SimpleNamespace(_metadata_buffer_size=10, update_chunk_settings=Mock())
+    DatasetRecorderService._configure_native_chunk_settings(object.__new__(DatasetRecorderService), SimpleNamespace(meta=meta))
+    assert meta._metadata_buffer_size == 1
+    meta.update_chunk_settings.assert_called_once()

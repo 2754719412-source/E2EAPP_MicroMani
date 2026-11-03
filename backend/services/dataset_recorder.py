@@ -4324,8 +4324,14 @@ class DatasetRecorderService:
         }
 
     def _configure_native_chunk_settings(self, dataset: Any) -> None:
-        """配置 native 数据集 parquet 和视频 chunk 文件大小。"""
+        """配置 native 数据集 parquet 和视频 chunk 文件大小，并让每条 episode 元数据保存即落盘。
+
+        LeRobot 0.5.1 的 LeRobotDataset.resume 不接受 metadata_buffer_size，内部按默认 10 条缓冲；
+        续录会话若在缓冲未满时中断，meta/episodes 会缺行。create 已传 1，这里对 resume 打开的数据集同样设为 1。
+        """
         meta = getattr(dataset, "meta", None)
+        if hasattr(meta, "_metadata_buffer_size"):
+            meta._metadata_buffer_size = 1
         update_chunk_settings = getattr(meta, "update_chunk_settings", None)
         if callable(update_chunk_settings):
             update_chunk_settings(
