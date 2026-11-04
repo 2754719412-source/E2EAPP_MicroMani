@@ -778,7 +778,7 @@ class OpenCVCameraDriver:
             cached = self._latest_jpegs.get(index)
             if cached is not None and sequence != last_sequence:
                 return sequence, cached
-            time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+            time.sleep(min(0.005, max(0.0, deadline - time.monotonic())))  # 5 ms: a 50 ms poll capped streams near 17 fps
         cached = self._latest_jpegs.get(index)
         sequence = self._latest_sequences.get(index, -1)
         if cached is not None:
