@@ -2053,7 +2053,9 @@ class OpenCVCameraDriver:
         self._encode_stops[index] = stop
         frame_lock = self._frame_locks[index]
         frame_event = self._frame_events[index]
-        target_period = 1.0 / 30.0
+        # 1/60 s only guards bursts: a 1/30 s gap against a ~30 fps camera skipped every frame that came a little
+        # early and published only ~18 JPEG/s (11-04 measurement); now every camera frame is encoded.
+        target_period = 1.0 / 60.0
         encode_quality = int(os.environ.get("APPSTATION_JPEG_QUALITY", "78"))
 
         def encode_loop() -> None:
