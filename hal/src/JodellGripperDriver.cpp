@@ -397,10 +397,14 @@ bool JodellGripperDriver::readPositionMmUnlocked(Side side, std::string* message
   }
   const double stroke = std::max(0.001, config_.strokeMm);
   positionMm_[index] = stroke * (1.0 - std::clamp(currentRaw, 0, 255) / 255.0);
+  // 夹持状态与力矩随位置一并读取，原值写入消息（负值为 vendor 读取失败码）；位置读数的成败不受其影响。
+  const int status = getClawCurrentStatus_(slave);
+  const int torque = getClawCurrentTorque_(slave);
   if (message) {
     std::ostringstream out;
     out << "position " << portLabel(port) << ", slave=" << slave
-        << ", current=" << currentRaw << ", positionMm=" << positionMm_[index];
+        << ", current=" << currentRaw << ", positionMm=" << positionMm_[index]
+        << ", status=" << status << ", torque=" << torque;
     *message = out.str();
   }
   return true;
@@ -463,10 +467,16 @@ bool JodellGripperDriver::ensureLoadedUnlocked(std::string* message) {
   runWithParam_ = loadSymbol<decltype(runWithParam_)>(module_, "runWithParam", "?runWithParam@@YAHHHHH@Z");
   getClawCurrentLocation_ = loadSymbol<decltype(getClawCurrentLocation_)>(
       module_, "getClawCurrentLocation", "?getClawCurrentLocation@@YAHH@Z");
-  if (!serialOperation_ || !clawEnable_ || !runWithParam_ || !getClawCurrentLocation_) {
+  getClawCurrentStatus_ = loadSymbol<decltype(getClawCurrentStatus_)>(
+      module_, "getClawCurrentStatus", "?getClawCurrentStatus@@YAHH@Z");
+  getClawCurrentTorque_ = loadSymbol<decltype(getClawCurrentTorque_)>(
+      module_, "getClawCurrentTorque", "?getClawCurrentTorque@@YAHH@Z");
+  if (!serialOperation_ || !clawEnable_ || !runWithParam_ || !getClawCurrentLocation_ ||
+      !getClawCurrentStatus_ || !getClawCurrentTorque_) {
     closeUnlocked();
     if (message) {
-      *message = "required Jodell exports missing: serialOperation/clawEnable/runWithParam/getClawCurrentLocation";
+      *message = "required Jodell exports missing: serialOperation/clawEnable/runWithParam/getClawCurrentLocation/"
+                 "getClawCurrentStatus/getClawCurrentTorque";
     }
     return false;
   }
@@ -741,6 +751,8 @@ void JodellGripperDriver::closeUnlocked() {
   clawEnable_ = nullptr;
   runWithParam_ = nullptr;
   getClawCurrentLocation_ = nullptr;
+  getClawCurrentStatus_ = nullptr;
+  getClawCurrentTorque_ = nullptr;
 }
 #endif
 

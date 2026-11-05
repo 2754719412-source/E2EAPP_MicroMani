@@ -105,6 +105,9 @@ class JodellGripperDriver {
   int(__stdcall* clawEnable_)(int, int) = nullptr;
   int(__stdcall* runWithParam_)(int, int, int, int) = nullptr;
   int(__stdcall* getClawCurrentLocation_)(int) = nullptr;
+  // 夹持状态与电机力矩（电流）寄存器；READ 在位置之后一并读取，写入 READ 消息供上层记录。
+  int(__stdcall* getClawCurrentStatus_)(int) = nullptr;
+  int(__stdcall* getClawCurrentTorque_)(int) = nullptr;
   // activePorts_ 记录 DLL 当前认为已打开的串口，用于减少重复打开和切换端口时的等待。
   std::array<int, 2> activePorts_{{-1, -1}};
   std::array<ProcessWorkerHandle, 2> workerProcesses_{};
