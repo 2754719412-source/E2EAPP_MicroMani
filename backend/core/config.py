@@ -5,10 +5,12 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -453,6 +455,12 @@ class SettingsService:
         self.snapshot_dir = runtime_dir / "snapshots"
         self.work_origin_backup_dir = runtime_dir / "_work_origin_backups"
         self.logs = logs
+        # (文件号, 修改时间 ns, 字节数) -> get_config 的结果。相机快照、位置查询等热路径每次都取配置；Windows 上打开着的
+        # 读句柄会让 save_config 的原子替换被拒（WinError 5），11-05 试验录像每 10 ms 取快照时因此多次触发软件急停。
+        # save_config 只作废缓存：读取时的迁移与校验仍由下一次 get_config 从文件完成。
+        self._cache: tuple[tuple[int, int, int], dict[str, Any]] | None = None
+        self._cache_gen = 0
+        self._cache_lock = threading.Lock()
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         self.snapshot_dir.mkdir(parents=True, exist_ok=True)
         self.work_origin_backup_dir.mkdir(parents=True, exist_ok=True)
@@ -476,7 +484,20 @@ class SettingsService:
             f"config.json 持续不可读，保留原文件不改写：{type(last_error).__name__}: {last_error}"
         )
 
+    def _file_key(self) -> tuple[int, int, int] | None:
+        # 只取文件属性，不打开读句柄，不会挡住原子替换；原子替换每次换新文件号。取不到时交由下面带重试的读取处理。
+        try:
+            st = os.stat(self.config_path)
+        except OSError:
+            return None
+        return st.st_ino, st.st_mtime_ns, st.st_size
+
     def get_config(self) -> dict[str, Any]:
+        key = self._file_key()
+        with self._cache_lock:
+            cached, gen = self._cache, self._cache_gen
+        if key is not None and cached is not None and cached[0] == key:
+            return copy.deepcopy(cached[1])
         try:
             data = self._read_config_json()
             raw_teleop = data.get("teleop", {}) if isinstance(data, dict) else {}
@@ -523,6 +544,11 @@ class SettingsService:
             validated = AppConfig.model_validate(merged).model_dump(mode="json")
             if merged != data:
                 self.save_config(validated, emit_log=False, source="startup")
+            elif key is not None:
+                # 读取期间若有 save_config，本次结果可能是旧内容，不存缓存。
+                with self._cache_lock:
+                    if self._cache_gen == gen:
+                        self._cache = (key, copy.deepcopy(validated))
             return validated
         except (json.JSONDecodeError, ValueError) as exc:
             config = default_config()
@@ -620,6 +646,8 @@ class SettingsService:
         new_hash = stable_config_hash(validated)
         self._backup_current_work_origin(old_config)
         self._atomic_write_json(self.config_path, validated, before_commit=before_commit)
+        with self._cache_lock:
+            self._cache, self._cache_gen = None, self._cache_gen + 1
         if emit_log:
             changes = _changed_config_leaves(old_config, validated)
             for key, old, new in changes[:50]:
