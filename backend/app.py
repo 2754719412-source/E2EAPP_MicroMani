@@ -18,8 +18,11 @@ from pathlib import Path
 from typing import Annotated, Any, cast
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.websockets import WebSocketState
 
 from backend.app_factory import create_services
@@ -487,9 +490,35 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
     commands.safety.readiness_check = control_watchdog.require_ready
     from backend.services.control_watchdog import request_control_session
 
+    def log_api_error(request: Request, status_code: int, detail: Any) -> None:
+        # 界面指令被拒或出错时，原因原先只回给前端弹窗，日志里看不到；这里统一记一条，响应内容不变。
+        # GET 轮询（状态、位置、取图）不记，避免周期性失败刷屏；WebSocket 没有 method，也不记。
+        method = request.scope.get("method", "")
+        if method in ("", "GET"):
+            return
+        log = logs.error if status_code >= 500 else logs.warning
+        log("[BACKEND]", f"api error {method} {request.url.path} -> {status_code}: {detail}")
+
     @app.exception_handler(ControlLeaseUnavailable)
-    async def control_lease_error(_request: Request, exc: ControlLeaseUnavailable):
-        return JSONResponse(status_code=409, content={"detail": {"code": "CONTROL_LEASE_UNAVAILABLE", "message": str(exc)}})
+    async def control_lease_error(request: Request, exc: ControlLeaseUnavailable):
+        detail = {"code": "CONTROL_LEASE_UNAVAILABLE", "message": str(exc)}
+        log_api_error(request, 409, detail)
+        return JSONResponse(status_code=409, content={"detail": detail})
+
+    @app.exception_handler(StarletteHTTPException)
+    async def logged_http_error(request: Request, exc: StarletteHTTPException):
+        log_api_error(request, exc.status_code, exc.detail)
+        return await http_exception_handler(request, exc)
+
+    @app.exception_handler(RequestValidationError)
+    async def logged_validation_error(request: Request, exc: RequestValidationError):
+        log_api_error(request, 422, exc.errors())
+        return await request_validation_exception_handler(request, exc)
+
+    @app.exception_handler(Exception)
+    async def logged_unhandled_error(request: Request, exc: Exception):
+        log_api_error(request, 500, "".join(traceback.format_exception(exc)))
+        return PlainTextResponse("Internal Server Error", status_code=500)
 
     @app.middleware("http")
     async def bind_control_session(request: Request, call_next):

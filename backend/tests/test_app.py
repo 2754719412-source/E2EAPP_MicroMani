@@ -3929,6 +3929,43 @@ def test_record_start_error_codes(tmp_path: Path, monkeypatch: MonkeyPatch, mess
         assert response.json()["detail"] == {"code": code, "message": message}
 
 
+def test_api_command_errors_are_logged(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+    message = "录制起点未连续稳定 300 ms：参与夹爪反馈缺失或过期"
+    with TestClient(create_app(tmp_path)) as client:
+        async def fail_start(_dataset_name: str, _task: str) -> dict[str, Any]:
+            raise RuntimeError(message)
+
+        monkeypatch.setattr(client.app.state.recorder, "start_session", fail_start)
+        response = client.post("/api/record/session/create", json={"dataset_name": "existing", "task": "test"})
+        assert response.status_code == 409
+        assert response.json()["detail"] == {"code": "RECORDING_START_FAILED", "message": message}
+        client.get("/api/no-such-route")
+        logged = [entry for entry in client.app.state.logs.list_entries() if entry.msg.startswith("api error")]
+        assert len(logged) == 1
+        assert logged[0].channel == "[BACKEND]"
+        assert logged[0].level == "WARNING"
+        assert "POST /api/record/session/create -> 409" in logged[0].msg
+        assert message in logged[0].msg
+
+
+def test_api_unhandled_errors_are_logged_without_changing_response(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+    with TestClient(create_app(tmp_path), raise_server_exceptions=False) as client:
+        async def broken_start(_dataset_name: str, _task: str) -> dict[str, Any]:
+            raise KeyError("unexpected_field")
+
+        monkeypatch.setattr(client.app.state.recorder, "start_session", broken_start)
+        response = client.post("/api/record/session/create", json={"dataset_name": "existing", "task": "test"})
+        assert response.status_code == 500
+        assert response.text == "Internal Server Error"
+        logged = [entry for entry in client.app.state.logs.list_entries() if entry.msg.startswith("api error")]
+        assert len(logged) == 1
+        assert logged[0].level == "ERROR"
+        assert "POST /api/record/session/create -> 500" in logged[0].msg
+        assert "KeyError: 'unexpected_field'" in logged[0].msg
+
+
 def test_record_session_fails_when_native_lerobot_is_disabled(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
     monkeypatch.setenv("APPSTATION_LEROBOT_NATIVE", "0")
