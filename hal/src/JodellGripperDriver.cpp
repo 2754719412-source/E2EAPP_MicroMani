@@ -309,9 +309,9 @@ bool JodellGripperDriver::commandTarget(
 #endif
 }
 
-bool JodellGripperDriver::readPositionMm(Side side, std::string* message) {
+bool JodellGripperDriver::readPositionMm(Side side, std::string* message, bool withStatus) {
   std::scoped_lock lock(mutex_);
-  return readPositionMmUnlocked(side, message);
+  return readPositionMmUnlocked(side, message, 0.0, withStatus);
 }
 
 std::optional<bool> JodellGripperDriver::readPositionMmIfIdle(
@@ -326,7 +326,8 @@ std::optional<bool> JodellGripperDriver::readPositionMmIfIdle(
   return readPositionMmUnlocked(side, message, timeoutMs);
 }
 
-bool JodellGripperDriver::readPositionMmUnlocked(Side side, std::string* message, double timeoutMs) {
+bool JodellGripperDriver::readPositionMmUnlocked(
+    Side side, std::string* message, double timeoutMs, bool withStatus) {
   if (!config_.enabled) {
     if (message) {
       *message = "native gripper teleop disabled";
@@ -345,7 +346,8 @@ bool JodellGripperDriver::readPositionMmUnlocked(Side side, std::string* message
     }
     double positionMm = -1.0;
     std::string workerMessage;
-    const bool ok = commandProcessWorkerUnlocked(index, "READ", &positionMm, &workerMessage, timeoutMs);
+    const bool ok = commandProcessWorkerUnlocked(
+        index, withStatus ? "READ" : "READPOS", &positionMm, &workerMessage, timeoutMs);
     if (!ok) {
       lastError_ = workerMessage;
       if (message) {
@@ -398,13 +400,16 @@ bool JodellGripperDriver::readPositionMmUnlocked(Side side, std::string* message
   const double stroke = std::max(0.001, config_.strokeMm);
   positionMm_[index] = stroke * (1.0 - std::clamp(currentRaw, 0, 255) / 255.0);
   // 夹持状态与力矩随位置一并读取，原值写入消息（负值为 vendor 读取失败码）；位置读数的成败不受其影响。
-  const int status = getClawCurrentStatus_(slave);
-  const int torque = getClawCurrentTorque_(slave);
   if (message) {
     std::ostringstream out;
     out << "position " << portLabel(port) << ", slave=" << slave
-        << ", current=" << currentRaw << ", positionMm=" << positionMm_[index]
-        << ", status=" << status << ", torque=" << torque;
+        << ", current=" << currentRaw << ", positionMm=" << positionMm_[index];
+    if (withStatus) {
+      // 两个寄存器各占一次串口往返；遥操作采集不读，避免夹爪反馈降到约 10 Hz。
+      const int status = getClawCurrentStatus_(slave);
+      const int torque = getClawCurrentTorque_(slave);
+      out << ", status=" << status << ", torque=" << torque;
+    }
     *message = out.str();
   }
   return true;

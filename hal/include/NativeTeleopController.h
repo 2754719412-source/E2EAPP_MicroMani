@@ -393,6 +393,8 @@ class NativeTeleopController {
   std::condition_variable gripperCv_;
   std::array<std::thread, 2> gripperWorkers_;
   std::atomic<bool> gripperWorkerRunning_{false};
+  // gripperLoop 采样是否带力矩：遥操作 start 置 false（只读位置），回放准备置 true。只读反馈环固定带力矩。
+  std::atomic<bool> gripperReadStatus_{true};
   std::array<PendingGripperCommand, 2> pendingGripperCommands_{};
   std::mutex gripperConfigurationMutex_;
   std::optional<JodellGripperConfig> appliedGripperConfig_;

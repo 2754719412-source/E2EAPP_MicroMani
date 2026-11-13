@@ -405,6 +405,7 @@ void NativeTeleopController::prepareReplayGripper(const JodellGripperConfig& con
     gripperPositionSampleTs_ = {0, 0};
     gripperPositionSampleMonotonicMs_ = {0, 0};
   }
+  gripperReadStatus_.store(true);
   startGripperWorker();
   if (!motion_.commandEpochAllowed(epoch)) {
     requestEmergencyStop();
@@ -570,6 +571,8 @@ void NativeTeleopController::start(bool leftConnected, bool rightConnected,
     gripperLastCommandTs_ = {0, 0};
   }
   if (gripperTeleopEnabled) {
+    // 遥操作采集只要位置；力矩读数会把夹爪反馈拖到约 10 Hz，录制组帧因此缺夹爪。
+    gripperReadStatus_.store(false);
     // 夹爪 worker 独立运行，避免夹爪串口读写阻塞运动控制环。
     startGripperWorker();
   } else {
@@ -805,7 +808,7 @@ void NativeTeleopController::sampleGripperPosition(Side side, bool feedbackOnly)
   const auto readStarted = std::chrono::steady_clock::now();
   const auto attempted = feedbackOnly
       ? gripperDriver(side).readPositionMmIfIdle(side, kPolicyGripperReadTimeoutMs, &message)
-      : std::optional<bool>(gripperDriver(side).readPositionMm(side, &message));
+      : std::optional<bool>(gripperDriver(side).readPositionMm(side, &message, gripperReadStatus_.load()));
   if (!attempted) {
     std::scoped_lock lock(mutex_);
     ++gripperReadSkippedBusy_[sideIndex(side)];

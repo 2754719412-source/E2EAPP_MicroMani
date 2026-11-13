@@ -52,7 +52,8 @@ class JodellGripperDriver {
       bool readPosition = true,
       const std::function<bool()>& commandAllowed = {});
   // 主动读取某侧当前位置，成功后刷新 positionMm_ 缓存。
-  bool readPositionMm(Side side, std::string* message = nullptr);
+  // withStatus=false 只读位置寄存器（遥操作采集用，约 16 ms）；true 另读夹持状态与力矩（推理判空用，约 45~60 ms）。
+  bool readPositionMm(Side side, std::string* message = nullptr, bool withStatus = true);
   // 只读采样让等待中的命令优先；nullopt 表示忙时跳过，并非一次失败的测量。
   std::optional<bool> readPositionMmIfIdle(Side side, double timeoutMs, std::string* message = nullptr);
   // 以下快照接口供 teleop 状态 JSON 使用，调用方不需要直接持有 mutex_。
@@ -73,7 +74,7 @@ class JodellGripperDriver {
 
   // Unlocked 后缀表示调用方必须已经持有 mutex_，以串行化 vendor DLL 和 worker 管道访问。
   bool ensureLoadedUnlocked(std::string* message);
-  bool readPositionMmUnlocked(Side side, std::string* message, double timeoutMs = 0.0);
+  bool readPositionMmUnlocked(Side side, std::string* message, double timeoutMs = 0.0, bool withStatus = true);
   bool ensurePortOpenUnlocked(int index, int port, std::string* message);
   int portNumber(const std::string& value) const;
   int sideIndex(Side side) const;

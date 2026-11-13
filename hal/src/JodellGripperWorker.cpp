@@ -106,9 +106,10 @@ int main(int argc, char** argv) {
     if (line == "EXIT") {
       break;
     }
-    if (line == "READ") {
+    if (line == "READ" || line == "READPOS") {
+      // READ 另读夹持状态与力矩；READPOS 只读位置，供遥操作采集保持读数频率。
       std::string message;
-      const bool ok = driver.readPositionMm(side, &message);
+      const bool ok = driver.readPositionMm(side, &message, line == "READ");
       const auto positions = driver.positionMm();
       writeResponse(ok, positions[sideIndex], message);
       continue;

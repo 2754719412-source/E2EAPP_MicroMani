@@ -24,7 +24,8 @@ int worker(int argc, char** argv) {
   const auto path = arg(argc, argv, "--dll");
   std::string line;
   while (std::getline(std::cin, line) && line != "EXIT") {
-    if (line == "READ") {
+    if (line == "READ" || line == "READPOS") {
+      { std::ofstream verbs(path + ".verbs", std::ios::app); verbs << line << '\n'; }
       if (port == "SLOW") {
         { std::ofstream entered(path + ".read"); entered << "entered"; }
         Sleep(1000);
@@ -133,6 +134,27 @@ void testSameSideReadYieldsToSynchronousCommand(const char* exe) {
   require(jsonNumberValue(f.status(), "readSkippedBusy", 0) > 0, "sampler did not yield to command");
 }
 
+std::string readText(const std::string& path) {
+  std::ifstream in(path);
+  return std::string(std::istreambuf_iterator<char>(in), {});
+}
+void testReadVerbFollowsScenario(const char* exe) {
+  Fixture f(exe, "_verbs");
+  const auto verbs = f.log.string() + ".verbs";
+  std::filesystem::remove(verbs);
+  f.driver.configure(f.config);
+  std::string message;
+  require(f.driver.readPositionMm(Side::Left, &message), "default READ failed");
+  require(f.driver.readPositionMm(Side::Left, &message, false), "position-only READ failed");
+  require(readText(verbs) == "READ\nREADPOS\n", "worker verb did not follow withStatus");
+  std::filesystem::remove(verbs);
+  f.teleop.prepareReplayGripper(f.config, f.motion.commandEpoch(), {true, false});
+  await([&] { return readText(verbs).size() >= 10; }, "replay sampler did not READ");
+  require(readText(verbs).find("READPOS") == std::string::npos, "replay sampler dropped torque");
+  f.teleop.stop();
+  std::filesystem::remove(verbs);
+}
+
 void testFailedReadPreservesLastSuccessTime(const char* exe) {
   Fixture f(exe, "_failure_after_success");
   f.teleop.configureGripperFeedback(f.config, {true, false});
@@ -159,6 +181,7 @@ int main(int argc, char** argv) {
     testReadTimeoutAndEmergency(argv[0]);
     testSameSideReadYieldsToSynchronousCommand(argv[0]);
     testFailedReadPreservesLastSuccessTime(argv[0]);
+    testReadVerbFollowsScenario(argv[0]);
     std::cout << "GripperFeedbackTests passed\n";
     return 0;
   } catch (const std::exception& error) {
