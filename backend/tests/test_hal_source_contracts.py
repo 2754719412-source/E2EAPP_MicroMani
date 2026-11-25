@@ -5,7 +5,10 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -2685,3 +2688,12 @@ def test_backend_freshness_uses_controller_sample_age_not_cache_provenance() -> 
     )[0]
     assert "timestamp_ms" in teleop
     assert "sample_cached" not in teleop
+
+
+def test_recorder_gripper_sample_interval_metadata_matches_hal_constant() -> None:
+    from backend.services.dataset_recorder import HAL_GRIPPER_POSITION_SAMPLE_INTERVAL_MS
+
+    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    match = re.search(r"kGripperPositionSampleInterval\s*=\s*std::chrono::microseconds\((\d+)\)", source)
+    assert match is not None
+    assert HAL_GRIPPER_POSITION_SAMPLE_INTERVAL_MS == pytest.approx(int(match.group(1)) / 1000.0, abs=1e-3)

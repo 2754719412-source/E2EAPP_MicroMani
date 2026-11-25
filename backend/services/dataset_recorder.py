@@ -155,6 +155,8 @@ RECORDER_HARDWARE_WARMUP_S = 0.5
 RECORD_START_STABLE_S = 0.3
 RECORD_START_TIMEOUT_S = 3.0
 RECORD_START_GRIPPER_TOLERANCE_MM = 1.0
+# 与 hal/src/NativeTeleopController.cpp 的 kGripperPositionSampleInterval 保持一致（源码契约测试校验）。
+HAL_GRIPPER_POSITION_SAMPLE_INTERVAL_MS = 33.333
 MAX_SAMPLE_JITTER_S = 0.10
 SAMPLE_LOOKBACK_WINDOW_S = 0.10
 ALIGNMENT_DELAY_S = 0.100
@@ -4013,6 +4015,7 @@ class DatasetRecorderService:
         """写入 AppStation 扩展元数据，记录硬件、格式和录制参数。"""
         path = dataset_dir / "meta" / "appstation_info.json"
         info = self._read_json(path)
+        record_force = self._record_force_enabled(config)
         payload = {
             "name": str(info.get("name") or self._dataset_name),
             "status": str(info.get("status", "local")) if info else "local",
@@ -4025,7 +4028,10 @@ class DatasetRecorderService:
             "streamingEncoding": True,
             "recording": {
                 "fps": self._record_fps_hz,
-                "forceSampleHz": self._force_sample_hz,
+                # 实机默认不录力；关闭时力字段全为 0，不能把配置频率当成实测采样。
+                "recordForce": record_force,
+                "forceFields": "measured" if record_force else "zero_filled_record_force_disabled",
+                "forceSampleHz": self._force_sample_hz if record_force else 0.0,
                 "alignment": (
                     "source samplers record host monotonic sample times; "
                     "record frames align at episode_start_s + frame_index / record_fps after warmup and start checks; "
@@ -4048,6 +4054,7 @@ class DatasetRecorderService:
                 "cameras": config.get("cameras", {}),
                 "cameraResolutions": self._camera_resolution_summary_from_config(config),
                 "force": self._force_metadata(config),
+                "gripper": self._gripper_metadata(config),
                 "motion": self._motion_calibration_snapshot(config),
             },
         }
@@ -4082,6 +4089,36 @@ class DatasetRecorderService:
         if info:
             info["dataContract"] = data_contract_metadata()
             self._write_json(info_path, info)
+
+    def _gripper_metadata(self, config: dict[str, Any]) -> dict[str, Any]:
+        """记录夹爪接线、夹持力设定和实际采样方式，便于追溯夹爪数据的来源。"""
+        gripper = config.get("gripper", {}) if isinstance(config.get("gripper"), dict) else {}
+        teleop = config.get("teleop", {}) if isinstance(config.get("teleop"), dict) else {}
+        gripper_teleop = teleop.get("gripperTeleop", {}) if isinstance(teleop.get("gripperTeleop"), dict) else {}
+        return {
+            "model": "jodell_epg",
+            "strokeMm": gripper.get("strokeMm"),
+            "baudrate": gripper.get("baudrate"),
+            "minGapMm": gripper.get("icfTargetMinGapMm"),
+            # 硬件侧：left/right 为硬件左右，不随数据集操作者侧顺序交换。
+            "hardwareSides": {
+                side: {
+                    "port": gripper.get(f"{side}Port"),
+                    "slaveId": gripper.get(f"{side}SlaveId"),
+                    "enabled": bool(gripper.get(f"{side}Enabled", False)),
+                }
+                for side in ("left", "right")
+            },
+            # rFC 原始值 1–255；commandForceLimitN 未标定前只作显示，不参与下发。
+            "gripTorqueRaw": gripper_teleop.get("gripTorque"),
+            "releaseTorqueRaw": gripper_teleop.get("releaseTorque"),
+            "commandForceLimitN": gripper.get("commandForceLimitN"),
+            "forceCalibration": deepcopy(gripper.get("forceCalibration")),
+            # HAL 夹爪位置采样间隔写死在 NativeTeleopController，gripper.sampleHz 不会下发到 HAL。
+            "halPositionSampleIntervalMs": HAL_GRIPPER_POSITION_SAMPLE_INTERVAL_MS,
+            "configSampleHz": gripper.get("sampleHz"),
+            "configSampleHzAppliedToHal": False,
+        }
 
     def _force_metadata(self, config: dict[str, Any]) -> dict[str, Any]:
         force = config.get("force", {}) if isinstance(config.get("force"), dict) else {}
