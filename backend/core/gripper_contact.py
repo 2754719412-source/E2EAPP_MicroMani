@@ -5,8 +5,9 @@
 """夹爪接触片段检测（纯函数，不访问硬件）。
 
 接触判据：实测开口停在最小开度之上（两指没有互碰），命令开口比实测更小（仍在往里夹），
-并且 gOBJ=2（手册：闭合时碰到物体停止）或 gCU 越过空载阈值。手册说明物体过细时 gOBJ 可能检测不到，
-所以电流是并列证据；两者都缺时只用位置判据，并在 evidence 中标明，不能当作力测量。
+并且 gOBJ=2（手册：闭合时碰到物体停止）或 gCU 越过空载阈值。手册 6.3.1 说明 gGTO=0 时 gOBJ 无效，
+因此只在 gGTO=1 时采用 gOBJ；物体过细时 gOBJ 也可能检测不到，所以电流是并列证据。
+两者都无法判断时只用位置判据，片段标为候选（candidate），不能当作力测量。
 """
 
 from __future__ import annotations
@@ -22,6 +23,8 @@ from backend.core.jodell_modbus import GOBJ_CONTACT_CLOSING
 CLOSING_MARGIN_MM = 0.3
 # 实测开口高于最小开度这么多才算两指分离；低于它可能是指尖互碰而不是夹物。
 FINGER_SEPARATION_MARGIN_MM = 0.2
+# 只有位置证据时还要求开口已停住（与上一读数相差不超过此值），否则正常闭合过程也会被误判为接触。
+POSITION_STALL_TOLERANCE_MM = 0.05
 # 条件连续不成立这么多帧才结束片段，避免单帧丢样把一次抓取拆成两段。
 RELEASE_DEBOUNCE_FRAMES = 3
 
@@ -32,10 +35,12 @@ class ContactFrame:
     commanded_gap_mm: float | None
     gobj: int | None = None
     current_raw: float | None = None
+    # gGTO=1 表示正在执行到位命令；None 表示状态不可用。只有为 True 时 gOBJ 才可信。
+    gripper_moving: bool | None = None
 
 
 def frame_evidence(
-    frame: ContactFrame, *, min_gap_mm: float, current_threshold_raw: float | None
+    frame: ContactFrame, *, min_gap_mm: float, current_threshold_raw: float | None, stalled: bool = True
 ) -> str | None:
     """单帧是否处于接触状态；返回证据类型，不接触时返回 None。"""
     commanded, current = frame.commanded_gap_mm, frame.current_raw
@@ -45,13 +50,19 @@ def frame_evidence(
         return None
     if commanded > frame.gap_mm - CLOSING_MARGIN_MM:
         return None
-    if frame.gobj == GOBJ_CONTACT_CLOSING:
+    gobj_usable = frame.gobj is not None and frame.gripper_moving is True
+    if gobj_usable and frame.gobj == GOBJ_CONTACT_CLOSING:
         return "gobj"
-    if current_threshold_raw is not None and current is not None and math.isfinite(current):
-        return "current" if current > current_threshold_raw else None
-    if frame.gobj is None and frame.current_raw is None:
-        return "position_only"
-    return None
+    current_usable = current_threshold_raw is not None and current is not None and math.isfinite(current)
+    if current_usable:
+        assert current is not None and current_threshold_raw is not None
+        if current > current_threshold_raw:
+            return "current"
+        return None
+    if gobj_usable:
+        # 状态有效且没有报告接触，又没有电流阈值可判断：不推断接触。
+        return None
+    return "position_only" if stalled else None
 
 
 def detect_contact_events(
@@ -66,8 +77,13 @@ def detect_contact_events(
     events: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
     misses = 0
+    previous_gap: float | None = None
     for index, frame in enumerate(frames):
-        evidence = frame_evidence(frame, min_gap_mm=min_gap_mm, current_threshold_raw=current_threshold_raw)
+        stalled = (previous_gap is not None and math.isfinite(frame.gap_mm)
+                   and abs(frame.gap_mm - previous_gap) <= POSITION_STALL_TOLERANCE_MM)
+        previous_gap = frame.gap_mm if math.isfinite(frame.gap_mm) else previous_gap
+        evidence = frame_evidence(
+            frame, min_gap_mm=min_gap_mm, current_threshold_raw=current_threshold_raw, stalled=stalled)
         if evidence is None:
             if current is not None:
                 misses += 1
@@ -92,6 +108,8 @@ def detect_contact_events(
         events.append(current)
     for event in events:
         event["evidence"] = sorted(event["evidence"])
+        # 只有位置证据的片段保留为候选，供人工复核；不计为确认接触。
+        event["candidate"] = event["evidence"] == ["position_only"]
         event["frames"] = event["endFrame"] - event["startFrame"] + 1
         if fps:
             event["startS"] = round(event["startFrame"] / fps, 6)

@@ -72,5 +72,7 @@
 ## 数据中的记录
 
 数据集 `meta/appstation_info.json` 的 `hardware.gripper` 段记录：各硬件侧的端口/从站、`gripTorqueRaw`、`commandForceLimitN`、
-`forceCalibration`，以及 HAL 固定的位置采样间隔（`gripper.sampleHz` 没有下发到 HAL）。
+`forceCalibration`、worker 传输方式和下发给 HAL 的采样间隔（`gripperSampleIntervalMs`，由 `gripper.sampleHz` 换算）。
 `recording.recordForce` / `forceFields` 标明本数据集的六维力字段是实测值还是全 0。
+夹爪电流 feature、逐读数旁路文件、空载放行和接触片段见 `docs/gripper-structured-feedback.md`；
+标定后的空载阈值（`baseline.contactThresholdRaw`）会被这两处使用。

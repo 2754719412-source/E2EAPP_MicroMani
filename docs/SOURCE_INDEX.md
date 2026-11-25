@@ -77,7 +77,7 @@
 | [backend/core/schemas.py](../backend/core/schemas.py) | 定义 API 请求、响应、配置及遥测的 Pydantic 模型，是前后端字段契约的后端入口。 | `ApiEnvelope`、`ErrorEnvelope`、`LogEntry`、`ProcessStatus`、`CameraTelemetry` |
 | [backend/core/units.py](../backend/core/units.py) | 在运动脉冲、界面单位和 LeRobot 状态单位之间换算；旋转角度与毫度须区分。 | `pulse_to_lerobot`、`pulse_to_ui`、`ui_to_lerobot_state`、`lerobot_to_ui_state`、`motion_pulse_per_unit` |
 
-## 04 后端业务与采集（19 个文件）
+## 04 后端业务与采集（20 个文件）
 
 | 文件 | 职责 / 阅读重点 | 定位符号 |
 | --- | --- | --- |
@@ -90,6 +90,7 @@
 | [backend/services/command_service.py](../backend/services/command_service.py) | 执行手动运动、原点、使能与安全命令；在调用 HAL 前检查配置与录制状态。 | `axis_enabled_feedback_unreadable`、`normalize_motion_axis_enabled`、`MotionOriginDriftConfirmationRequired`、`CommandService` |
 | [backend/services/dataset_recorder.py](../backend/services/dataset_recorder.py) | 管理录制会话和 episode；按时间戳组帧、排队写入 LeRobot，并提供数据集管理接口。 | `DatasetRecorderService`、`FrameAssembler`、`TimedRingBuffer`、`LeRobotWriterThread` |
 | [backend/services/gripper_backend.py](../backend/services/gripper_backend.py) | 定义夹爪后端协议及原生适配器；转换配置、HAL 状态与夹爪命令载荷。 | `GripperBackend`、`native_teleop_enabled`、`gripper_serial_ports`、`native_gripper_payload`、`hal_response_message` |
+| [backend/services/gripper_raw_samples.py](../backend/services/gripper_raw_samples.py) | 从 HAL 夹爪样本历史按 seq 去重收集真实读数，提供帧对齐、录制前空载放行、episode 统计、接触片段与旁路文件行。 | `parse_sample_history`、`GripperRawCollector`、`idle_start_blocker`、`episode_summary`、`episode_rows`、`contact_events` |
 | [backend/services/gripper_router.py](../backend/services/gripper_router.py) | 把夹爪操作统一路由到 HAL-native 适配器；当前 select 始终返回原生后端。 | `GripperRouter` |
 | [backend/services/hardware_service.py](../backend/services/hardware_service.py) | 聚合相机、NI-DAQ、夹爪与 PICO 的 Python 驱动实例，并提供硬件状态查询。 | `HardwareService` |
 | [backend/services/pico_network.py](../backend/services/pico_network.py) | 解析 Windows 网卡与路由信息，为 PICO 选择合适的物理网络与网关。 | `PicoNetworkDetectionError`、`IPv4Adapter`、`IPv4Route`、`select_pico_network`、`detect_pico_network` |
@@ -161,7 +162,7 @@
 | [hal/src/TeleopLeaderPublisher.cpp](../hal/src/TeleopLeaderPublisher.cpp) | 把主手采样状态发布到 DDS LeaderState 主题。 | `JsonEnvelopeSample`、`JsonEnvelopeTopicDataType`、`TeleopLeaderPublisher`、`TeleopLeaderPublisher::enabled`、`TeleopLeaderPublisher::publishJson` |
 | [hal/src/TeleopMappingNode.cpp](../hal/src/TeleopMappingNode.cpp) | 订阅主手状态，调用原生映射算法，再发布 HardwareTarget。 | `JsonEnvelopeSample`、`TeleopHardwareTargetSample`、`TeleopTopicDataType`、`TeleopMappingNode`、`LeaderListener` |
 
-## 07 测试与验证（47 个文件）
+## 07 测试与验证（48 个文件）
 
 | 文件 | 职责 / 阅读重点 | 定位符号 |
 | --- | --- | --- |
@@ -179,6 +180,7 @@
 | [backend/tests/test_gripper_driver.py](../backend/tests/test_gripper_driver.py) | 回归验证：Jodell 开口换算、最小夹缝保护、端口释放和使能条件。 | `test_jodell_gripper_target_position_mapping`、`test_gripper_close_respects_icf_min_gap_protection`、`test_jodell_gripper_default_config_matches_reference_project`、`test_gripper_selects_and_closes_configured_port_per_command`、`test_gripper_probe_releases_each_configured_port` |
 | [backend/tests/test_gripper_force_calibration.py](../backend/tests/test_gripper_force_calibration.py) | 回归验证：Modbus 帧与手册样例一致；夹持力标定拟合、反解与 commandForceLimitN 生效条件。 | `test_modbus_frames_match_manual_examples`、`test_fit_recovers_linear_model_and_reports_quality`、`test_inverse_floors_and_never_extrapolates_above_range`、`test_grip_torque_falls_back_when_any_enabled_side_is_uncalibrated_or_rewired` |
 | [backend/tests/test_gripper_force_calibration_script.py](../backend/tests/test_gripper_force_calibration_script.py) | 回归验证：夹持力标定脚本用模拟 Modbus 夹爪跑通基线、测力点、拟合和写配置，且闭合不低于最小开度。 | `FakeJodell`、`test_live_flow_never_commands_below_min_gap_and_fits`、`test_baseline_aborts_when_something_is_between_fingers`、`test_live_commands_require_explicit_confirmation` |
+| [backend/tests/test_gripper_raw_samples.py](../backend/tests/test_gripper_raw_samples.py) | 回归验证：夹爪读数按 seq 去重与缺样计数、空载放行、接触片段换算到训练帧、旁路 parquet 往返。 | `test_ingest_dedupes_overlapping_history_and_counts_missed_seq`、`test_idle_start_blocker_cases`、`test_contact_events_map_readings_to_training_frames`、`test_recorder_episode_payload_and_sidecar_round_trip` |
 | [backend/tests/test_gripper_router.py](../backend/tests/test_gripper_router.py) | 回归验证：所有夹爪操作选择 HAL-native 并生成正确载荷。 | `FakeHal`、`FakeTeleopMapper`、`build_router`、`test_router_always_selects_hal_native`、`test_router_ignores_legacy_python_mapper_engine` |
 | [backend/tests/test_hal_dds_client.py](../backend/tests/test_hal_dds_client.py) | 回归验证：DDS 状态缓存、命令应答、急停发布、超时和重试。 | `FakeDdsTransport`、`test_dds_hal_client_reads_health_from_topic_cache`、`test_dds_hal_client_reads_motion_state_from_topic_cache`、`test_dds_hal_client_reads_force_state_from_topic_cache`、`test_dds_hal_client_reads_native_teleop_status_from_topic_cache` |
 | [backend/tests/test_hal_native_acceptance_report.py](../backend/tests/test_hal_native_acceptance_report.py) | 回归验证：验收报告字段完整性与失败诊断分类。 | `test_hal_native_acceptance_report_verifier_accepts_full_pass`、`test_hal_native_acceptance_report_verifier_rejects_missing_axes`、`test_hal_native_acceptance_report_verifier_explains_missing_observation`、`test_hal_native_acceptance_report_verifier_rejects_missing_axis_diagnostics`、`test_hal_native_acceptance_report_verifier_rejects_zero_output_axis_diagnostics` |
