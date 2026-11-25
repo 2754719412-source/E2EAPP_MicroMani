@@ -447,6 +447,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "leftEnabled": False,
         "rightEnabled": False,
         "commandForceLimitN": 8,
+        # 夹持力标定（scripts/calibrate_gripper_force.py 生成，按硬件侧存放）；
+        # 未显式开启 applyCommandForceLimit 时仍按 gripperTeleop.gripTorque 下发。
+        "forceCalibration": {"applyCommandForceLimit": False, "left": None, "right": None},
         "commandSpeed": 10,
         "commandTorque": 1,
         "icfTargetProtectionEnabled": True,

@@ -56,7 +56,7 @@
 | [frontend/src/teleopStatus.ts](../frontend/src/teleopStatus.ts) | 综合诊断与逻辑连接状态，生成单手或双手遥操作的显示状态。 | `omegaDiagnosticState`、`handForSide`、`logicalDisconnected`、`teleopHandState`、`teleopHandValue` |
 | [frontend/src/types.ts](../frontend/src/types.ts) | 集中声明配置、遥测、录制、诊断与页面状态类型；与后端 schemas 对照阅读。 | `ConnectionState`、`TelemetryLinkState`、`TelemetryLinkStatus`、`LogLevel`、`LogChannel` |
 
-## 03 后端契约与配置（13 个文件）
+## 03 后端契约与配置（15 个文件）
 
 | 文件 | 职责 / 阅读重点 | 定位符号 |
 | --- | --- | --- |
@@ -67,7 +67,9 @@
 | [backend/core/config.py](../backend/core/config.py) | 读取、迁移、校验与原子保存运行配置；管理参数快照和工作原点迁移。 | `SettingsService`、`reanchor_motion_soft_limits_to_current_origin` |
 | [backend/core/defaults.py](../backend/core/defaults.py) | 集中定义硬件标定、轴映射、相机和遥操作默认值，并生成独立的默认配置副本。 | `anchored_mechanical_soft_limits`、`rotation_work_limits_from_soft_limits`、`stable_mechanical_soft_limits`、`default_config` |
 | [backend/core/force_config.py](../backend/core/force_config.py) | 校验 HKVL 串口、六轴方向、安全阈值与柔顺参数，并转换为 HAL 的扁平配置。 | `validate_force_config`、`hal_force_config_payload` |
+| [backend/core/gripper_force.py](../backend/core/gripper_force.py) | 夹持力标定：空载电流基线、rFC→N 拟合、N→rFC 反解，以及按 commandForceLimitN 选择下发的 rFC。 | `summarize_baseline`、`fit_force_calibration`、`rfc_for_force_n`、`side_calibration`、`effective_grip_torque` |
 | [backend/core/gripper_protection.py](../backend/core/gripper_protection.py) | 限制夹爪目标开口范围，保留配置要求的最小夹缝。 | `gripper_stroke_mm`、`icf_target_protection_enabled`、`icf_target_min_gap_mm`、`protected_gripper_target_mm`、`protected_gripper_target_mm_from_values` |
+| [backend/core/jodell_modbus.py](../backend/core/jodell_modbus.py) | 钧舵 EPG 夹爪 Modbus RTU 帧编解码（CRC、读状态、写运动命令、gOBJ/gCU 解析），不含串口 I/O。 | `crc16_modbus`、`read_status_request`、`move_request`、`parse_status_response`、`GripperStatus` |
 | [backend/core/logging.py](../backend/core/logging.py) | 生成结构化事件、操作编号与配置哈希；维护内存日志和会话日志文件。 | `now_ms`、`monotonic_ms`、`default_session_id`、`stable_config_hash`、`LogService` |
 | [backend/core/motion_limits.py](../backend/core/motion_limits.py) | 组合机械软限位、工作原点和旋转工作范围，计算各侧实际可用运动区间。 | `AxisLimit`、`WorkOriginMissing`、`side_offset`、`config_limit_to_ui`、`ui_limit_to_config` |
 | [backend/core/operator_view.py](../backend/core/operator_view.py) | 显式转换操作者侧与硬件侧；夹爪主手来源也经此映射，避免直接按名称配对。 | `hardware_side_for_operator_side`、`operator_side_for_hardware_side`、`operator_gripper_source_for_side`、`gripper_source_for_hardware_side` |
@@ -156,7 +158,7 @@
 | [hal/src/TeleopLeaderPublisher.cpp](../hal/src/TeleopLeaderPublisher.cpp) | 把主手采样状态发布到 DDS LeaderState 主题。 | `JsonEnvelopeSample`、`JsonEnvelopeTopicDataType`、`TeleopLeaderPublisher`、`TeleopLeaderPublisher::enabled`、`TeleopLeaderPublisher::publishJson` |
 | [hal/src/TeleopMappingNode.cpp](../hal/src/TeleopMappingNode.cpp) | 订阅主手状态，调用原生映射算法，再发布 HardwareTarget。 | `JsonEnvelopeSample`、`TeleopHardwareTargetSample`、`TeleopTopicDataType`、`TeleopMappingNode`、`LeaderListener` |
 
-## 07 测试与验证（44 个文件）
+## 07 测试与验证（46 个文件）
 
 | 文件 | 职责 / 阅读重点 | 定位符号 |
 | --- | --- | --- |
@@ -171,6 +173,8 @@
 | [backend/tests/test_force_config.py](../backend/tests/test_force_config.py) | 回归验证：HKVL 端口绑定、方向校准、阈值和柔顺参数校验。 | `hkvl_config`、`test_hkvl_force_config_payload_matches_hal_flat_contract`、`test_hkvl_force_config_payload_uses_pnp_bound_runtime_ports`、`test_hkvl_force_config_payload_rejects_duplicate_pnp_bound_ports`、`test_invalid_hkvl_force_configuration_is_rejected` |
 | [backend/tests/test_force_nidaq_driver.py](../backend/tests/test_force_nidaq_driver.py) | 回归验证：NI-DAQ 标定矩阵、去皮、窗口采样和缓存回退。 | `test_force_driver_applies_reference_calibration_fallback`、`test_force_driver_tare_bias_is_subtracted_before_calibration`、`test_force_driver_loads_ati_xml_calibration_file`、`test_force_driver_latest_window_repeats_last_scalar_without_blocking`、`test_force_driver_sample_window_failure_uses_latest_scalar_fallback` |
 | [backend/tests/test_gripper_driver.py](../backend/tests/test_gripper_driver.py) | 回归验证：Jodell 开口换算、最小夹缝保护、端口释放和使能条件。 | `test_jodell_gripper_target_position_mapping`、`test_gripper_close_respects_icf_min_gap_protection`、`test_jodell_gripper_default_config_matches_reference_project`、`test_gripper_selects_and_closes_configured_port_per_command`、`test_gripper_probe_releases_each_configured_port` |
+| [backend/tests/test_gripper_force_calibration.py](../backend/tests/test_gripper_force_calibration.py) | 回归验证：Modbus 帧与手册样例一致；夹持力标定拟合、反解与 commandForceLimitN 生效条件。 | `test_modbus_frames_match_manual_examples`、`test_fit_recovers_linear_model_and_reports_quality`、`test_inverse_floors_and_never_extrapolates_above_range`、`test_grip_torque_falls_back_when_any_enabled_side_is_uncalibrated_or_rewired` |
+| [backend/tests/test_gripper_force_calibration_script.py](../backend/tests/test_gripper_force_calibration_script.py) | 回归验证：夹持力标定脚本用模拟 Modbus 夹爪跑通基线、测力点、拟合和写配置，且闭合不低于最小开度。 | `FakeJodell`、`test_live_flow_never_commands_below_min_gap_and_fits`、`test_baseline_aborts_when_something_is_between_fingers`、`test_live_commands_require_explicit_confirmation` |
 | [backend/tests/test_gripper_router.py](../backend/tests/test_gripper_router.py) | 回归验证：所有夹爪操作选择 HAL-native 并生成正确载荷。 | `FakeHal`、`FakeTeleopMapper`、`build_router`、`test_router_always_selects_hal_native`、`test_router_ignores_legacy_python_mapper_engine` |
 | [backend/tests/test_hal_dds_client.py](../backend/tests/test_hal_dds_client.py) | 回归验证：DDS 状态缓存、命令应答、急停发布、超时和重试。 | `FakeDdsTransport`、`test_dds_hal_client_reads_health_from_topic_cache`、`test_dds_hal_client_reads_motion_state_from_topic_cache`、`test_dds_hal_client_reads_force_state_from_topic_cache`、`test_dds_hal_client_reads_native_teleop_status_from_topic_cache` |
 | [backend/tests/test_hal_native_acceptance_report.py](../backend/tests/test_hal_native_acceptance_report.py) | 回归验证：验收报告字段完整性与失败诊断分类。 | `test_hal_native_acceptance_report_verifier_accepts_full_pass`、`test_hal_native_acceptance_report_verifier_rejects_missing_axes`、`test_hal_native_acceptance_report_verifier_explains_missing_observation`、`test_hal_native_acceptance_report_verifier_rejects_missing_axis_diagnostics`、`test_hal_native_acceptance_report_verifier_rejects_zero_output_axis_diagnostics` |
@@ -205,7 +209,7 @@
 | [frontend/src/test/setup.ts](../frontend/src/test/setup.ts) | 安装 DOM 测试断言和浏览器 API 替身，并统一测试环境清理。 | `ResizeObserverMock` |
 | [hal/tests/ForceCoreTests.cpp](../hal/tests/ForceCoreTests.cpp) | 验证 HKVL 帧解析、力安全锁存、柔顺修正及力运行时的边界行为。 | `main` |
 
-## 08 启动、部署与工具（29 个文件）
+## 08 启动、部署与工具（30 个文件）
 
 | 文件 | 职责 / 阅读重点 | 定位符号 |
 | --- | --- | --- |
@@ -223,6 +227,7 @@
 | [scripts/accept-hal-native-teleop.ps1](../scripts/accept-hal-native-teleop.ps1) | 已停用的旧 HTTP 遥操作验收入口；执行即提示改用后端/UI 的 DDS 路径。 | 从文件顶部的参数、配置或入口流程开始 |
 | [scripts/benchmark_jodell_gripper.py](../scripts/benchmark_jodell_gripper.py) | 测量 Jodell 端口读取方式的耗时和成功率；直接使用夹爪驱动。 | `BenchResult`、`percentile`、`mean`、`parse_port`、`timed` |
 | [scripts/calibrate_camera.py](../scripts/calibrate_camera.py) | 张正友法相机标定：采集标定板图像、计算内参畸变、记录定型参考位姿并复核相机是否移动；只读画面。 | `BoardSpec`、`detect_corners`、`calibrate_images`、`solve_pose`、`compare_with_reference` |
+| [scripts/calibrate_gripper_force.py](../scripts/calibrate_gripper_force.py) | 钧舵夹爪夹持力标定：空载基线、参考测力计下多档 rFC 采点、拟合并写入 gripper.forceCalibration；驱动运动须显式确认。 | `JodellModbusGripper`、`capture_baseline`、`capture_point`、`fit_session`、`apply_calibration` |
 | [scripts/capture-hkvl-force.ps1](../scripts/capture-hkvl-force.ps1) | 只读采集双侧 HKVL 串口原始数据，并验证候选帧格式与 CRC。 | `New-ReadOnlySerialPort`、`Get-ModbusCrc16`、`Test-HkvlCandidateFrames` |
 | [scripts/check-hal.ps1](../scripts/check-hal.ps1) | 请求 HAL /health 并报告端口所属进程和驱动健康状态。 | 从文件顶部的参数、配置或入口流程开始 |
 | [scripts/diagnose-teleop-latency.ps1](../scripts/diagnose-teleop-latency.ps1) | 已停用的旧 HTTP 延迟诊断入口；当前执行会抛出迁移说明。 | 从文件顶部的参数、配置或入口流程开始 |

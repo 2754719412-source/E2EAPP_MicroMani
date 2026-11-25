@@ -9,6 +9,7 @@ import asyncio
 from typing import Any, Protocol, runtime_checkable
 
 from backend.core.gripper_protection import icf_target_min_gap_mm, icf_target_protection_enabled
+from backend.core.gripper_force import effective_grip_torque
 from backend.drivers.gripper_rs485 import GripperResult
 
 
@@ -85,7 +86,7 @@ def native_gripper_payload(config: dict[str, Any], side: str, target_mm: float) 
         "jodellWorkerExePath": str(gripper.get("jodellWorkerExePath", "")),
         "gripperWorkerCommandTimeoutMs": float(worker_timeout),
         "gripSpeed": int(gripper_teleop.get("gripSpeed", 255)),
-        "gripTorque": int(gripper_teleop.get("gripTorque", 1)),
+        "gripTorque": int(effective_grip_torque(config)["rfcRaw"]),
         "icfTargetProtectionEnabled": icf_target_protection_enabled(config),
         "icfTargetMinGapMm": icf_target_min_gap_mm(config),
     }

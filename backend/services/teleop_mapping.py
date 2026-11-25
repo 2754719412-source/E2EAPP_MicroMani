@@ -23,6 +23,7 @@ from backend.core.motion_profile import teleop_motion_profile
 from backend.core.participation import scoped_config
 from backend.core.config import SettingsService
 from backend.core.defaults import ICF_KINEMATICS_DEFAULTS, ICF_TELEOP_DEFAULTS
+from backend.core.gripper_force import effective_grip_torque
 from backend.core.logging import LogService, now_ms
 from backend.core.motion_safety import MotionSafetyGate, MotionSafetyToken, motion_operation
 from backend.core.motion_limits import (
@@ -1491,7 +1492,7 @@ class TeleopMappingService:
             "leftSourceHand": self._gripper_source_for_hardware_target("left", gripper_teleop),
             "rightSourceHand": self._gripper_source_for_hardware_target("right", gripper_teleop),
             "gripSpeed": int(gripper_teleop.get("gripSpeed", 255)),
-            "gripTorque": int(gripper_teleop.get("gripTorque", 1)),
+            "gripTorque": int(effective_grip_torque(config)["rfcRaw"]),
             "positionDeadbandCounts": int(gripper_teleop.get("positionDeadbandCounts", 1)),
             "minCommandIntervalMs": float(gripper_teleop.get("minCommandIntervalMs", 20)),
             "buttonFallback": bool(gripper_teleop.get("buttonFallback", True)),
