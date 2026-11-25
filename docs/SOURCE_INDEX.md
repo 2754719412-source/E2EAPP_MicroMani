@@ -114,7 +114,7 @@
 | [backend/native/appstation_fastdds_transport.cpp](../backend/native/appstation_fastdds_transport.cpp) | 向 Python 暴露 Fast-DDS 的 C ABI；维护主题缓存、命令发布与应答同步。 | `JsonEnvelopeSample`、`HalCommandRequestSample`、`HalCommandReplySample`、`AppStationTopicDataType`、`AppStationFastDdsTransport` |
 | [hal/dds/appstation_hal.idl](../hal/dds/appstation_hal.idl) | 定义控制面 DDS 信封与命令请求/应答的线缆数据契约。 | 从文件顶部的参数、配置或入口流程开始 |
 
-## 06 HAL 硬件与安全（40 个文件）
+## 06 HAL 硬件与安全（41 个文件）
 
 | 文件 | 职责 / 阅读重点 | 定位符号 |
 | --- | --- | --- |
@@ -129,6 +129,7 @@
 | [hal/include/HkvlForceDriver.h](../hal/include/HkvlForceDriver.h) | 声明HkvlForceDriver 的接口与状态结构；管理双侧 HKVL 串口读取、协议解析、去皮、滤波与采样回调。 | `HkvlSerialConfig`、`HkvlDriverSample`、`HkvlSideSnapshot`、`HkvlDriverSnapshot`、`HkvlForceDriver` |
 | [hal/include/HkvlForceProtocol.h](../hal/include/HkvlForceProtocol.h) | 声明HkvlForceProtocol 的接口与状态结构；解析 HKVL 字节帧与 CRC，维护帧同步和错误统计。 | `HkvlForceFrame`、`HkvlForceParserStats`、`HkvlForceParser` |
 | [hal/include/JodellGripperDriver.h](../hal/include/JodellGripperDriver.h) | 声明JodellGripperDriver 的接口与状态结构；封装 Jodell 夹爪配置、开口换算与隔离 worker 通信。 | `JodellGripperConfig`、`JodellGripperDriver`、`ProcessWorkerHandle` |
+| [hal/include/JodellModbus.h](../hal/include/JodellModbus.h) | 钧舵 EPG 夹爪 Modbus RTU 帧编解码、结构化反馈样本及 worker 应答样本字段编解码；不含串口 I/O。 | `readStatusRequest`、`moveRequest`、`parseStatusResponse`、`GripperFeedbackSample`、`formatSampleFields`、`parseSampleFields` |
 | [hal/include/LTDMCDriver.h](../hal/include/LTDMCDriver.h) | 声明LTDMCDriver 的接口与状态结构；封装运动卡访问、脉冲换算、回原点、目标续推、软限位及急停状态。 | `LTDMCDriver` |
 | [hal/include/MotionControlThread.h](../hal/include/MotionControlThread.h) | 声明MotionControlThread 的接口与状态结构；管理运动状态后台轮询线程的启动、循环和停止。 | `MotionControlThread` |
 | [hal/include/NativeTeleopController.h](../hal/include/NativeTeleopController.h) | 声明NativeTeleopController 的接口与状态结构；管理主手采样与遥操作状态机，计算映射、滤波、门控和夹爪跟随。 | `NativeTeleopConfig`、`NativeTeleopAction`、`NativeTeleopController`、`PendingGripperCommand`、`KalmanAxisState` |
