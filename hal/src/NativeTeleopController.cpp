@@ -996,7 +996,9 @@ std::string NativeTeleopController::statusJsonImpl(bool compactHistory) const {
   const auto forceOutput = omega_.forceOutputEnabled();
   std::unique_lock lock(mutex_);
   const auto actionHistory = actionHistory_;
-  const auto gripperSampleHistory = gripperSampleHistory_;
+  // 样本历史只给按需查询的完整状态（录制采样走 teleop.native.status）；100 Hz 遥测只带最新样本与统计。
+  const auto gripperSampleHistory = compactHistory
+      ? std::array<std::deque<GripperSampleRecord>, 2>{} : gripperSampleHistory_;
   const auto gripperPositions = gripperPositionSnapshotUnlocked();
   std::ostringstream out;
   auto appendGripperSample = [&](int index) {
@@ -1164,23 +1166,25 @@ std::string NativeTeleopController::statusJsonImpl(bool compactHistory) const {
   // 历史序列化可远大于实时快照，必须在释放夹爪反馈/主手控制共用锁之后进行。
   lock.unlock();
   // 每行一个真实读数：seq 单调递增，后端据此去重和发现断样。
-  out << ",\"gripperSampleHistoryFormat\":\"seq_monotonicUs_halTs_pv_sv_cv_pos_cur_act_gto_sta_obj_fault_v1\""
-      << ",\"gripperSampleHistory\":{";
-  for (int index = 0; index < 2; ++index) {
-    out << (index == 0 ? "\"left\":[" : ",\"right\":[");
-    bool first = true;
-    for (const auto& record : gripperSampleHistory[index]) {
-      const auto& sample = record.sample;
-      out << (first ? "" : ",") << "[" << record.seq << "," << sample.monotonicUs << ","
-          << (record.halTimestamp ? 1 : 0) << "," << (sample.positionValid ? 1 : 0) << ","
-          << (sample.statusValid ? 1 : 0) << "," << (sample.currentValid ? 1 : 0) << ","
-          << sample.positionRaw << "," << sample.currentRaw << "," << sample.gACT << ","
-          << sample.gGTO << "," << sample.gSTA << "," << sample.gOBJ << "," << sample.fault << "]";
-      first = false;
+  if (!compactHistory) {
+    out << ",\"gripperSampleHistoryFormat\":\"seq_monotonicUs_halTs_pv_sv_cv_pos_cur_act_gto_sta_obj_fault_v1\""
+        << ",\"gripperSampleHistory\":{";
+    for (int index = 0; index < 2; ++index) {
+      out << (index == 0 ? "\"left\":[" : ",\"right\":[");
+      bool first = true;
+      for (const auto& record : gripperSampleHistory[index]) {
+        const auto& sample = record.sample;
+        out << (first ? "" : ",") << "[" << record.seq << "," << sample.monotonicUs << ","
+            << (record.halTimestamp ? 1 : 0) << "," << (sample.positionValid ? 1 : 0) << ","
+            << (sample.statusValid ? 1 : 0) << "," << (sample.currentValid ? 1 : 0) << ","
+            << sample.positionRaw << "," << sample.currentRaw << "," << sample.gACT << ","
+            << sample.gGTO << "," << sample.gSTA << "," << sample.gOBJ << "," << sample.fault << "]";
+        first = false;
+      }
+      out << "]";
     }
-    out << "]";
+    out << "}";
   }
-  out << "}";
   out << ",\"actionHistoryFormat\":\""
       << (compactHistory ? "recording_v1" : "diagnostic_v1") << "\""
       << ",\"actionHistory\":[";
