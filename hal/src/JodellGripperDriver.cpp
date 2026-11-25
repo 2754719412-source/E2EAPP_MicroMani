@@ -399,6 +399,10 @@ bool JodellGripperDriver::readPositionMmUnlocked(
   }
   const double stroke = std::max(0.001, config_.strokeMm);
   positionMm_[index] = stroke * (1.0 - std::clamp(currentRaw, 0, 255) / 255.0);
+  jodell::GripperFeedbackSample dllSample;
+  dllSample.transport = "dll";
+  dllSample.positionValid = currentRaw <= 255;
+  dllSample.positionRaw = currentRaw;
   // 夹持状态与力矩随位置一并读取，原值写入消息（负值为 vendor 读取失败码）；位置读数的成败不受其影响。
   if (message) {
     std::ostringstream out;
@@ -409,9 +413,12 @@ bool JodellGripperDriver::readPositionMmUnlocked(
       const int status = getClawCurrentStatus_(slave);
       const int torque = getClawCurrentTorque_(slave);
       out << ", status=" << status << ", torque=" << torque;
+      dllSample.currentValid = torque >= 0 && torque <= 255;
+      dllSample.currentRaw = torque;
     }
     *message = out.str();
   }
+  lastDllSample_[index] = dllSample;
   return true;
 #else
   if (message) {
@@ -443,6 +450,16 @@ std::array<double, 2> JodellGripperDriver::positionMmSnapshot(std::array<double,
 std::string JodellGripperDriver::lastError() const {
   std::scoped_lock lock(mutex_);
   return lastError_;
+}
+
+jodell::GripperFeedbackSample JodellGripperDriver::lastSample(Side side) const {
+  std::scoped_lock lock(mutex_);
+  return lastSample_[sideIndex(side)];
+}
+
+jodell::GripperFeedbackSample JodellGripperDriver::lastDllSample(Side side) const {
+  std::scoped_lock lock(mutex_);
+  return lastDllSample_[sideIndex(side)];
 }
 
 bool JodellGripperDriver::ensureLoadedUnlocked(std::string* message) {
@@ -613,7 +630,8 @@ bool JodellGripperDriver::ensureProcessWorkerUnlocked(int index, std::string* me
       << " --slave " << config_.slaveIds[index]
       << " --baudrate " << config_.baudrate
       << " --stroke-mm " << config_.strokeMm
-      << " --dll " << quoteWindowsArg(config_.dllPath);
+      << " --dll " << quoteWindowsArg(config_.dllPath)
+      << " --transport " << (config_.transport == "modbus" ? "modbus" : "dll");
   std::string commandLine = command.str();
 
   STARTUPINFOA startup{};
@@ -692,7 +710,13 @@ bool JodellGripperDriver::commandProcessWorkerUnlocked(
     closeProcessWorkerUnlocked(index, true);
     return false;
   }
-  // parts[0] 是 OK/ERR，parts[1] 是位置毫米值，parts[2] 是可读诊断消息。
+  // parts[0] 是 OK/ERR，parts[1] 是位置毫米值，parts[2] 是可读诊断消息，之后是 SAMPLE1 结构化样本。
+  jodell::GripperFeedbackSample sample;
+  if (!jodell::parseSampleFields(parts, 3, &sample)) {
+    sample = jodell::GripperFeedbackSample{};
+    sample.transport = "legacy";
+  }
+  lastSample_[index] = sample;
   if (positionMm) {
     char* end = nullptr;
     const double value = std::strtod(parts[1].c_str(), &end);

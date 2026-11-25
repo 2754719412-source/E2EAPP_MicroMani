@@ -454,7 +454,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "commandTorque": 1,
         "icfTargetProtectionEnabled": True,
         "icfTargetMinGapMm": 1.02,
+        # 夹爪反馈读取频率，换算为 HAL 每次读完后的等待间隔（gripperSampleIntervalMs）。
         "sampleHz": 30,
+        # worker 访问夹爪的方式："dll"（vendor DLL）或 "modbus"（worker 独占串口直接读写，现场验收后启用）。
+        "workerTransport": "dll",
         "sampleStaleMs": 500,
         "sampleEnableOnNegative": True,
         "workerCommandTimeoutSec": 2.0,

@@ -389,6 +389,26 @@ class NativeTeleopController {
   std::array<std::uint64_t, 2> gripperReadSkippedBusy_{};
   std::array<std::int64_t, 2> gripperReadAttemptTs_{};
   std::array<std::string, 2> gripperReadMessage_{};
+  // 结构化反馈：每个真实读数分配递增 seq 并进入有界历史，后端按 seq 去重落盘，同一读数只算一次。
+  struct GripperSampleRecord {
+    std::uint64_t seq{0};
+    jodell::GripperFeedbackSample sample{};
+    // worker 原始时间戳只用于去重；sample.monotonicUs 可能已替换为 HAL 侧中点。
+    std::int64_t workerMonotonicUs{0};
+    bool halTimestamp{false};
+  };
+  void resetGripperSampleStatsUnlocked();
+  bool recordGripperSampleUnlocked(int index, jodell::GripperFeedbackSample sample,
+      std::int64_t windowStartUs, std::int64_t windowEndUs);
+  std::array<GripperSampleRecord, 2> gripperLatestSample_{};
+  std::array<std::deque<GripperSampleRecord>, 2> gripperSampleHistory_{};
+  std::array<std::uint64_t, 2> gripperSampleSeq_{};
+  // 验收统计：自上次重置以来的样本数、首末样本时间和最长相邻间隔（断样）。
+  std::array<double, 2> gripperMaxSampleGapMs_{};
+  std::array<std::uint64_t, 2> gripperStatsSamples_{};
+  std::array<std::int64_t, 2> gripperStatsFirstUs_{};
+  std::array<std::int64_t, 2> gripperStatsLastUs_{};
+  std::atomic<std::int64_t> gripperSampleIntervalUs_{33333};
   std::mutex gripperMutex_;
   std::condition_variable gripperCv_;
   std::array<std::thread, 2> gripperWorkers_;

@@ -54,7 +54,7 @@ from backend.core.motion_safety import MotionSafetyGate, motion_operation
 from backend.core.units import lerobot_to_ui_state, motion_pulse_per_unit, pulses_to_ui_state
 from backend.hal_client.client import HalClient
 from backend.services.hardware_service import HardwareService
-from backend.services.gripper_backend import native_teleop_enabled
+from backend.services.gripper_backend import hal_gripper_sampling_fields, native_teleop_enabled
 from backend.services.telemetry_hub import TelemetryHub
 from backend.services.teleop_mapping import TeleopMappingService
 
@@ -155,8 +155,6 @@ RECORDER_HARDWARE_WARMUP_S = 0.5
 RECORD_START_STABLE_S = 0.3
 RECORD_START_TIMEOUT_S = 3.0
 RECORD_START_GRIPPER_TOLERANCE_MM = 1.0
-# 与 hal/src/NativeTeleopController.cpp 的 kGripperPositionSampleInterval 保持一致（源码契约测试校验）。
-HAL_GRIPPER_POSITION_SAMPLE_INTERVAL_MS = 33.333
 MAX_SAMPLE_JITTER_S = 0.10
 SAMPLE_LOOKBACK_WINDOW_S = 0.10
 ALIGNMENT_DELAY_S = 0.100
@@ -4114,10 +4112,9 @@ class DatasetRecorderService:
             "releaseTorqueRaw": gripper_teleop.get("releaseTorque"),
             "commandForceLimitN": gripper.get("commandForceLimitN"),
             "forceCalibration": deepcopy(gripper.get("forceCalibration")),
-            # HAL 夹爪位置采样间隔写死在 NativeTeleopController，gripper.sampleHz 不会下发到 HAL。
-            "halPositionSampleIntervalMs": HAL_GRIPPER_POSITION_SAMPLE_INTERVAL_MS,
+            # gripper.sampleHz 换算为 HAL 每次读完后的等待间隔；实测频率见每个 episode 的 gripper_raw 统计。
+            **hal_gripper_sampling_fields(config),
             "configSampleHz": gripper.get("sampleHz"),
-            "configSampleHzAppliedToHal": False,
         }
 
     def _force_metadata(self, config: dict[str, Any]) -> dict[str, Any]:

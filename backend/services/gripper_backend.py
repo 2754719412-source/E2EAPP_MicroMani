@@ -13,6 +13,27 @@ from backend.core.gripper_force import effective_grip_torque
 from backend.drivers.gripper_rs485 import GripperResult
 
 
+GRIPPER_WORKER_TRANSPORTS = ("dll", "modbus")
+GRIPPER_SAMPLE_HZ_RANGE = (1.0, 200.0)
+
+
+def hal_gripper_sampling_fields(config: dict[str, Any]) -> dict[str, object]:
+    """夹爪 worker 访问方式与反馈读取间隔；HAL 只认 "modbus"，其他值回落到 vendor DLL。"""
+    gripper = config.get("gripper", {}) if isinstance(config.get("gripper"), dict) else {}
+    transport = str(gripper.get("workerTransport", "dll")).lower()
+    try:
+        sample_hz = float(gripper.get("sampleHz", 30))
+    except (TypeError, ValueError):
+        sample_hz = 30.0
+    if not sample_hz > 0:
+        sample_hz = 30.0
+    sample_hz = min(max(sample_hz, GRIPPER_SAMPLE_HZ_RANGE[0]), GRIPPER_SAMPLE_HZ_RANGE[1])
+    return {
+        "gripperWorkerTransport": transport if transport in GRIPPER_WORKER_TRANSPORTS else "dll",
+        "gripperSampleIntervalMs": round(1000.0 / sample_hz, 3),
+    }
+
+
 @runtime_checkable
 class GripperBackend(Protocol):
     name: str
@@ -85,6 +106,7 @@ def native_gripper_payload(config: dict[str, Any], side: str, target_mm: float) 
         "gripperProcessWorkersEnabled": bool(gripper.get("processWorkersEnabled", True)),
         "jodellWorkerExePath": str(gripper.get("jodellWorkerExePath", "")),
         "gripperWorkerCommandTimeoutMs": float(worker_timeout),
+        **hal_gripper_sampling_fields(config),
         "gripSpeed": int(gripper_teleop.get("gripSpeed", 255)),
         "gripTorque": int(effective_grip_torque(config)["rfcRaw"]),
         "icfTargetProtectionEnabled": icf_target_protection_enabled(config),

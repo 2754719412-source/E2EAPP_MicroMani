@@ -218,8 +218,8 @@ def test_dataset_recorder_appstation_info_marks_record_force_and_gripper(
     assert gripper["hardwareSides"]["left"] == {"port": "COM8", "slaveId": 10, "enabled": False}
     assert gripper["hardwareSides"]["right"] == {"port": "COM9", "slaveId": 9, "enabled": False}
     assert gripper["gripTorqueRaw"] == 1
-    assert gripper["configSampleHzAppliedToHal"] is False
-    assert gripper["halPositionSampleIntervalMs"] == pytest.approx(33.333)
+    assert gripper["gripperWorkerTransport"] == "dll"
+    assert gripper["gripperSampleIntervalMs"] == pytest.approx(33.333)
 
 
 def test_dataset_recorder_appstation_info_writes_session_origin(tmp_path: Path) -> None:

@@ -2128,7 +2128,7 @@ def test_hal_native_gripper_worker_samples_positions_without_commands() -> None:
     gripper_header = (REPO_ROOT / "hal" / "include" / "JodellGripperDriver.h").read_text(encoding="utf-8")
     gripper_source = (REPO_ROOT / "hal" / "src" / "JodellGripperDriver.cpp").read_text(encoding="utf-8")
 
-    assert "bool readPositionMm(Side side, std::string* message = nullptr);" in gripper_header
+    assert "bool readPositionMm(Side side, std::string* message = nullptr, bool withStatus = true);" in gripper_header
     assert "bool JodellGripperDriver::readPositionMm(" in gripper_source
 
 
@@ -2215,10 +2215,13 @@ def test_hal_native_gripper_uses_isolated_jodell_worker_processes() -> None:
     assert "sampleGripperPosition(sideFromIndex(sampleIndex));" not in normalized_loop
     assert normalized_loop.index("if (shouldSample)") < normalized_loop.index("gripperDriver(command.side).commandTarget")
     assert "command = pendingGripperCommands_[targetIndex];" in normalized_loop
-    assert "gripperDriver(side).readPositionMm(side, &message)" in normalized_sample
+    assert "gripperDriver(side).readPositionMm(side, &message, gripperReadStatus_.load())" in normalized_sample
     assert "gripperDriver(side).readPositionMmIfIdle(side, kPolicyGripperReadTimeoutMs, &message)" in normalized_sample
     assert "const auto sampleMidpoint = readStarted + (readFinished - readStarted) / 2;" in normalized_sample
-    assert "gripperPositionSampleMonotonicMs_[index] = sampleMonotonicMs;" in normalized_sample
+    # 有可信 worker 时间戳时用它，否则回落到 HAL 侧读取中点。
+    assert "gripperPositionSampleMonotonicMs_[index] = recorded && latest.sample.positionValid && !latest.halTimestamp" \
+        in normalized_sample
+    assert "? latest.sample.monotonicUs / 1000 : sampleMonotonicMs;" in normalized_sample
     assert "std::array<std::int64_t, 2> gripperPositionSampleMonotonicMs_" in controller_header
     assert 'positionSampleMonotonicMs' in controller_source
     assert "gripperPositionsMm_ = gripperPositionSnapshotUnlocked();" in normalized_sample
@@ -2690,10 +2693,27 @@ def test_backend_freshness_uses_controller_sample_age_not_cache_provenance() -> 
     assert "sample_cached" not in teleop
 
 
-def test_recorder_gripper_sample_interval_metadata_matches_hal_constant() -> None:
-    from backend.services.dataset_recorder import HAL_GRIPPER_POSITION_SAMPLE_INTERVAL_MS
 
-    source = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
-    match = re.search(r"kGripperPositionSampleInterval\s*=\s*std::chrono::microseconds\((\d+)\)", source)
-    assert match is not None
-    assert HAL_GRIPPER_POSITION_SAMPLE_INTERVAL_MS == pytest.approx(int(match.group(1)) / 1000.0, abs=1e-3)
+def test_gripper_structured_sampling_contract() -> None:
+    """worker 样本字段、传输方式与采样间隔从后端一路下发到 HAL，并进入状态 JSON。"""
+    hal_json = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
+    assert '"gripperWorkerTransport"' in hal_json and '"gripperSampleIntervalMs"' in hal_json
+    worker = (REPO_ROOT / "hal" / "src" / "JodellGripperWorker.cpp").read_text(encoding="utf-8")
+    assert 'transport == "modbus"' in worker and "formatSampleFields(sample)" in worker
+    driver = (REPO_ROOT / "hal" / "src" / "JodellGripperDriver.cpp").read_text(encoding="utf-8")
+    assert '" --transport "' in driver and "jodell::parseSampleFields(parts, 3, &sample)" in driver
+    controller = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    for token in ('"gripperSampleHistory', '\\"sampleStats\\"', "recordGripperSampleUnlocked", "gripperSampleIntervalUs_"):
+        assert token in controller, token
+    assert "kGripperPositionSampleInterval);" not in controller  # 间隔不再写死
+
+    from backend.core.defaults import default_config
+    from backend.services.gripper_backend import hal_gripper_sampling_fields, native_gripper_payload
+
+    config = default_config()
+    assert hal_gripper_sampling_fields(config) == {"gripperWorkerTransport": "dll", "gripperSampleIntervalMs": 33.333}
+    config["gripper"].update(workerTransport="modbus", sampleHz=100)
+    assert native_gripper_payload(config, "left", 10.0)["gripperWorkerTransport"] == "modbus"
+    assert native_gripper_payload(config, "left", 10.0)["gripperSampleIntervalMs"] == 10.0
+    config["gripper"].update(workerTransport="serial", sampleHz=0)
+    assert hal_gripper_sampling_fields(config) == {"gripperWorkerTransport": "dll", "gripperSampleIntervalMs": 33.333}

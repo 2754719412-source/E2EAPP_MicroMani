@@ -14,6 +14,7 @@
 #include <string>
 
 #include "HalTypes.h"
+#include "JodellModbus.h"
 
 namespace appstation::hal {
 
@@ -30,6 +31,10 @@ struct JodellGripperConfig {
   bool processWorkersEnabled{true};
   std::string workerExePath{};
   double workerCommandTimeoutMs{2000.0};
+  // worker 访问夹爪的方式："dll" 走 vendor DLL；"modbus" 由 worker 独占串口直接 Modbus RTU 读写。
+  std::string transport{"dll"};
+  // 反馈读取间隔：每次读完再等这么久；由后端 gripper.sampleHz 换算下发，HAL 夹紧到 [5, 1000] ms。
+  double sampleIntervalMs{33.333};
   bool operator==(const JodellGripperConfig&) const = default;
 };
 
@@ -61,6 +66,10 @@ class JodellGripperDriver {
   std::array<double, 2> positionMm() const;
   std::array<double, 2> positionMmSnapshot(std::array<double, 2> fallback) const;
   std::string lastError() const;
+  // 父进程：最近一次 worker 应答附带的结构化样本（旧 worker 无样本字段时各有效标志为 false）。
+  jodell::GripperFeedbackSample lastSample(Side side) const;
+  // worker 进程内 DLL 路径：最近一次内联读取的原码；电流来自 getClawCurrentTorque，状态位编码未知不解析。
+  jodell::GripperFeedbackSample lastDllSample(Side side) const;
 
  private:
 #ifdef _WIN32
@@ -98,6 +107,8 @@ class JodellGripperDriver {
   std::array<double, 2> targetMm_{{0.0, 0.0}};
   std::array<double, 2> positionMm_{{-1.0, -1.0}};
   std::string lastError_;
+  std::array<jodell::GripperFeedbackSample, 2> lastSample_{};
+  std::array<jodell::GripperFeedbackSample, 2> lastDllSample_{};
 
 #ifdef _WIN32
   void closeUnlocked();

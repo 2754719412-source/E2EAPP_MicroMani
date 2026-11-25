@@ -24,6 +24,7 @@ from backend.core.participation import scoped_config
 from backend.core.config import SettingsService
 from backend.core.defaults import ICF_KINEMATICS_DEFAULTS, ICF_TELEOP_DEFAULTS
 from backend.core.gripper_force import effective_grip_torque
+from backend.services.gripper_backend import hal_gripper_sampling_fields
 from backend.core.logging import LogService, now_ms
 from backend.core.motion_safety import MotionSafetyGate, MotionSafetyToken, motion_operation
 from backend.core.motion_limits import (
@@ -1483,6 +1484,7 @@ class TeleopMappingService:
             "gripperProcessWorkersEnabled": bool(gripper.get("processWorkersEnabled", True)),
             "jodellWorkerExePath": str(gripper.get("jodellWorkerExePath", "")),
             "gripperWorkerCommandTimeoutMs": float(worker_timeout),
+            **hal_gripper_sampling_fields(config),
             "leftGapMinMm": float(gripper_teleop.get("leftGapMinMm", 0.0)),
             "leftGapMaxMm": float(gripper_teleop.get("leftGapMaxMm", 25.0)),
             "rightGapMinMm": float(gripper_teleop.get("rightGapMinMm", 0.0)),

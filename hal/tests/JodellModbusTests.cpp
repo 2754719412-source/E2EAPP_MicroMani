@@ -1,4 +1,5 @@
-// 离线测试：钧舵 Modbus 帧与手册 A.1 第 7 章示例逐字节一致，worker 样本字段往返无损；不打开串口。
+// 离线测试：钧舵 Modbus 帧与手册 A.1 第 7 章示例逐字节一致，worker 样本字段往返无损，
+// 以及 worker 的使能/故障/应答校验逻辑（模拟设备）；不打开串口。
 #include <cstdint>
 #include <iostream>
 #include <sstream>
@@ -6,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#include "JodellModbus.h"
+#include "JodellModbusClient.h"
 
 using namespace appstation::hal::jodell;
 namespace {
@@ -83,6 +84,100 @@ void sampleFieldsRoundTrip() {
   require(parseSampleFields(split("OK\t1\tm\t" + formatSampleFields(bad)), 3, &parsed) && !parsed.currentValid,
       "out-of-range current invalid");
 }
+// 模拟夹爪：按收到的帧更新寄存器并生成应答；activationPolls 次读之后使能完成。
+class FakeDevice final : public ModbusTransport {
+ public:
+  int slave{9};
+  bool activated{false};
+  int activationPolls{2};
+  int fault{0};
+  int position{0};
+  bool exceptionOnRead{false};
+  std::vector<std::vector<std::uint8_t>> requests;
+
+  bool exchange(const std::vector<std::uint8_t>& request, std::size_t, std::vector<std::uint8_t>* response,
+      std::string* error) override {
+    requests.push_back(request);
+    if (request[1] == kReadInputRegisters) {
+      if (exceptionOnRead) {
+        *response = withCrc({static_cast<std::uint8_t>(slave), 0x84, 0x04});
+        return true;
+      }
+      if (pendingActivation > 0 && --pendingActivation == 0) activated = true;
+      const int low = (activated ? 0x01 : 0) | (activated ? 0x30 : 0x10) | 0x08;
+      *response = withCrc({static_cast<std::uint8_t>(slave), 0x04, 6, 0, static_cast<std::uint8_t>(low),
+          static_cast<std::uint8_t>(position), static_cast<std::uint8_t>(fault), 3, 0});
+      return true;
+    }
+    if (request[1] == kWriteMultipleRegisters) {
+      if (request[5] == 1 && request[8] == 1) pendingActivation = activationPolls;
+      if (request[5] == 3) position = request[9];
+      *response = withCrc({request[0], request[1], request[2], request[3], request[4], request[5]});
+      return true;
+    }
+    *error = "unexpected request";
+    return false;
+  }
+
+ private:
+  int pendingActivation{0};
+};
+
+JodellModbusClient client(FakeDevice& device) {
+  static std::int64_t now = 0;
+  return JodellModbusClient(device, device.slave, 26.0, [] { return now += 1000; }, [](int) {});
+}
+
+void clientActivatesOnlyWhenNeeded() {
+  FakeDevice device;
+  auto gripper = client(device);
+  GripperFeedbackSample sample;
+  std::string message;
+  require(gripper.moveTo(5.0, 64, 30, 1500, &sample, &message), "move after activation failed");
+  require(device.requests[1] == activationRequest(9, true), "activation not written");
+  require(device.requests.back() == moveRequest(9, positionRawForGapMm(5.0, 26.0), 64, 30), "move frame wrong");
+  require(device.position == positionRawForGapMm(5.0, 26.0), "device did not move");
+  const auto before = device.requests.size();
+  require(gripper.moveTo(10.0, 64, 30, 1500, &sample, &message), "second move failed");
+  require(device.requests.size() == before + 2, "activated gripper was activated again");
+  for (std::size_t i = before; i < device.requests.size(); ++i) {
+    require(device.requests[i] != activationRequest(9, true), "re-activation sent");
+  }
+}
+
+void clientRejectsFaultAndActivationTimeout() {
+  FakeDevice faulted;
+  faulted.activated = true;
+  faulted.fault = 0x0B;
+  auto gripper = client(faulted);
+  GripperFeedbackSample sample;
+  std::string message;
+  require(!gripper.moveTo(5.0, 64, 30, 1500, &sample, &message) && message.find("fault") != std::string::npos,
+      "fault not rejected");
+  require(faulted.requests.size() == 1, "faulted gripper received a write");
+
+  FakeDevice stuck;
+  stuck.activationPolls = 1000000;
+  auto slow = client(stuck);
+  require(!slow.moveTo(5.0, 64, 30, 50, &sample, &message) && message.find("activation timeout") != std::string::npos,
+      "activation timeout not reported");
+  require(stuck.requests.back()[1] == kReadInputRegisters, "move sent without activation");
+}
+
+void clientReadMarksExceptionInvalid() {
+  FakeDevice device;
+  device.activated = true;
+  device.position = 200;
+  auto gripper = client(device);
+  GripperFeedbackSample sample;
+  std::string error;
+  require(gripper.readSample(&sample, &error) && sample.positionRaw == 200 && sample.currentRaw == 3, "read failed");
+  require(sample.monotonicUs > 0 && sample.transport == "modbus", "sample stamp missing");
+  require(std::abs(gripper.gapMm(sample) - gapMmForPositionRaw(200, 26.0)) < 1e-9, "gap conversion");
+  device.exceptionOnRead = true;
+  require(!gripper.readSample(&sample, &error) && !sample.positionValid && !sample.currentValid, "exception valid");
+  require(error.find("exception") != std::string::npos, "exception not reported");
+}
 }  // namespace
 
 int main() {
@@ -91,6 +186,9 @@ int main() {
     statusParsesManualReplies();
     positionConversionMatchesDriver();
     sampleFieldsRoundTrip();
+    clientActivatesOnlyWhenNeeded();
+    clientRejectsFaultAndActivationTimeout();
+    clientReadMarksExceptionInvalid();
   } catch (const std::exception& error) {
     std::cerr << "JodellModbusTests failed: " << error.what() << '\n';
     return 1;
