@@ -32,6 +32,8 @@ ICF_CAMERA_TUNING_DEFAULTS_VERSION = "auto_awb_exposure_20260616"
 ICF_CAMERA_DEFAULTS: dict[str, Any] = {
     "global": "IMX335 / index 0",
     "globalIdentity": "20250606105",
+    "microscopeEnabled": False,
+    "microscopeIdentity": "",
     "wristLeft": "index -1",
     "wristLeftIdentity": "",
     "wristRight": "index -1",

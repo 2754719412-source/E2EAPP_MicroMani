@@ -113,6 +113,7 @@ const cameraLabels = {
   global: '全局相机',
   wrist_left: '左腕相机',
   wrist_right: '右腕相机',
+  microscope: '显微相机',
 } as const
 type RecordResetSide = ManualControlState['selectedSide']
 const defaultRecordResetRequiredSides: RecordResetSide[] = ['left']
@@ -1307,6 +1308,7 @@ function reportFromSavedEpisode(fallback: RecordQualityReport, episode?: RecordE
       global: drops.global ?? fallback.cameraDrops.global,
       wristLeft: drops.wrist_left ?? fallback.cameraDrops.wristLeft,
       wristRight: drops.wrist_right ?? fallback.cameraDrops.wristRight,
+      microscope: drops.microscope,
     },
     warnings,
     passed: warnings.length === 0,

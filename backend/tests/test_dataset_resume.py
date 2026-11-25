@@ -54,6 +54,24 @@ def change_json(path, change):
     path.write_text(json.dumps(data), encoding="utf-8")
 
 
+def test_microscope_participation_cannot_change_when_resuming(recorded):
+    recorder, root, config = recorded
+    config["storage"]["recordFps"] = 60
+    change_json(root / "meta/info.json", lambda info: info.update(fps=60))
+    config["cameras"].update(microscopeEnabled=True, microscopeIdentity="microscope-serial")
+    assert "显微相机" in recorder._dataset_resume_error(root, config)
+    change_json(root / "meta/info.json", lambda info: info.update(features=recorder._native_features(config)))
+    def set_camera_metadata(metadata):
+        metadata["hardware"].update(cameras=config["cameras"],
+                                    cameraResolutions=recorder._camera_resolution_summary_from_config(config))
+    change_json(root / "meta/appstation_info.json", set_camera_metadata)
+    assert recorder._dataset_resume_error(root, config) == ""
+    config["cameras"]["microscopeIdentity"] = "different-device"
+    assert "身份" in recorder._dataset_resume_error(root, config)
+    config["cameras"]["microscopeEnabled"] = False
+    assert "显微相机" in recorder._dataset_resume_error(root, config)
+
+
 def test_compatible_resume_and_enumeration_changes_are_allowed(recorded):
     recorder, root, config = recorded
     config["cameras"]["wristLeft"] = "index 9"

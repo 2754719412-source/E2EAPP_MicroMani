@@ -11,6 +11,7 @@ import type {
   AppConfig,
   CameraTelemetry,
   DatasetApi,
+  DatasetCameraKeyApi,
   DatasetEpisodeApi,
   DatasetEpisodeStatusApi,
   LogEntry,
@@ -435,6 +436,13 @@ export const reconnectCamera = (camera: CameraTelemetry['key']) =>
 export const applyCameraTuning = (camera: CameraTelemetry['key'], config?: AppConfig) =>
   postCommand(`/cameras/${camera}/tuning/apply`, config)
 
+export async function microscopeCandidates(): Promise<{ identity: string; name: string }[]> {
+  if (mockMode) return []
+  const response = await fetch(`${apiBase}/api/cameras/microscope/candidates`)
+  if (!response.ok) throw new Error(`显微设备扫描失败（${response.status}）`)
+  return (await response.json()).data.devices
+}
+
 export interface WristCameraCandidate {
   index: number
   devicePath: string
@@ -669,8 +677,8 @@ export interface RecordEpisodeSaveApi {
   lateFrames?: number
   maxForceLeft?: number
   maxForceRight?: number
-  cameraDrops?: Partial<Record<'global' | 'wrist_left' | 'wrist_right', number>>
-  cameraMinFps?: Partial<Record<'global' | 'wrist_left' | 'wrist_right', number>>
+  cameraDrops?: Partial<Record<DatasetCameraKeyApi, number>>
+  cameraMinFps?: Partial<Record<DatasetCameraKeyApi, number>>
   cameraWorkerFallbacks?: string[]
   maxSkewMs?: number
   warnings?: string[]

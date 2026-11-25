@@ -6,6 +6,8 @@
  */
 import type { AppConfig, DiagnosticItem, LogChannel } from './types'
 
+export const microscopeFps = 60
+
 export const axisNames = [
   'L-X',
   'L-Y',
@@ -412,6 +414,8 @@ export const defaultConfig: AppConfig = {
     wristLeftIdentity: '',
     wristRight: 'index -1',
     wristRightIdentity: '',
+    microscopeEnabled: false,
+    microscopeIdentity: '',
     previewResolution: '640x480',
     globalResolution: '640x480',
     wristLeftResolution: '640x480',

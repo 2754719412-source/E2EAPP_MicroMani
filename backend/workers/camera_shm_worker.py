@@ -102,6 +102,7 @@ class _ShmCaptureWorker(_CameraCaptureWorker):
             startup.get("profile"),
             [(int(backend), str(label)) for backend, label in startup["backendCandidates"]],
             status_queue, command_queue, int(parent_pid) if parent_pid is not None else None,
+            str(startup.get("fourcc", "YUYV")),
         )
         self.shm_name = str(startup["shmName"])
 

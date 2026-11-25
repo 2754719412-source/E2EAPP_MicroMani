@@ -56,7 +56,7 @@ export interface DiagnosticItem {
 }
 
 export interface CameraTelemetry {
-  key: 'global' | 'wrist_left' | 'wrist_right'
+  key: DatasetCameraKeyApi
   label: string
   fps: number
   timestampSkewMs: number
@@ -341,7 +341,7 @@ export interface EpisodeRecord {
   maxForceLeft: number
   maxForceRight: number
   lateFrames: number
-  cameraDrops: { global: number; wristLeft: number; wristRight: number }
+  cameraDrops: { global: number; wristLeft: number; wristRight: number; microscope?: number }
 }
 
 export interface RecordTrainingQualitySide {
@@ -376,14 +376,14 @@ export interface RecordQualityAssessment {
   recommendation: 'accept' | 'review' | 'rerecord'
   reasons: RecordQualityReason[]
   lateRate?: number
-  cameraDropRates?: Partial<Record<'global' | 'wrist_left' | 'wrist_right', number>>
+  cameraDropRates?: Partial<Record<DatasetCameraKeyApi, number>>
 }
 
 export interface RecordQualityReport extends EpisodeRecord {
   warnings: string[]
   passed: boolean
   maxSkewMs?: number
-  cameraMinFps?: Partial<Record<'global' | 'wrist_left' | 'wrist_right', number>>
+  cameraMinFps?: Partial<Record<DatasetCameraKeyApi, number>>
   cameraWorkerFallbacks?: string[]
   trainingQuality?: RecordTrainingQuality
   qualityAssessment?: RecordQualityAssessment
@@ -425,7 +425,7 @@ export interface RecordSessionState {
 }
 
 export type DatasetEpisodeStatusApi = 'valid' | 'review' | 'invalid'
-export type DatasetCameraKeyApi = 'global' | 'wrist_left' | 'wrist_right'
+export type DatasetCameraKeyApi = 'global' | 'wrist_left' | 'wrist_right' | 'microscope'
 
 export interface DatasetFeatureApi {
   dtype?: string
@@ -593,13 +593,15 @@ export interface AppConfig {
     wristLeftIdentity?: string
     wristRight: string
     wristRightIdentity?: string
+    microscopeEnabled?: boolean
+    microscopeIdentity?: string
     previewResolution: string
     globalResolution?: string
     wristLeftResolution?: string
     wristRightResolution?: string
     fps: number
     tuningDefaultsVersion?: string
-    tuning: Record<CameraTelemetry['key'], CameraTuningProfile>
+    tuning: Record<Exclude<DatasetCameraKeyApi, 'microscope'>, CameraTuningProfile>
   }
   force: {
     source: 'nidaq' | 'hkvl_serial'

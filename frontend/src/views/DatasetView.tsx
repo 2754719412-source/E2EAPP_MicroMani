@@ -44,7 +44,7 @@ import { camerasEqual, useFrameField } from '../stores/frameSelectors'
 import { useTelemetryStore } from '../stores/telemetry'
 import type { EpisodeRecord } from '../types'
 
-type CameraKey = 'global' | 'wrist_left' | 'wrist_right'
+type CameraKey = 'global' | 'wrist_left' | 'wrist_right' | 'microscope'
 type EpisodeStatus = DatasetEpisodeStatusApi
 
 interface EpisodeSample {
@@ -100,6 +100,7 @@ const cameras: ReviewCamera[] = [
   { key: 'global', label: '全局相机', model: 'IMX335', resolution: '1920x1080', aspectRatio: '16 / 9' },
   { key: 'wrist_left', label: '左腕相机', model: 'IMX335', resolution: '1920x1080', aspectRatio: '16 / 9' },
   { key: 'wrist_right', label: '右腕相机', model: 'IMX335', resolution: '1920x1080', aspectRatio: '16 / 9' },
+  { key: 'microscope', label: '显微相机', model: '4K UHD', resolution: '3840x2160', aspectRatio: '16 / 9' },
 ]
 
 const axisLabels = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw']
@@ -152,7 +153,7 @@ function makeEpisode(id: string, index: number, quality: number, status: Episode
 /** 将后端或录制数据转换为复核页可用的数据模型。 */
 function episodeFromRecord(record: EpisodeRecord, datasetName: string): ReviewEpisode {
   const frames = Math.max(90, record.frameCount || 150)
-  const quality = Math.max(60, Math.min(99, 96 - record.lateFrames * 3 - Math.max(record.cameraDrops.global, record.cameraDrops.wristLeft, record.cameraDrops.wristRight) * 4))
+  const quality = Math.max(60, Math.min(99, 96 - record.lateFrames * 3 - Math.max(record.cameraDrops.global, record.cameraDrops.wristLeft, record.cameraDrops.wristRight, record.cameraDrops.microscope ?? 0) * 4))
   return {
     id: `${datasetName}-${record.index}`,
     name: `episode_${String(record.index).padStart(4, '0')}`,
@@ -215,7 +216,7 @@ function datasetFromApi(dataset: DatasetApi): ReviewDataset {
 /** 选择当前复核流程需要的数据。 */
 function camerasForReview(dataset: ReviewDataset, episode: ReviewEpisode): ReviewCamera[] {
   const resolutions = episode.cameraResolutions ?? dataset.cameraResolutions ?? {}
-  return cameras.map((camera) => {
+  return cameras.filter(({ key }) => key !== 'microscope' || resolutions.microscope).map((camera) => {
     const resolution = resolutions[camera.key]
     const saved = resolution?.saved || camera.resolution
     const capture = resolution?.capture || 'native'

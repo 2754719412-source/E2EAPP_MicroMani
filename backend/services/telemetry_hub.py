@@ -12,6 +12,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from importlib import import_module
 from typing import Any, Literal
 
+from backend.core.camera_roles import MICROSCOPE_FPS
 from backend.core.config import SettingsService
 from backend.core.schemas import CameraTelemetry, Omega7Telemetry, ProcessStatus, TelemetryFrame
 from backend.services.hardware_service import HardwareService
@@ -349,7 +350,7 @@ class TelemetryHub:
 
     def _cameras(self, elapsed: float, config: dict[str, Any]) -> list[CameraTelemetry]:
         if os.environ.get("APPSTATION_DISABLE_CAMERA_PROBE", "").strip().lower() in {"1", "true", "yes", "on"}:
-            return self._offline_cameras("pending")
+            return self._offline_cameras("pending", config)
         if self.hardware is not None and self._real_hardware_mode(config):
             self._refresh_cameras(config, time.monotonic())
             return list(self._cached_cameras)
@@ -378,7 +379,8 @@ class TelemetryHub:
                 frameAgeMs=29 + math.sin(elapsed * 1.5) * 5,
                 health="ok",
             ),
-        ]
+        ] + ([CameraTelemetry(key="microscope", label="显微相机", fps=MICROSCOPE_FPS, timestampSkewMs=0,
+                              frameAgeMs=0, health="ok")] if config.get("cameras", {}).get("microscopeEnabled") else [])
 
     def _teleop_hands(
         self,
@@ -635,7 +637,7 @@ class TelemetryHub:
                 result = self._camera_future.result()
                 self._cached_cameras = list(result.cameras)
             except Exception:
-                self._cached_cameras = self._offline_cameras("error")
+                self._cached_cameras = self._offline_cameras("error", config)
             finally:
                 self._camera_future = None
         if self._camera_future is None and now - self._last_camera_sample_at >= 1.0:
@@ -690,7 +692,7 @@ class TelemetryHub:
         # gripper commands behind the periodic sampling.
         # Toggle for the next cycle so each gripper still gets a fresh reading
         # roughly every 2× the gripper sample period (default 1s -> 2s/side).
-    def _offline_cameras(self, health: Literal["ok", "warn", "error", "checking", "pending"]) -> list[CameraTelemetry]:
+    def _offline_cameras(self, health: Literal["ok", "warn", "error", "checking", "pending"], config: dict[str, Any] | None = None) -> list[CameraTelemetry]:
         return [
             CameraTelemetry(
                 key="global",
@@ -716,4 +718,5 @@ class TelemetryHub:
                 frameAgeMs=9999,
                 health=health,
             ),
-        ]
+        ] + ([CameraTelemetry(key="microscope", label="显微相机", fps=0, timestampSkewMs=0,
+                              frameAgeMs=9999, health=health)] if (config or {}).get("cameras", {}).get("microscopeEnabled") else [])

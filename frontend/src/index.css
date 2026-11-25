@@ -1235,7 +1235,7 @@ select {
 
 .record-camera-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.22fr) repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: start;
   gap: 8px;
 }
@@ -1286,6 +1286,42 @@ select {
     radial-gradient(circle at center, rgba(27, 108, 243, 0.12), transparent 45%);
   background-size: 24px 24px, 24px 24px, 100% 100%;
 }
+
+.record-camera-microscope {
+  aspect-ratio: 16 / 9;
+}
+
+.record-microscope-reserved {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 112px;
+  border: 1px dashed #7e9eab;
+  background: #edf4f6;
+  color: #304f5b;
+  font-size: 12px;
+}
+
+.microscope-fullscreen {
+  position: absolute;
+  right: 6px;
+  bottom: 24px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #ffffff80;
+  border-radius: 4px;
+  background: #132630c9;
+  color: white;
+  cursor: pointer;
+}
+.record-camera-microscope:fullscreen { width: 100vw; height: 100vh; }
+
+.record-microscope-reserved span { font-size: 11px; }
+.record-microscope-reserved a { color: #165c75; text-underline-offset: 3px; }
 
 .record-camera-placeholder-wrist_left,
 .record-camera-placeholder-wrist_right {
@@ -4631,9 +4667,7 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .record-camera-panel:first-child {
-    grid-column: 1 / -1;
-  }
+
 
   .record-telemetry-grid {
     grid-template-columns: 1fr;

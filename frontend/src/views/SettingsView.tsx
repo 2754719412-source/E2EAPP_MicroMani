@@ -31,6 +31,7 @@ import { canAcknowledgeControlSafety } from '../utils/controlSafety'
 import { GripperCard } from './settings/GripperCards'
 import { MotionCard } from './settings/MotionCards'
 import { TeleopHandCard } from './settings/TeleopHandCard'
+import { MicroscopeCameraCard } from './settings/MicroscopeCameraCard'
 import { CameraCard } from './settings/CameraCard'
 import { WristCameraIdentification } from '../components/WristCameraIdentification'
 import { ForceSensorCard } from './settings/ForceSensorCard'
@@ -60,6 +61,7 @@ const hashLabels: Record<string, string> = {
   teleop: 'PICO-4 视觉推流',
   'motion-left': '左运动控制卡',
   'motion-right': '右运动控制卡',
+  'camera-microscope': '显微成像单元',
   'camera-global': '全局相机',
   'camera-left': '左腕相机',
   'camera-right': '右腕相机',
@@ -424,6 +426,8 @@ export function SettingsView() {
               config: { ...state.config, cameras: savedCameras },
             }))} />
             <div className="hardware-settings-grid">
+              <MicroscopeCameraCard config={config} camera={cameras.find((item) => item.key === 'microscope')}
+                updateConfig={updateConfig} focusHash={focusHash} />
               {cameraOrder.map((key) => (
                 <CameraCard
                   key={key}

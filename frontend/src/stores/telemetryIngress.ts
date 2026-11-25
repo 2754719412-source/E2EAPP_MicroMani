@@ -28,7 +28,7 @@ export function parseTelemetryFrame(value: unknown): TelemetryFrame {
     if (!isWireRecord(group) || !fields.every(field => finite(group[field]))) fail(key)
   }
   if (!Array.isArray(value.cameras) || !value.cameras.every(camera => isWireRecord(camera)
-    && ['global', 'wrist_left', 'wrist_right'].includes(String(camera.key))
+    && ['global', 'wrist_left', 'wrist_right', 'microscope'].includes(String(camera.key))
     && typeof camera.label === 'string'
     && ['ok', 'warn', 'error', 'checking', 'pending'].includes(String(camera.health))
     && ['fps', 'timestampSkewMs', 'frameAgeMs'].every(key => finite(camera[key])))) fail('cameras')

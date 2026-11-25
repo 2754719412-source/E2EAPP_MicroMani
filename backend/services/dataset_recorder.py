@@ -38,6 +38,7 @@ from backend.services.dataset_resume import resume_metadata_error
 from backend.services.dataset_episode_index import match_records, read_native_index
 
 from backend.core.participation import participation, action_mask, hardware_sides, source_sides, scoped_config
+from backend.core.camera_roles import CAMERA_KEYS, MICROSCOPE_FPS, MICROSCOPE_SIZE, STANDARD_CAMERA_KEYS, active_camera_keys
 from backend.core.config import SettingsService
 from backend.core.data_contract import (
     data_contract_metadata,
@@ -58,17 +59,18 @@ from backend.services.telemetry_hub import TelemetryHub
 from backend.services.teleop_mapping import TeleopMappingService
 
 SAFE_ID = re.compile(r"[^A-Za-z0-9_.-]+")
-CAMERA_KEYS: tuple[str, str, str] = ("global", "wrist_left", "wrist_right")
 # 这些 feature 名称需要和 LeRobot 数据集字段保持稳定，前后端按它们读取图像。
 CAMERA_FEATURE_KEYS: dict[str, str] = {
     "global": "observation.images.global",
     "wrist_left": "observation.images.wrist_left",
     "wrist_right": "observation.images.wrist_right",
+    "microscope": "observation.images.microscope",
 }
 CAMERA_CAPTURE_SIZES: dict[str, tuple[int, int]] = {
     "global": (640, 480),
     "wrist_left": (640, 480),
     "wrist_right": (640, 480),
+    "microscope": MICROSCOPE_SIZE,
 }
 STATE_FEATURE_NAMES: tuple[str, ...] = (
     "left_x_um",
@@ -549,9 +551,14 @@ class FrameAssembler:
         if selected:
             observation_state = [v if active else 0. for v, active in zip(observation_state, action_mask(selected))]
         image_payload: dict[str, Any] = {}
-        for camera, source in CAMERA_SOURCE_KEYS.items():
+        for camera in active_camera_keys(config):
+            source = CAMERA_SOURCE_KEYS[camera]
             feature_key = CAMERA_FEATURE_KEYS[camera]
             camera_sample = recorder._aligned_sample(source, target_monotonic_s)
+            if camera == "microscope" and recorder._real_hardware_mode(config) and (
+                not camera_sample.ok or camera_sample.stale or camera_sample.value is None
+            ):
+                raise RuntimeError(f"显微相机缺少同步 4K 帧：{camera_sample.message}")
             image_payload[feature_key] = (
                 camera_sample.value
                 if camera_sample.value is not None
@@ -744,7 +751,7 @@ class DatasetRecorderService:
         self._episode_frames = 0
         self._queued_episode_frames = 0
         self._episode_late_frames = 0
-        self._camera_drops = {key: 0 for key in CAMERA_KEYS}
+        self._camera_drops = {key: 0 for key in STANDARD_CAMERA_KEYS}
         self._camera_min_fps: dict[str, float] = {}
         self._camera_worker_fallbacks: set[str] = set()
         self._tick_target_monotonic_s = 0.0
@@ -901,7 +908,8 @@ class DatasetRecorderService:
                 self._last_native_camera_frames = {}
                 self._last_native_gripper_sample = None
                 self._assembly_queue = asyncio.Queue(maxsize=ASSEMBLY_QUEUE_MAX_FRAMES)
-                self._write_queue = queue.Queue(maxsize=WRITE_QUEUE_MAX_FRAMES)
+                write_capacity = 16 if "microscope" in active_camera_keys(config) else WRITE_QUEUE_MAX_FRAMES
+                self._write_queue = queue.Queue(maxsize=write_capacity)
                 self._writer_thread = LeRobotWriterThread(self, self._write_queue)
                 self._writer_thread.start()
         except (asyncio.CancelledError, Exception):
@@ -2030,9 +2038,11 @@ class DatasetRecorderService:
         return {
             source: TimedRingBuffer(
                 retention_s=retention_s,
-                maxlen=max(8, int(self._source_sample_rate_hz(source, config) * retention_s) + 4),
+                # 一帧 4K RGB 约 24 MiB，显微源只保留对齐窗口所需的近期帧。
+                maxlen=16 if source == "camera_microscope" else max(8, int(self._source_sample_rate_hz(source, config) * retention_s) + 4),
             )
             for source in SOURCE_KEYS
+            if source != "camera_microscope" or "microscope" in active_camera_keys(config)
         }
 
     def _sample_buffer_retention_s(self, config: dict[str, Any]) -> float:
@@ -2339,6 +2349,8 @@ class DatasetRecorderService:
         self._sampler_stop_event.clear()
         config = self._recording_config()
         for source in SOURCE_KEYS:
+            if source == "camera_microscope" and "microscope" not in active_camera_keys(config):
+                continue
             if source == "force" and not self._record_force_enabled(config):
                 continue
             thread = self._sampler_threads.get(source)
@@ -3383,6 +3395,8 @@ class DatasetRecorderService:
             return min(max(self._force_sample_hz_from_config(config), 1.0), 200.0)
         if source == "gripper":
             return min(max(self._positive_ratio(config.get("gripper", {}).get("sampleHz"), 30.0), 1.0), 60.0)
+        if source == "camera_microscope":
+            return MICROSCOPE_FPS
         if source in CAMERA_KEY_BY_SOURCE:
             return min(max(self._positive_ratio(config.get("cameras", {}).get("fps"), self._record_fps_hz), 1.0), 60.0)
         return min(max(float(self._record_fps_from_config(config)), 1.0), 60.0)
@@ -3532,9 +3546,12 @@ class DatasetRecorderService:
         }
         images = frame.get("images", {})
         if isinstance(images, dict):
-            for feature_key in CAMERA_FEATURE_KEYS.values():
+            for camera in active_camera_keys(self._recording_config()):
+                feature_key = CAMERA_FEATURE_KEYS[camera]
                 image = images.get(feature_key)
                 if image is None:
+                    if camera == "microscope":
+                        raise ValueError("显微通道缺少待写入的图像")
                     image = self._synthetic_camera_frame(feature_key)
                 native_frame[feature_key] = image
         return native_frame
@@ -3715,7 +3732,7 @@ class DatasetRecorderService:
         self._episode_frames = 0
         self._queued_episode_frames = 0
         self._episode_late_frames = 0
-        self._camera_drops = {key: 0 for key in CAMERA_KEYS}
+        self._camera_drops = {key: 0 for key in active_camera_keys(self._recording_config())}
         self._camera_min_fps = {}
         self._camera_worker_fallbacks = set()
         self._tick_target_monotonic_s = 0.0
@@ -4265,7 +4282,8 @@ class DatasetRecorderService:
             "observation.force_right": {"dtype": "float32", "shape": (6,), "names": list(FORCE_FEATURE_NAMES)},
             "action": {"dtype": "float32", "shape": (14,), "names": list(STATE_FEATURE_NAMES)},
         }
-        for key, feature_key in CAMERA_FEATURE_KEYS.items():
+        for key in active_camera_keys(config):
+            feature_key = CAMERA_FEATURE_KEYS[key]
             width, height = CAMERA_CAPTURE_SIZES[key]
             features[feature_key] = {
                 "dtype": image_dtype,
@@ -4319,7 +4337,8 @@ class DatasetRecorderService:
             "batch_encoding_size": 1,
             "vcodec": self._native_vcodec(),
             "streaming_encoding": True,
-            "encoder_queue_maxsize": self._native_encoder_queue_maxsize(),
+            "encoder_queue_maxsize": min(self._native_encoder_queue_maxsize(), 12)
+            if "microscope" in active_camera_keys(self._recording_config()) else self._native_encoder_queue_maxsize(),
             "encoder_threads": self._native_encoder_threads(),
         }
 
@@ -4430,8 +4449,8 @@ class DatasetRecorderService:
                     saved["participation"] = selections[0]
         try:
             expected_features = self._native_features(config)
-            for name in CAMERA_FEATURE_KEYS.values():
-                expected_features[name]["dtype"] = "video" if self._native_use_videos_requested() else "image"
+            for camera in active_camera_keys(config):
+                expected_features[CAMERA_FEATURE_KEYS[camera]]["dtype"] = "video" if self._native_use_videos_requested() else "image"
             reason = resume_metadata_error(
                 info, saved,
                 fps=self._record_fps_from_config(config),
@@ -4507,6 +4526,8 @@ class DatasetRecorderService:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         width, height = CAMERA_CAPTURE_SIZES.get(camera, CAMERA_CAPTURE_SIZES["global"])
         if rgb.shape[:2] != (height, width):
+            if camera == "microscope":
+                raise ValueError(f"显微相机需要原生 3840×2160，实际为 {rgb.shape[1]}×{rgb.shape[0]}")
             rgb = cv2.resize(rgb, (width, height), interpolation=cv2.INTER_AREA)
         return rgb
 
@@ -4520,6 +4541,8 @@ class DatasetRecorderService:
         rgb = np.asarray(frame, dtype=np.uint8)
         width, height = CAMERA_CAPTURE_SIZES.get(camera, CAMERA_CAPTURE_SIZES["global"])
         if rgb.shape[:2] != (height, width):
+            if camera == "microscope":
+                raise ValueError(f"显微相机需要原生 3840×2160，实际为 {rgb.shape[1]}×{rgb.shape[0]}")
             rgb = cv2.resize(rgb, (width, height), interpolation=cv2.INTER_AREA)
         return rgb
 
@@ -4539,7 +4562,7 @@ class DatasetRecorderService:
         )
         frame[:, :, 0] = (camera_index + 1) * 45
         frame[:, :, 1] = (self._episode_frames * 7) % 255
-        frame[:, :, 2] = (camera_index + 1) * 70
+        frame[:, :, 2] = ((camera_index + 1) * 70) % 256
         return frame
 
     def _camera_placeholder_value(self, feature_key: str) -> Any:
@@ -4548,7 +4571,10 @@ class DatasetRecorderService:
 
     def _last_camera_value(self, feature_key: str) -> Any:
         """返回最近成功采集的相机帧，缺失时生成占位图像。"""
-        return self._last_native_camera_frames.get(feature_key) or self._synthetic_camera_frame(feature_key)
+        cached = self._last_native_camera_frames.get(feature_key)
+        if cached is not None or feature_key == CAMERA_FEATURE_KEYS["microscope"]:
+            return cached
+        return self._synthetic_camera_frame(feature_key)
 
     def _np_float32(self, values: object) -> Any:
         """在 numpy 可用时把数值序列转换为 float32 数组。"""
@@ -4560,6 +4586,8 @@ class DatasetRecorderService:
 
     def _record_fps_from_config(self, config: dict[str, Any]) -> int:
         """从配置中读取录制 FPS，并限制在 1 到 60。"""
+        if "microscope" in active_camera_keys(config):
+            return MICROSCOPE_FPS
         try:
             raw = float(config.get("storage", {}).get("recordFps") or config.get("cameras", {}).get("fps", 30))
         except (TypeError, ValueError):
@@ -4671,32 +4699,38 @@ class DatasetRecorderService:
         """从 AppStation 或 info 元数据汇总相机分辨率信息。"""
         info = self._read_json(dataset_dir / "meta" / "info.json")
         app_info = self._read_json(dataset_dir / "meta" / "appstation_info.json")
-        hardware = app_info.get("hardware") if app_info else info.get("hardware", {})
-        if isinstance(hardware, dict):
-            existing = hardware.get("cameraResolutions")
-            if isinstance(existing, dict):
-                return existing
-            return self._camera_resolution_summary_from_config({"cameras": hardware.get("cameras", {})})
-        return self._camera_resolution_summary_from_config({})
+        hardware = (app_info.get("hardware") if app_info else info.get("hardware")) or {}
+        if not isinstance(hardware, dict):
+            hardware = {}
+        existing = hardware.get("cameraResolutions")
+        if isinstance(existing, dict):
+            return existing
+        stored_cameras = hardware.get("cameras")
+        cameras = dict(stored_cameras) if isinstance(stored_cameras, dict) else {}
+        if CAMERA_FEATURE_KEYS["microscope"] in (info.get("features") or {}):
+            cameras["microscopeEnabled"] = True
+        return self._camera_resolution_summary_from_config({"cameras": cameras})
 
     def _camera_resolution_summary_from_config(self, config: dict[str, Any]) -> dict[str, dict[str, str]]:
         """根据当前配置生成各相机物理、采集、预览和保存分辨率摘要。"""
         cameras = config.get("cameras", {}) if isinstance(config.get("cameras"), dict) else {}
         preview = str(cameras.get("previewResolution", "native"))
         result: dict[str, dict[str, str]] = {}
-        for key in CAMERA_KEYS:
+        for key in active_camera_keys(config):
             width, height = CAMERA_CAPTURE_SIZES[key]
             configured = self._configured_camera_resolution(cameras, key)
             result[key] = {
                 "physical": str(cameras.get(f"{key}PhysicalResolution", "native")),
                 "capture": configured,
-                "preview": preview,
+                "preview": configured if key == "microscope" else preview,
                 "saved": f"{width}x{height}",
             }
         return result
 
     def _configured_camera_resolution(self, cameras: dict[str, Any], camera: str) -> str:
         """按相机键名读取对应采集分辨率配置。"""
+        if camera == "microscope":
+            return "3840x2160"
         key = f"{camera}Resolution"
         if camera == "wrist_left":
             key = "wristLeftResolution"
@@ -4812,6 +4846,7 @@ class DatasetRecorderService:
         max_samples: int,
     ) -> list[dict[str, Any]]:
         """从 native LeRobot 数据集中抽样读取 episode 预览帧。"""
+        camera_keys = tuple(self._camera_resolution_summary(dataset_dir))
         imports = self._native_imports()
         if imports is None:
             return []
@@ -4819,12 +4854,12 @@ class DatasetRecorderService:
         try:
             dataset = self._open_native_dataset_for_read(dataset_id, dataset_dir, LeRobotDataset)
         except Exception:
-            return self._native_placeholder_episode_samples(dataset_id, episode, max_samples)
+            return self._native_placeholder_episode_samples(dataset_id, episode, max_samples, camera_keys)
         start = int(episode.get("datasetFromIndex") or 0)
         stop = int(episode.get("datasetToIndex") or min(len(dataset), start + int(episode.get("frames", 0))))
         stop = min(stop, len(dataset))
         if stop <= start:
-            return self._native_placeholder_episode_samples(dataset_id, episode, max_samples)
+            return self._native_placeholder_episode_samples(dataset_id, episode, max_samples, camera_keys)
         stride = max(1, (stop - start) // max_samples)
         samples: list[dict[str, Any]] = []
         episode_id = str(episode.get("id", ""))
@@ -4843,7 +4878,7 @@ class DatasetRecorderService:
                     f"/api/datasets/{dataset_id}/frame_image"
                     f"?episode_id={episode_id}&camera={key}&frame={frame}"
                 )
-                for key in CAMERA_KEYS
+                for key in camera_keys
             }
             samples.append(
                 {
@@ -4857,13 +4892,14 @@ class DatasetRecorderService:
                     "images": images,
                 }
             )
-        return samples or self._native_placeholder_episode_samples(dataset_id, episode, max_samples)
+        return samples or self._native_placeholder_episode_samples(dataset_id, episode, max_samples, camera_keys)
 
     def _native_placeholder_episode_samples(
         self,
         dataset_id: str,
         episode: dict[str, Any],
         max_samples: int,
+        camera_keys: tuple[str, ...] = STANDARD_CAMERA_KEYS,
     ) -> list[dict[str, Any]]:
         """Return lightweight preview rows when the native dataset is not readable yet."""
         frames = max(0, int(episode.get("frames", 0) or 0))
@@ -4878,7 +4914,7 @@ class DatasetRecorderService:
                     f"/api/datasets/{dataset_id}/frame_image"
                     f"?episode_id={episode_id}&camera={key}&frame={frame}"
                 )
-                for key in CAMERA_KEYS
+                for key in camera_keys
             }
             samples.append(
                 {
@@ -4945,7 +4981,7 @@ class DatasetRecorderService:
                         "datasetToIndex": stop,
                         "native": True,
                         "lateFrames": 0,
-                        "cameraDrops": {key: 0 for key in CAMERA_KEYS},
+                        "cameraDrops": {key: 0 for key in CAMERA_KEYS if CAMERA_FEATURE_KEYS[key] in info.get("features", {}) or key in STANDARD_CAMERA_KEYS},
                         "dropCounts": {key: 0 for key in (*CAMERA_KEYS, *SOURCE_KEYS)},
                         "staleCounts": {key: 0 for key in SOURCE_KEYS},
                         "cacheCounts": {key: 0 for key in SOURCE_KEYS},
@@ -5111,6 +5147,8 @@ class DatasetRecorderService:
         drops = drops_raw if isinstance(drops_raw, dict) else {}
         camera_drop_rates: dict[str, float] = {}
         for camera in CAMERA_KEYS:
+            if camera == "microscope" and camera not in drops:
+                continue
             count = max(0, int(drops.get(camera, 0) or 0))
             rate = count / frames
             camera_drop_rates[camera] = round(rate, 6)
@@ -5130,9 +5168,10 @@ class DatasetRecorderService:
                     fps = float(raw_fps)
                 except (TypeError, ValueError):
                     continue
-                if fps < 20.0:
+                scale = MICROSCOPE_FPS / 30 if camera == "microscope" else 1
+                if fps < 20.0 * scale:
                     add("rerecord", "camera_low_fps", f"{camera} 最低帧率仅 {fps:.1f} Hz")
-                elif fps < 25.0:
+                elif fps < 25.0 * scale:
                     add("review", "camera_low_fps", f"{camera} 最低帧率 {fps:.1f} Hz")
 
         max_skew_ms = self._float_or_zero(episode.get("maxSkewMs", 0.0))
@@ -5224,7 +5263,7 @@ class DatasetRecorderService:
             if count:
                 warnings.append(f"{key} camera drops: {count}")
         for key, fps in getattr(self, "_camera_min_fps", {}).items():
-            if fps < 25.0:
+            if fps < (25.0 * MICROSCOPE_FPS / 30 if key == "microscope" else 25.0):
                 warnings.append(f"{key} camera low fps: {round(float(fps), 1)}Hz")
         for key in sorted(getattr(self, "_camera_worker_fallbacks", set())):
             warnings.append(f"{key} camera worker fallback")
