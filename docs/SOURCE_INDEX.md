@@ -1,6 +1,6 @@
 # 完整源码索引
 
-对应同步提交 `6d898c9`。共 193 个自有源码、测试和脚本文件，均已添加中文文件头导航。阶段定义与调用链见 [阅读指南](CODE_READING_GUIDE.md)。
+对应同步提交 `6d898c9`。共 195 个自有源码、测试和脚本文件，均已添加中文文件头导航。阶段定义与调用链见 [阅读指南](CODE_READING_GUIDE.md)。
 
 “定位符号”供编辑器符号面板或全文搜索使用，不是函数执行顺序；没有声明符号的入口脚本直接从顶部读参数和流程。
 
@@ -156,12 +156,13 @@
 | [hal/src/TeleopLeaderPublisher.cpp](../hal/src/TeleopLeaderPublisher.cpp) | 把主手采样状态发布到 DDS LeaderState 主题。 | `JsonEnvelopeSample`、`JsonEnvelopeTopicDataType`、`TeleopLeaderPublisher`、`TeleopLeaderPublisher::enabled`、`TeleopLeaderPublisher::publishJson` |
 | [hal/src/TeleopMappingNode.cpp](../hal/src/TeleopMappingNode.cpp) | 订阅主手状态，调用原生映射算法，再发布 HardwareTarget。 | `JsonEnvelopeSample`、`TeleopHardwareTargetSample`、`TeleopTopicDataType`、`TeleopMappingNode`、`LeaderListener` |
 
-## 07 测试与验证（43 个文件）
+## 07 测试与验证（44 个文件）
 
 | 文件 | 职责 / 阅读重点 | 定位符号 |
 | --- | --- | --- |
 | [backend/tests/__init__.py](../backend/tests/__init__.py) | 后端测试包标识；测试用例从基础换算逐步覆盖服务、API 和源码契约。 | 从文件顶部的参数、配置或入口流程开始 |
 | [backend/tests/test_app.py](../backend/tests/test_app.py) | 回归验证：应用工厂、API 路由、配置、硬件状态、录制和安全行为的集成契约。 | `create_mock_record_client`、`test_backend_app_import_does_not_create_runtime_services`、`test_create_app_exposes_gripper_router`、`test_create_app_exposes_app_services_and_legacy_state_attrs`、`test_recording_api_contract_examples_cover_required_routes` |
+| [backend/tests/test_camera_calibration_script.py](../backend/tests/test_camera_calibration_script.py) | 回归验证：标定脚本用合成棋盘图像还原已知内参、固定原点角、记录参考位姿并识别相机移动。 | `render_view`、`test_calibration_recovers_known_intrinsics`、`test_origin_corner_follows_dark_outer_square`、`test_reference_pose_and_drift_check` |
 | [backend/tests/test_camera_format.py](../backend/tests/test_camera_format.py) | 回归验证：相机驱动与 worker 设置 YUYV 格式及采集尺寸的顺序。 | `test_camera_driver_requests_yuyv_fourcc_before_capture_dimensions`、`test_camera_worker_requests_yuyv_fourcc_before_capture_dimensions` |
 | [backend/tests/test_command_diagnostic_logging.py](../backend/tests/test_command_diagnostic_logging.py) | 回归验证：手动命令、工作原点操作与诊断日志，以及原点切换时的遥操作停止。 | `FakeSettings`、`FakeTelemetry`、`FakeHal`、`RecordingHal`、`DisabledMotionHal` |
 | [backend/tests/test_dataset_recorder.py](../backend/tests/test_dataset_recorder.py) | 回归验证：按时间戳组帧、脉冲缓存、原点快照、episode 写入及录制回滚。 | `hal_motion_fixture`、`omega_state_fixture`、`source_sample_fixture`、`force_source_fixture`、`camera_source_fixture` |
@@ -204,7 +205,7 @@
 | [frontend/src/test/setup.ts](../frontend/src/test/setup.ts) | 安装 DOM 测试断言和浏览器 API 替身，并统一测试环境清理。 | `ResizeObserverMock` |
 | [hal/tests/ForceCoreTests.cpp](../hal/tests/ForceCoreTests.cpp) | 验证 HKVL 帧解析、力安全锁存、柔顺修正及力运行时的边界行为。 | `main` |
 
-## 08 启动、部署与工具（28 个文件）
+## 08 启动、部署与工具（29 个文件）
 
 | 文件 | 职责 / 阅读重点 | 定位符号 |
 | --- | --- | --- |
@@ -221,6 +222,7 @@
 | [hal/build_hal.cmd](../hal/build_hal.cmd) | 使用 Windows C++ 工具链构建 HAL 和夹爪 worker，并处理候选二进制产物。 | 从文件顶部的参数、配置或入口流程开始 |
 | [scripts/accept-hal-native-teleop.ps1](../scripts/accept-hal-native-teleop.ps1) | 已停用的旧 HTTP 遥操作验收入口；执行即提示改用后端/UI 的 DDS 路径。 | 从文件顶部的参数、配置或入口流程开始 |
 | [scripts/benchmark_jodell_gripper.py](../scripts/benchmark_jodell_gripper.py) | 测量 Jodell 端口读取方式的耗时和成功率；直接使用夹爪驱动。 | `BenchResult`、`percentile`、`mean`、`parse_port`、`timed` |
+| [scripts/calibrate_camera.py](../scripts/calibrate_camera.py) | 张正友法相机标定：采集标定板图像、计算内参畸变、记录定型参考位姿并复核相机是否移动；只读画面。 | `BoardSpec`、`detect_corners`、`calibrate_images`、`solve_pose`、`compare_with_reference` |
 | [scripts/capture-hkvl-force.ps1](../scripts/capture-hkvl-force.ps1) | 只读采集双侧 HKVL 串口原始数据，并验证候选帧格式与 CRC。 | `New-ReadOnlySerialPort`、`Get-ModbusCrc16`、`Test-HkvlCandidateFrames` |
 | [scripts/check-hal.ps1](../scripts/check-hal.ps1) | 请求 HAL /health 并报告端口所属进程和驱动健康状态。 | 从文件顶部的参数、配置或入口流程开始 |
 | [scripts/diagnose-teleop-latency.ps1](../scripts/diagnose-teleop-latency.ps1) | 已停用的旧 HTTP 延迟诊断入口；当前执行会抛出迁移说明。 | 从文件顶部的参数、配置或入口流程开始 |
