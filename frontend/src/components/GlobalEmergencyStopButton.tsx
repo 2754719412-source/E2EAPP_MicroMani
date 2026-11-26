@@ -4,16 +4,17 @@
  * 先看：GlobalEmergencyStopButton。
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
+import { useId } from 'react'
 import { RotateCcw, ShieldAlert } from 'lucide-react'
 import { useTelemetryStore } from '../stores/telemetry'
-import { canAcknowledgeControlSafety } from '../utils/controlSafety'
+import { acknowledgeControlSafetyBlockReason } from '../utils/controlSafety'
 import { UiButton, UiTooltip } from './ui'
 /** 渲染当前界面单元，并连接所需数据。 */
 export function GlobalEmergencyStopButton() {
   const safetyLatched = useTelemetryStore((state) => Boolean(state.frame.forceStatus?.safety?.latched))
   const safety = useTelemetryStore((state) => state.controlSafety)
-  const canAcknowledge = useTelemetryStore(canAcknowledgeControlSafety)
-  const acknowledgeBlocker = useTelemetryStore((state) => state.frame.forceStatus?.safety?.acknowledgeBlocker)
+  const blocker = useTelemetryStore(acknowledgeControlSafetyBlockReason)
+  const hintId = useId()
   const triggerEmergencyStop = useTelemetryStore((state) => state.triggerEmergencyStop)
   const acknowledgeSafety = useTelemetryStore((state) => state.acknowledgeSafety)
   const active = safetyLatched || safety.emergencyRequested
@@ -39,17 +40,19 @@ export function GlobalEmergencyStopButton() {
         </UiButton>
       </UiTooltip>
       {active && (
-        <UiTooltip title={canAcknowledge ? '只确认安全态，不恢复运动' : acknowledgeBlocker || '请先完成启动力觉自检并恢复控制连接'}>
+        <div className="safety-acknowledgement">
           <UiButton
             aria-label="确认安全态"
             className="safety-reset-button"
             icon={<RotateCcw size={16} />}
-            disabled={!canAcknowledge}
+            aria-describedby={hintId}
+            disabled={blocker !== null}
             onClick={acknowledgeSafety}
           >
             确认安全态
           </UiButton>
-        </UiTooltip>
+          <small id={hintId}>{blocker ?? '确认后伺服保持断开，需在手动控制中重新使能。'}</small>
+        </div>
       )}
       {safety.emergencyError && <div role="alert" className="safety-control-error">{safety.emergencyError}。请使用实体急停并检查设备。</div>}
     </div>

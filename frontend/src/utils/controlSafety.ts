@@ -1,3 +1,4 @@
+import { hardwareChannelLabel, operatorSideForHardwareSide, operatorSideLabel } from '../data'
 import { motionTelemetryIsLive } from '../stores/motionCommands'
 import type { TelemetryFrame, TelemetryLinkStatus } from '../types'
 import { controlLeaseBlockReason, type ControlLeaseState } from '../stores/controlLease'
@@ -33,16 +34,39 @@ export function controlSafetyBlockReason(state: SafetySnapshot, requireLive = tr
   return null
 }
 
+const acknowledgeMessages: Record<string, string> = {
+  'startup force self-check is not complete': '请先完成启动力觉自检',
+  'both sensors must remain healthy and below warning thresholds for 500 ms': '等待双侧力传感器连续 500 ms 健康且低于警告阈值',
+  'force worker failed; reconfigure before acknowledgement': '力觉采集故障，请重新配置后再确认',
+  'force emergency-stop callback failed; diagnose and reconfigure before acknowledgement': '力觉急停回调失败，请排查并重新配置后再确认',
+}
+
+function forceAcknowledgeReason(reason?: string): string {
+  if (!reason) return '等待 HAL 确认力安全条件已满足'
+  for (const side of ['left', 'right'] as const) {
+    const label = `${operatorSideLabel(operatorSideForHardwareSide(side))}（${hardwareChannelLabel(side)}）`
+    if (reason === `${side} force sensor is above warning threshold`) return `${label}力读数超出警告范围，请检查末端受力`
+    if (reason === `${side} force sample is stale`) return `${label}力样本已过期`
+    if (reason === `${side} force sensor is not healthy`) return `${label}力传感器状态异常`
+  }
+  return Object.hasOwn(acknowledgeMessages, reason) ? acknowledgeMessages[reason] : reason
+}
+
+export function acknowledgeControlSafetyBlockReason(state: SafetySnapshot): string | null {
+  if (state.controlSafety.emergencyPending) return '等待急停发送完成'
+  if (state.controlSafety.acknowledging) return '等待硬件返回安全态确认结果'
+  const leaseReason = controlLeaseBlockReason(state.controlLease)
+  if (leaseReason) return leaseReason
+  if (!motionTelemetryIsLive(state.frame, state.telemetryLink)) return '等待新鲜的硬件遥测'
+  const force = state.frame.forceStatus
+  if ((force?.source === 'hkvl_serial' || force?.safety?.latched) && force.safety?.canAcknowledge !== true)
+    return forceAcknowledgeReason(force.safety?.acknowledgeBlocker)
+  // 无锁存时仍可请求 HAL 核验此前发送失败的本地急停意图。
+  return force?.safety?.latched || state.controlSafety.emergencyRequested ? null : '当前没有待确认的急停'
+}
+
 export function canAcknowledgeControlSafety(state: SafetySnapshot): boolean {
-  if (state.controlSafety.emergencyPending || state.controlSafety.acknowledging) return false
-  if (controlLeaseBlockReason(state.controlLease)) return false
-  if (!motionTelemetryIsLive(state.frame, state.telemetryLink)) return false
-  if (state.frame.forceStatus?.source === 'hkvl_serial'
-    && state.frame.forceStatus.safety?.canAcknowledge !== true) return false
-  // 无锁存时仍可请求 HAL 核验，恢复网络后才能解除一次发送失败的本地急停意图。
-  return state.frame.forceStatus?.safety?.latched
-    ? state.frame.forceStatus.safety.canAcknowledge === true
-    : state.controlSafety.emergencyRequested
+  return acknowledgeControlSafetyBlockReason(state) === null
 }
 
 /** 无运动的 HKVL 自检允许已锁存，仍要求有效租约和新鲜反馈。 */

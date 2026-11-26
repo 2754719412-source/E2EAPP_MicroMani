@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import * as api from '../api'
 import { useTelemetryStore } from '../stores/telemetry'
-import { initialControlSafety } from '../utils/controlSafety'
+import { acknowledgeControlSafetyBlockReason, canAcknowledgeControlSafety, initialControlSafety } from '../utils/controlSafety'
 import { ForceStartupSelfCheck } from './ForceStartupSelfCheck'
 import { GlobalEmergencyStopButton } from './GlobalEmergencyStopButton'
 
@@ -38,6 +38,49 @@ it('锁存下先明确确认双侧卸载，再执行自检；请求成功不会�
   } } })))
   expect(screen.getByText('自检通过，待人工确认 · 100%')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '确认安全态' })).toBeEnabled()
+})
+
+it('确认按钮直接显示 HAL 报告的操作者侧阻塞原因，条件满足后说明伺服状态', () => {
+  useTelemetryStore.setState((state) => ({ frame: { ...state.frame, forceStatus: {
+    source: 'hkvl_serial', safety: { latched: true, canAcknowledge: false, acknowledgeBlocker: 'left force sensor is above warning threshold' },
+  } } }))
+  render(<GlobalEmergencyStopButton />)
+  const button = screen.getByRole('button', { name: '确认安全态' })
+  expect(button).toHaveAccessibleDescription('右臂（硬件左侧通道）力读数超出警告范围，请检查末端受力')
+  expect(button).toBeDisabled()
+  act(() => useTelemetryStore.setState((state) => ({ frame: { ...state.frame, forceStatus: {
+    source: 'hkvl_serial', safety: { latched: true, canAcknowledge: true },
+  } } })))
+  expect(button).toBeEnabled()
+  expect(button).toHaveAccessibleDescription(/伺服保持断开/)
+})
+
+it.each([
+  ['both sensors must remain healthy and below warning thresholds for 500 ms', '连续 500 ms'],
+  ['right force sample is stale', '左臂（硬件右侧通道）力样本已过期'],
+  ['startup force self-check is not complete', '请先完成启动力觉自检'],
+  ['未识别的硬件诊断', '未识别的硬件诊断'],
+])('按 HAL 反馈显示阻塞原因 %s', (blocker, message) => {
+  const state = useTelemetryStore.getState()
+  const snapshot = { ...state, frame: { ...state.frame, forceStatus: { ...state.frame.forceStatus,
+    safety: { latched: true, canAcknowledge: false, acknowledgeBlocker: blocker },
+  } } }
+  expect(acknowledgeControlSafetyBlockReason(snapshot)).toContain(message)
+  expect(canAcknowledgeControlSafety(snapshot)).toBe(false)
+})
+
+it('发送中、租约过期和陈旧遥测优先于力锁存提示，保留本地急停恢复路径', () => {
+  const state = useTelemetryStore.getState()
+  const pending = { ...state, controlSafety: { ...state.controlSafety, emergencyPending: true } }
+  const stale = { ...state, telemetryLink: { ...state.telemetryLink, lastFrameReceivedAt: null } }
+  const expired = { ...stale, controlLease: { ...state.controlLease, required: true, status: 'expired' as const, reason: '租约过期' } }
+  for (const [snapshot, reason] of [[pending, '急停发送'], [expired, '租约过期'], [stale, '新鲜']] as const) {
+    expect(canAcknowledgeControlSafety(snapshot)).toBe(false)
+    expect(acknowledgeControlSafetyBlockReason(snapshot)).toContain(reason)
+  }
+  const clear = { ...state, frame: { ...state.frame, forceStatus: undefined } }
+  expect(canAcknowledgeControlSafety(clear)).toBe(true)
+  expect(canAcknowledgeControlSafety({ ...clear, controlSafety: initialControlSafety() })).toBe(false)
 })
 
 it('取消卸载确认不发送命令，失败原因由 HAL 遥测显示', () => {

@@ -4588,6 +4588,15 @@ select {
   padding: 0 14px;
 }
 
+.safety-acknowledgement {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  max-width: 32ch;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
 .emergency-stop-stack {
   display: flex;
   flex-direction: column;
@@ -5138,11 +5147,11 @@ select {
   }
 
   .work-area:has(.safety-reset-button) .main-content {
-    --emergency-scroll-clearance: 150px;
+    --emergency-scroll-clearance: 250px;
   }
 
   .work-area:has(.safety-control-error) .main-content {
-    --emergency-scroll-clearance: 230px;
+    --emergency-scroll-clearance: 310px;
   }
 
   .safety-dock {
@@ -5155,6 +5164,15 @@ select {
     border: 1px solid var(--color-danger-border);
     border-radius: 14px;
     box-shadow: 0 6px 24px rgba(13, 27, 42, 0.18);
+  }
+
+  .safety-dock:has(.safety-acknowledgement) {
+    width: min(215px, 60vw);
+  }
+
+  .safety-acknowledgement small {
+    max-height: 6em;
+    overflow: auto;
   }
 
   .safety-dock .emergency-stop-stack {
