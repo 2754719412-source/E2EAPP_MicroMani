@@ -408,3 +408,19 @@ def test_resumed_native_dataset_writes_episode_metadata_on_every_save():
     DatasetRecorderService._configure_native_chunk_settings(object.__new__(DatasetRecorderService), SimpleNamespace(meta=meta))
     assert meta._metadata_buffer_size == 1
     meta.update_chunk_settings.assert_called_once()
+
+
+@pytest.mark.parametrize("old_format", [None, {"version": "appstation.recording.legacy"}])
+def test_resume_rejects_dataset_without_current_recording_format(recorded, old_format):
+    recorder, root, config = recorded
+    assert recorder._dataset_resume_error(root, config) == ""
+
+    def downgrade(info):
+        if old_format is None:
+            info.pop("recordingFormat", None)
+        else:
+            info["recordingFormat"] = old_format
+
+    change_json(root / "meta/appstation_info.json", downgrade)
+    reason = recorder._dataset_resume_error(root, config)
+    assert "录制格式" in reason and "请新建数据集" in reason

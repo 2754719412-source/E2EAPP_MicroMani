@@ -5,11 +5,13 @@
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 #include "JodellGripperDriver.h"
+#include "JodellWorkerProtocol.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <iterator>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -24,6 +26,17 @@
 namespace appstation::hal {
 
 namespace {
+
+// 在驱动锁释放之前把该侧待记录读数交给调用方；须声明在锁之后，析构顺序保证仍在锁内。
+struct PendingSampleHandoff {
+  std::vector<jodell::GripperFeedbackSample>& pending;
+  std::vector<jodell::GripperFeedbackSample>* out;
+  ~PendingSampleHandoff() {
+    if (!out) return;
+    out->insert(out->end(), std::make_move_iterator(pending.begin()), std::make_move_iterator(pending.end()));
+    pending.clear();
+  }
+};
 
 // 现场默认接线：左夹爪 COM8、右夹爪 COM9。配置可覆盖，常量只作为兜底。
 constexpr const char* kDefaultLeftPort = "COM8";
@@ -189,13 +202,15 @@ bool JodellGripperDriver::commandTarget(
     int torque,
     std::string* message,
     bool readPosition,
-    const std::function<bool()>& commandAllowed) {
+    const std::function<bool()>& commandAllowed,
+    std::vector<jodell::GripperFeedbackSample>* samples) {
   pendingCommands_.fetch_add(1);
   struct CommandCompletion {
     std::atomic_uint& pending;
     ~CommandCompletion() { pending.fetch_sub(1); }
   } completion{pendingCommands_};
   std::scoped_lock lock(mutex_);
+  PendingSampleHandoff handoff{pendingSamples_[sideIndex(side)], samples};
   const auto cancelled = [&]() {
     if (!commandAllowed || commandAllowed()) return false;
     if (message) *message = "gripper command cancelled by emergency stop";
@@ -227,11 +242,22 @@ bool JodellGripperDriver::commandTarget(
     if (!ensureProcessWorkerUnlocked(index, message)) {
       return false;
     }
-    std::ostringstream command;
-    command << "COMMAND\t" << bounded << "\t" << safeSpeed << "\t" << safeTorque;
     std::string workerMessage;
-    if (cancelled()) return false;
-    const bool ok = commandProcessWorkerUnlocked(index, command.str(), nullptr, &workerMessage);
+    bool ok = false;
+    if (config_.transport == "modbus") {
+      // 使能写、使能等待和最终运动写拆成独立请求，每步之前重新检查授权；急停后不再发运动帧。
+      ok = jodell::orchestrateModbusMove(
+          [&](const std::string& line, std::string* reply) {
+            return commandProcessWorkerUnlocked(index, line, nullptr, reply);
+          },
+          [&]() { return commandAllowed && !commandAllowed(); },
+          jodell::moveCommandLine(bounded, safeSpeed, safeTorque), &workerMessage);
+    } else {
+      std::ostringstream command;
+      command << "COMMAND\t" << bounded << "\t" << safeSpeed << "\t" << safeTorque;
+      if (cancelled()) return false;
+      ok = commandProcessWorkerUnlocked(index, command.str(), nullptr, &workerMessage);
+    }
     targetMm_[index] = bounded;
     if (!ok) {
       lastError_ = workerMessage;
@@ -309,16 +335,19 @@ bool JodellGripperDriver::commandTarget(
 #endif
 }
 
-bool JodellGripperDriver::readPositionMm(Side side, std::string* message, bool withStatus) {
+bool JodellGripperDriver::readPositionMm(
+    Side side, std::string* message, bool withStatus, std::vector<jodell::GripperFeedbackSample>* samples) {
   std::scoped_lock lock(mutex_);
+  PendingSampleHandoff handoff{pendingSamples_[sideIndex(side)], samples};
   return readPositionMmUnlocked(side, message, 0.0, withStatus);
 }
 
 std::optional<bool> JodellGripperDriver::readPositionMmIfIdle(
-    Side side, double timeoutMs, std::string* message) {
+    Side side, double timeoutMs, std::string* message, std::vector<jodell::GripperFeedbackSample>* samples) {
   if (pendingCommands_.load() != 0) return std::nullopt;
   std::unique_lock lock(mutex_, std::try_to_lock);
   if (!lock.owns_lock() || pendingCommands_.load() != 0) return std::nullopt;
+  PendingSampleHandoff handoff{pendingSamples_[sideIndex(side)], samples};
   if (!config_.processWorkersEnabled) {
     if (message) *message = "bounded feedback READ requires isolated worker";
     return false;
@@ -399,6 +428,10 @@ bool JodellGripperDriver::readPositionMmUnlocked(
   }
   const double stroke = std::max(0.001, config_.strokeMm);
   positionMm_[index] = stroke * (1.0 - std::clamp(currentRaw, 0, 255) / 255.0);
+  jodell::GripperFeedbackSample dllSample;
+  dllSample.transport = "dll";
+  dllSample.positionValid = currentRaw <= 255;
+  dllSample.positionRaw = currentRaw;
   // 夹持状态与力矩随位置一并读取，原值写入消息（负值为 vendor 读取失败码）；位置读数的成败不受其影响。
   if (message) {
     std::ostringstream out;
@@ -409,9 +442,12 @@ bool JodellGripperDriver::readPositionMmUnlocked(
       const int status = getClawCurrentStatus_(slave);
       const int torque = getClawCurrentTorque_(slave);
       out << ", status=" << status << ", torque=" << torque;
+      dllSample.currentValid = torque >= 0 && torque <= 255;
+      dllSample.currentRaw = torque;
     }
     *message = out.str();
   }
+  lastDllSample_[index] = dllSample;
   return true;
 #else
   if (message) {
@@ -443,6 +479,18 @@ std::array<double, 2> JodellGripperDriver::positionMmSnapshot(std::array<double,
 std::string JodellGripperDriver::lastError() const {
   std::scoped_lock lock(mutex_);
   return lastError_;
+}
+
+std::vector<jodell::GripperFeedbackSample> JodellGripperDriver::takeSamples(Side side) {
+  std::scoped_lock lock(mutex_);
+  std::vector<jodell::GripperFeedbackSample> samples;
+  samples.swap(pendingSamples_[sideIndex(side)]);
+  return samples;
+}
+
+jodell::GripperFeedbackSample JodellGripperDriver::lastDllSample(Side side) const {
+  std::scoped_lock lock(mutex_);
+  return lastDllSample_[sideIndex(side)];
 }
 
 bool JodellGripperDriver::ensureLoadedUnlocked(std::string* message) {
@@ -613,7 +661,8 @@ bool JodellGripperDriver::ensureProcessWorkerUnlocked(int index, std::string* me
       << " --slave " << config_.slaveIds[index]
       << " --baudrate " << config_.baudrate
       << " --stroke-mm " << config_.strokeMm
-      << " --dll " << quoteWindowsArg(config_.dllPath);
+      << " --dll " << quoteWindowsArg(config_.dllPath)
+      << " --transport " << (config_.transport == "modbus" ? "modbus" : "dll");
   std::string commandLine = command.str();
 
   STARTUPINFOA startup{};
@@ -692,7 +741,17 @@ bool JodellGripperDriver::commandProcessWorkerUnlocked(
     closeProcessWorkerUnlocked(index, true);
     return false;
   }
-  // parts[0] 是 OK/ERR，parts[1] 是位置毫米值，parts[2] 是可读诊断消息。
+  // parts[0] 是 OK/ERR，parts[1] 是位置毫米值，parts[2] 是可读诊断消息，之后是 SAMPLE1 结构化样本。
+  // 读数与命令成败无关：ERR 应答里的成功读数（如故障码）同样交给上层记录。
+  auto& pending = pendingSamples_[index];
+  for (auto& sample : jodell::parseSamples(parts, 3)) {
+    if (sample.positionValid || sample.currentValid) pending.push_back(std::move(sample));
+  }
+  // 上层长时间不取时只保留最近一段，避免无界增长；丢弃的读数没有 seq，后端无法计入缺样，故上限取得较大。
+  constexpr std::size_t kPendingSampleLimit = 1024;
+  if (pending.size() > kPendingSampleLimit) {
+    pending.erase(pending.begin(), pending.end() - static_cast<std::ptrdiff_t>(kPendingSampleLimit));
+  }
   if (positionMm) {
     char* end = nullptr;
     const double value = std::strtod(parts[1].c_str(), &end);

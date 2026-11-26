@@ -9,7 +9,29 @@ import asyncio
 from typing import Any, Protocol, runtime_checkable
 
 from backend.core.gripper_protection import icf_target_min_gap_mm, icf_target_protection_enabled
+from backend.core.gripper_force import effective_grip_torque
 from backend.drivers.gripper_rs485 import GripperResult
+
+
+GRIPPER_WORKER_TRANSPORTS = ("dll", "modbus")
+GRIPPER_SAMPLE_HZ_RANGE = (1.0, 200.0)
+
+
+def hal_gripper_sampling_fields(config: dict[str, Any]) -> dict[str, object]:
+    """夹爪 worker 访问方式与反馈读取间隔；HAL 只认 "modbus"，其他值回落到 vendor DLL。"""
+    gripper = config.get("gripper", {}) if isinstance(config.get("gripper"), dict) else {}
+    transport = str(gripper.get("workerTransport", "dll")).lower()
+    try:
+        sample_hz = float(gripper.get("sampleHz", 30))
+    except (TypeError, ValueError):
+        sample_hz = 30.0
+    if not sample_hz > 0:
+        sample_hz = 30.0
+    sample_hz = min(max(sample_hz, GRIPPER_SAMPLE_HZ_RANGE[0]), GRIPPER_SAMPLE_HZ_RANGE[1])
+    return {
+        "gripperWorkerTransport": transport if transport in GRIPPER_WORKER_TRANSPORTS else "dll",
+        "gripperSampleIntervalMs": round(1000.0 / sample_hz, 3),
+    }
 
 
 @runtime_checkable
@@ -84,8 +106,9 @@ def native_gripper_payload(config: dict[str, Any], side: str, target_mm: float) 
         "gripperProcessWorkersEnabled": bool(gripper.get("processWorkersEnabled", True)),
         "jodellWorkerExePath": str(gripper.get("jodellWorkerExePath", "")),
         "gripperWorkerCommandTimeoutMs": float(worker_timeout),
+        **hal_gripper_sampling_fields(config),
         "gripSpeed": int(gripper_teleop.get("gripSpeed", 255)),
-        "gripTorque": int(gripper_teleop.get("gripTorque", 1)),
+        "gripTorque": int(effective_grip_torque(config)["rfcRaw"]),
         "icfTargetProtectionEnabled": icf_target_protection_enabled(config),
         "icfTargetMinGapMm": icf_target_min_gap_mm(config),
     }
@@ -148,10 +171,18 @@ def native_status_to_gripper_status(config: dict[str, Any], mapper_status: dict[
             "positionMm": position_mm,
             "targetMm": detail.get("targetMm", positions[side]),
             "lastCommandTs": command_ts,
+            # HAL 结构化读数（gCU/gOBJ/gGTO/故障/有效标志）与采样统计，供界面显示夹爪力感知；旧 HAL 没有时为 None。
+            "sample": detail.get("sample") if isinstance(detail.get("sample"), dict) else None,
+            "sampleStats": detail.get("sampleStats") if isinstance(detail.get("sampleStats"), dict) else None,
         }
+    command = native_status.get("gripperCommand") if isinstance(native_status, dict) else None
     return {
         "ok": overall_ok,
         "message": "; ".join(messages) if messages else "managed by HAL-native teleop",
+        # HAL 实际生效的夹持力原码、worker 传输方式和读取间隔。
+        "command": {
+            key: command.get(key) for key in ("torque", "speed", "transport", "sampleIntervalMs")
+        } if isinstance(command, dict) else None,
         "nativeManaged": True,
         "running": (
             requested_running and bool(native_status.get("running", False))

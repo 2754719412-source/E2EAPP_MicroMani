@@ -5833,3 +5833,96 @@ select {
 .participation-selector > div { display: flex; gap: 12px; }
 .participation-selector label { display: inline-flex; align-items: center; gap: 5px; }
 .participation-selector input { accent-color: var(--color-primary); }
+
+/* Jodell 夹爪力感知卡：沿用六维力读数网格，接触状态用强调色提示。 */
+.gripper-sense-grid span {
+  font-size: 13px;
+}
+
+.force-current-grid .gripper-sense-object-warn {
+  background: var(--color-warning-light);
+  box-shadow: inset 0 0 0 1px var(--color-warning-border);
+  color: var(--color-warning);
+}
+
+.gripper-sense-note {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/*
+ * 窄屏（手机）下的力传感器页：六维力卡与夹爪力感知卡共用 force-settings-layout。
+ * ≤1200px 时共享规则给的是 1fr（即 minmax(auto, 1fr)），会被内部表单网格和画布的最小内容宽度撑开；
+ * 这里改为 minmax(0, 1fr) 并让子项可收缩。放在文件末尾，以覆盖后面的 .hardware-form-grid-compact.ui-form。
+ */
+@media (max-width: 760px) {
+  .force-settings-layout,
+  .force-settings-layout-hkvl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .force-settings-layout > *,
+  .force-settings-layout .force-settings-column > *,
+  .force-visual-area canvas {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .force-settings-layout .hardware-form-grid-compact.ui-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 读数：6 项从逐行堆叠改为 3 列 × 2 行，图表下方一屏可见。 */
+  .force-settings-layout .force-current-grid-settings {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .force-settings-layout .force-current-grid-settings span {
+    min-height: 44px;
+    padding: 5px 6px;
+    overflow-wrap: anywhere;
+  }
+
+  .force-settings-layout .hardware-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .force-settings-layout .hardware-metric-box {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .force-settings-layout .force-control-workbench,
+  .force-settings-layout .force-compliance-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .force-settings-layout .ui-table {
+    font-size: 12px;
+  }
+
+  /* X/Z 映射矩阵与各项 X/Z 参数：窄屏下两两一行，避免逐个输入框竖排拉长整卡。 */
+  .force-compliance-grid .ui-space {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .force-compliance-grid .ui-space input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* 卡头：标题区与状态标签在窄屏下分两行，避免挤压标题。 */
+  #force-left .hardware-config-card-head,
+  #force-right .hardware-config-card-head,
+  [id^="force-gripper-"] .hardware-config-card-head {
+    flex-wrap: wrap;
+  }
+
+  [id^="force-gripper-"] .gripper-config-section summary {
+    overflow-wrap: anywhere;
+  }
+}

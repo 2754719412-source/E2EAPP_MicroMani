@@ -88,3 +88,23 @@ def test_router_command_sends_hal_native_payload() -> None:
     assert result.details["nativeManaged"] is True
     assert hal.commands[0][0] == "teleop.native.gripper_command"
     assert hal.commands[0][1]["targetMm"] == 7.5
+
+
+def test_native_gripper_status_exposes_structured_samples_for_ui() -> None:
+    """界面夹爪力感知卡读取 sides.<硬件侧>.sample/sampleStats 与 command；旧 HAL 缺字段时为 None。"""
+    from backend.core.defaults import default_config
+    from backend.services.gripper_backend import native_status_to_gripper_status
+
+    sample = {"seq": 7, "currentRaw": 120, "currentValid": True, "gGTO": 1, "gOBJ": 2}
+    stats = {"samples": 10, "spanMs": 90.0, "effectiveHz": 100.0, "maxGapMs": 12.0}
+    native = {
+        "running": True,
+        "grippers": {"left": {"positionMm": 10.0, "sample": sample, "sampleStats": stats}, "right": {}},
+        "gripperCommand": {"torque": 80, "speed": 255, "transport": "modbus", "sampleIntervalMs": 10.0, "extra": 1},
+    }
+    status = native_status_to_gripper_status(default_config(), {"nativeStatus": native, "sources": []})
+    assert status["sides"]["left"]["sample"] == sample
+    assert status["sides"]["left"]["sampleStats"] == stats
+    assert status["sides"]["right"]["sample"] is None and status["sides"]["right"]["sampleStats"] is None
+    assert status["command"] == {"torque": 80, "speed": 255, "transport": "modbus", "sampleIntervalMs": 10.0}
+    assert native_status_to_gripper_status(default_config(), {"nativeStatus": {}, "sources": []})["command"] is None

@@ -31,6 +31,10 @@ if errorlevel 1 set TEST_RESULT=1
 cl %FLAGS% "%HAL_ROOT%\tests\MotionReadTimingTests.cpp" /Fe"MotionReadTimingTests.exe" || goto :failed
 call :run_test MotionReadTimingTests
 if errorlevel 1 set TEST_RESULT=1
+rem 钧舵 Modbus 帧编解码为纯头文件，不打开串口。
+cl %FLAGS% "%HAL_ROOT%\tests\JodellModbusTests.cpp" /Fe"JodellModbusTests.exe" || goto :failed
+call :run_test JodellModbusTests
+if errorlevel 1 set TEST_RESULT=1
 popd
 exit /b %TEST_RESULT%
 :failed

@@ -193,6 +193,35 @@ def test_dataset_recorder_appstation_info_writes_motion_calibration(tmp_path: Pa
     assert motion["teleop"]["rightImpulseCoeff"][5] == 3333.333
 
 
+@pytest.mark.parametrize("record_force", [False, True])
+def test_dataset_recorder_appstation_info_marks_record_force_and_gripper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_force: bool
+) -> None:
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
+    recorder = object.__new__(DatasetRecorderService)
+    recorder._dataset_name = "unit"
+    recorder._native_use_videos = True
+    recorder._record_fps_hz = 30
+    recorder._force_sample_hz = 200.0
+    dataset_dir = tmp_path / "dataset"
+    config = default_config()
+    config["storage"]["recordForce"] = record_force
+
+    recorder._write_appstation_info(dataset_dir, config)
+
+    payload = json.loads((dataset_dir / "meta" / "appstation_info.json").read_text(encoding="utf-8"))
+    recording = payload["recording"]
+    assert recording["recordForce"] is record_force
+    assert recording["forceFields"] == ("measured" if record_force else "zero_filled_record_force_disabled")
+    assert recording["forceSampleHz"] == (200.0 if record_force else 0.0)
+    gripper = payload["hardware"]["gripper"]
+    assert gripper["hardwareSides"]["left"] == {"port": "COM8", "slaveId": 10, "enabled": False}
+    assert gripper["hardwareSides"]["right"] == {"port": "COM9", "slaveId": 9, "enabled": False}
+    assert gripper["gripTorqueRaw"] == 1
+    assert gripper["gripperWorkerTransport"] == "dll"
+    assert gripper["gripperSampleIntervalMs"] == pytest.approx(33.333)
+
+
 def test_dataset_recorder_appstation_info_writes_session_origin(tmp_path: Path) -> None:
     recorder = object.__new__(DatasetRecorderService)
     recorder._dataset_name = "unit"

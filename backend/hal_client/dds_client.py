@@ -102,6 +102,7 @@ class DdsHalClient(HalClient):
         self._omega_state_lane = BoundedLane("dds-omega-state", 2, reuse_workers=True)
         self._force_state_lane = BoundedLane("dds-force-state", 2, reuse_workers=True)
         self._teleop_state_lane = BoundedLane("dds-teleop-state", 2, reuse_workers=True)
+        self._gripper_samples_lane = BoundedLane("dds-gripper-samples", 1, reuse_workers=True)
         self._close_lane = BoundedLane("dds-close", 1)
         self._closed = False
         self._control_transport_failed = False
@@ -145,7 +146,7 @@ class DdsHalClient(HalClient):
         stop_or_read = name in {
             "motion.emergency_stop", "motion.disable_side", "motion.teleop_stop_side",
             "teleop.native.stop", "omega7.zero_force_feedback", "hal.reconnect", "teleop.native.status",
-            "gripper.feedback.configure",
+            "gripper.feedback.configure", "gripper.samples",
         }
         stop_or_read = stop_or_read or (name == "omega7.gravity_compensation" and (payload or {}).get("leftEnabled") is False and (payload or {}).get("rightEnabled") is False)
         if self._control_transport_failed and (not stop_or_read or name == "hal.reconnect"):
@@ -159,14 +160,18 @@ class DdsHalClient(HalClient):
         # 超时与重试由共享命令表决定；耗时的回原点命令不使用普通命令的短超时重试。
         timeout_s, attempts = command_request_policy(name, self.reply_timeout_s)
         lane = self._lease_lane if name == "control.lease" else (
-            self._emergency_lane if name == "motion.emergency_stop" else self._command_lane
+            self._emergency_lane if name == "motion.emergency_stop" else (
+                # 夹爪读数增量拉取走独立通道，不占用控制命令的容量。
+                self._gripper_samples_lane if name == "gripper.samples" else self._command_lane
+            )
         )
         # 给 HAL 偶发慢应答留余量，仍低于 2.5 秒硬件租约有效期。
         if name == "control.lease":
             timeout_s = min(timeout_s, 1.0)
         elif name == "motion.emergency_stop":
             timeout_s = min(timeout_s, 0.75)
-        control_critical = name not in {"hal.reconnect", "teleop.native.status", "gripper.feedback.configure"}
+        control_critical = name not in {
+            "hal.reconnect", "teleop.native.status", "gripper.feedback.configure", "gripper.samples"}
         if not stop_or_read and name != "control.lease":
             request_payload = dict(request_payload)
             request_payload["commandExpiresAtUnixMs"] = now_unix_ms() + int(timeout_s * 1000)
@@ -277,7 +282,8 @@ class DdsHalClient(HalClient):
     def close(self) -> None:
         self._closed = True
         lanes = (self._command_lane, self._emergency_lane, self._lease_lane, self._state_lane,
-                 self._motion_state_lane, self._omega_state_lane, self._force_state_lane, self._teleop_state_lane)
+                 self._motion_state_lane, self._omega_state_lane, self._force_state_lane, self._teleop_state_lane,
+                 self._gripper_samples_lane)
         for lane in lanes:
             lane.close()
         if any(lane.active for lane in lanes):

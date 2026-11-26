@@ -14,6 +14,8 @@
 #include <string>
 
 #include "HalTypes.h"
+#include "JodellModbus.h"
+#include <vector>
 
 namespace appstation::hal {
 
@@ -30,6 +32,10 @@ struct JodellGripperConfig {
   bool processWorkersEnabled{true};
   std::string workerExePath{};
   double workerCommandTimeoutMs{2000.0};
+  // worker 访问夹爪的方式："dll" 走 vendor DLL；"modbus" 由 worker 独占串口直接 Modbus RTU 读写。
+  std::string transport{"dll"};
+  // 反馈读取间隔：每次读完再等这么久；由后端 gripper.sampleHz 换算下发，HAL 夹紧到 [5, 1000] ms。
+  double sampleIntervalMs{33.333};
   bool operator==(const JodellGripperConfig&) const = default;
 };
 
@@ -50,17 +56,27 @@ class JodellGripperDriver {
       int torque,
       std::string* message = nullptr,
       bool readPosition = true,
-      const std::function<bool()>& commandAllowed = {});
+      const std::function<bool()>& commandAllowed = {},
+      std::vector<jodell::GripperFeedbackSample>* samples = nullptr);
   // 主动读取某侧当前位置，成功后刷新 positionMm_ 缓存。
   // withStatus=false 只读位置寄存器（遥操作采集用，约 16 ms）；true 另读夹持状态与力矩（推理判空用，约 45~60 ms）。
-  bool readPositionMm(Side side, std::string* message = nullptr, bool withStatus = true);
+  // samples 非空时，在仍持有驱动锁时交回本次调用期间的全部成功读数（见 takeSamples），
+  // 调用方无需事后再争同一把锁，避免采样线程在命令进行中阻塞等待。
+  bool readPositionMm(Side side, std::string* message = nullptr, bool withStatus = true,
+      std::vector<jodell::GripperFeedbackSample>* samples = nullptr);
   // 只读采样让等待中的命令优先；nullopt 表示忙时跳过，并非一次失败的测量。
-  std::optional<bool> readPositionMmIfIdle(Side side, double timeoutMs, std::string* message = nullptr);
+  std::optional<bool> readPositionMmIfIdle(Side side, double timeoutMs, std::string* message = nullptr,
+      std::vector<jodell::GripperFeedbackSample>* samples = nullptr);
   // 以下快照接口供 teleop 状态 JSON 使用，调用方不需要直接持有 mutex_。
   std::array<double, 2> targetMm() const;
   std::array<double, 2> positionMm() const;
   std::array<double, 2> positionMmSnapshot(std::array<double, 2> fallback) const;
   std::string lastError() const;
+  // 父进程：取走自上次调用以来 worker 应答附带的全部成功读数（含失败命令期间的读数）；旧 worker 无样本字段时为空。
+  // 取走即清空，失败或取消的请求不会把上一次读数再交一遍。
+  std::vector<jodell::GripperFeedbackSample> takeSamples(Side side);
+  // worker 进程内 DLL 路径：最近一次内联读取的原码；电流来自 getClawCurrentTorque，状态位编码未知不解析。
+  jodell::GripperFeedbackSample lastDllSample(Side side) const;
 
  private:
 #ifdef _WIN32
@@ -98,6 +114,8 @@ class JodellGripperDriver {
   std::array<double, 2> targetMm_{{0.0, 0.0}};
   std::array<double, 2> positionMm_{{-1.0, -1.0}};
   std::string lastError_;
+  std::array<std::vector<jodell::GripperFeedbackSample>, 2> pendingSamples_{};
+  std::array<jodell::GripperFeedbackSample, 2> lastDllSample_{};
 
 #ifdef _WIN32
   void closeUnlocked();

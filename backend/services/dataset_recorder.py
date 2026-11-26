@@ -41,6 +41,8 @@ from backend.core.participation import participation, action_mask, hardware_side
 from backend.core.camera_roles import CAMERA_KEYS, MICROSCOPE_FPS, MICROSCOPE_SIZE, STANDARD_CAMERA_KEYS, active_camera_keys
 from backend.core.config import SettingsService
 from backend.core.data_contract import (
+    RECORDING_FORMAT_VERSION,
+    recording_format_metadata,
     data_contract_metadata,
     hardware_to_dataset_grippers,
     hardware_to_dataset_motion,
@@ -54,7 +56,11 @@ from backend.core.motion_safety import MotionSafetyGate, motion_operation
 from backend.core.units import lerobot_to_ui_state, motion_pulse_per_unit, pulses_to_ui_state
 from backend.hal_client.client import HalClient
 from backend.services.hardware_service import HardwareService
-from backend.services.gripper_backend import native_teleop_enabled
+from backend.services.gripper_backend import hal_gripper_sampling_fields, native_teleop_enabled
+from backend.services import gripper_raw_samples
+from backend.core.gripper_force import side_calibration
+from backend.core.gripper_protection import icf_target_min_gap_mm
+from backend.core.operator_view import operator_side_for_hardware_side
 from backend.services.telemetry_hub import TelemetryHub
 from backend.services.teleop_mapping import TeleopMappingService
 
@@ -112,6 +118,21 @@ ORIGIN_MOVE_POSITION_NAMES: tuple[str, ...] = (
     "right_roll_mdeg", "right_pitch_mdeg", "right_yaw_mdeg",
 )
 ORIGIN_MOVE_WRITE_BATCH_SIZE = 256
+# gripper_raw 旁路文件列（pyarrow 类型名）；与 gripper_raw_samples.episode_rows 的键一致。
+GRIPPER_RAW_COLUMNS = {
+    "hardware_side": "string", "dataset_side": "string", "seq": "int64", "t_s": "float64",
+    "monotonic_s": "float64", "hal_timestamp": "bool_", "position_valid": "bool_", "status_valid": "bool_",
+    "current_valid": "bool_", "position_raw": "int16", "gap_mm": "float64", "current_raw": "int16",
+    "gACT": "int8", "gGTO": "int8", "gSTA": "int8", "gOBJ": "int8", "fault": "int16",
+    "commanded_gap_mm": "float64",
+}
+# HAL 每侧保留最近 256 条读数；按 10 Hz 增量拉取，100 Hz 采样时也有约 2.5 s 余量。
+GRIPPER_SAMPLES_POLL_S = 0.1
+# 封存补读：等在途读取与补读共用的总时限；只对通道暂忙短暂重试。远小于前端保存请求的 10 s 超时。
+GRIPPER_TAIL_FETCH_BUDGET_S = 1.0
+GRIPPER_TAIL_FETCH_RETRY_S = 0.05
+GRIPPER_CURRENT_FEATURE_NAMES = ("operator_left.gcu_raw", "operator_right.gcu_raw")
+GRIPPER_CURRENT_VALID_FEATURE_NAMES = ("operator_left.gcu_valid", "operator_right.gcu_valid")
 FORCE_FEATURE_NAMES: tuple[str, ...] = ("fx", "fy", "fz", "mx", "my", "mz")
 CAMERA_SOURCE_KEYS: dict[str, str] = {key: f"camera_{key}" for key in CAMERA_KEYS}
 CAMERA_KEY_BY_SOURCE: dict[str, str] = {source: key for key, source in CAMERA_SOURCE_KEYS.items()}
@@ -240,10 +261,17 @@ class OriginMoveWrite:
 
 
 @dataclass(frozen=True)
+class GripperRawWrite:
+    dataset_dir: Path
+    episode_index: int
+    rows: tuple[dict[str, Any], ...]
+
+
+@dataclass(frozen=True)
 class WriterCommand:
     kind: str
     future: Future[Any]
-    payload: OriginMoveWrite | None = None
+    payload: OriginMoveWrite | GripperRawWrite | None = None
 
 
 # 写入边界：帧与保存/清空命令共用队列，由同一个线程串行访问 LeRobotDataset。
@@ -274,7 +302,7 @@ class LeRobotWriterThread:
         """返回写线程是否仍在消费命令。"""
         return self._thread.is_alive()
 
-    def submit(self, kind: str, payload: OriginMoveWrite | None = None) -> Future[Any]:
+    def submit(self, kind: str, payload: OriginMoveWrite | GripperRawWrite | None = None) -> Future[Any]:
         """向写线程投递控制命令，并返回用于等待结果的 Future。"""
         future: Future[Any] = Future()
         try:
@@ -332,8 +360,13 @@ class LeRobotWriterThread:
                     self._dataset.clear_episode_buffer()
                 self._error = ""
                 command.future.set_result(None)
+            elif command.kind == "write_gripper_raw":
+                if not isinstance(command.payload, GripperRawWrite):
+                    raise ValueError("missing gripper_raw payload")
+                self._write_gripper_raw(command.payload)
+                command.future.set_result(None)
             elif command.kind in {"append_origin_move", "write_origin_move"}:
-                if command.payload is None:
+                if not isinstance(command.payload, OriginMoveWrite):
                     raise ValueError("missing origin_move payload")
                 if command.kind == "append_origin_move":
                     self._append_origin_move(command.payload)
@@ -356,7 +389,7 @@ class LeRobotWriterThread:
             # Sidecar failures must not poison subsequent LeRobot frame/episode writes.
             if command.kind == "append_origin_move":
                 self._origin_move_error = str(exc)
-            elif not command.kind.endswith("origin_move"):
+            elif not command.kind.endswith("origin_move") and command.kind != "write_gripper_raw":
                 self._error = str(exc)
                 if command.kind == "save_episode":
                     self._discard_origin_move()
@@ -413,6 +446,21 @@ class LeRobotWriterThread:
             os.replace(path.with_suffix(".parquet.tmp"), path)
         finally:
             self._discard_origin_move()
+
+    def _write_gripper_raw(self, payload: GripperRawWrite) -> None:
+        """每个夹爪真实读数一行；先写临时文件再替换，保存失败不留半截文件。"""
+        pa = importlib.import_module("pyarrow")
+        parquet = importlib.import_module("pyarrow.parquet")
+        path = payload.dataset_dir / "gripper_raw" / f"episode_{payload.episode_index:06d}.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".parquet.tmp")
+        schema = pa.schema([(name, getattr(pa, kind)()) for name, kind in GRIPPER_RAW_COLUMNS.items()])
+        table = pa.table({name: [row[name] for row in payload.rows] for name in GRIPPER_RAW_COLUMNS}, schema=schema)
+        try:
+            parquet.write_table(table, tmp)
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
 
     def _discard_origin_move(self) -> None:
         identity, writer = self._origin_move_identity, self._origin_move_writer
@@ -576,9 +624,15 @@ class FrameAssembler:
                     "skewMs": round((target_sample.monotonic_s - target_monotonic_s) * 1000., 3),
                     "maxSkewMs": SOURCE_MAX_SKEW_S["gripper"] * 1000.,
                 })
+        # 夹爪电流取离目标时刻最近的真实读数；同一读数可被多帧引用，旁路文件里仍只有一行。
+        current_sides = (hardware_sides(selected, "grippers") if selected else ("left", "right"))
+        current_raw, current_valid = recorder._gripper_raw_collector().current_feature(
+            current_sides, target_monotonic_s, SOURCE_MAX_SKEW_S["gripper"])
         return {
             "timestamp": frame_index / max(1, recorder._record_fps_hz),
             "alignmentExceptions": alignment_exceptions,
+            "observation.gripper_current_raw": hardware_to_dataset_grippers(current_raw),
+            "observation.gripper_current_valid": hardware_to_dataset_grippers(current_valid),
             "frame_index": frame_index,
             "episode_index": recorder._episode_index,
             "observation.state": observation_state,
@@ -719,6 +773,10 @@ class DatasetRecorderService:
         self._writer_thread: LeRobotWriterThread | None = None
         self._sampler_threads: dict[str, Thread] = {}
         self._sampler_stop_event = Event()
+        self._gripper_raw = gripper_raw_samples.GripperRawCollector()
+        self._gripper_fetch_mutex = Lock()
+        self._gripper_idle_check = "not_run"
+        self._episode_gripper_raw_meta: dict[str, Any] = {}
         self._assembly_queue: asyncio.Queue[FrameAssemblyJob] | None = None
         self._write_queue: queue.Queue[PendingFrame | WriterCommand | None] = queue.Queue(
             maxsize=WRITE_QUEUE_MAX_FRAMES
@@ -2156,6 +2214,7 @@ class DatasetRecorderService:
             self._record_loop_start_monotonic_s = schedule_now_s
             self._episode_started_at = self._record_loop_start_monotonic_s
             self._episode_source_time0_s = self._episode_start_monotonic_s - self._sampler_start_monotonic_s
+            self._gripper_raw_collector().begin_episode(self._episode_start_monotonic_s)
             self._accepting_frame_jobs = True
             if hasattr(self, "_origin_move_lock"):
                 with self._origin_move_lock:
@@ -2228,7 +2287,143 @@ class DatasetRecorderService:
                 operator_side = "右" if side == "left" else "左"
                 return (f"操作者{operator_side}夹爪目标与实际开口需接近 {expected:g} mm"
                         f"（主手目标 {targets[index]:.1f} mm，实际 {sample.value[index]:.1f} mm）")
+        return self._gripper_idle_start_blocker(config, expected, stroke)
+
+    def _gripper_idle_start_blocker(self, config: dict[str, Any], expected_gap_mm: float, stroke_mm: float) -> str:
+        """用真实空载读数放行：连续、有效、无故障、无接触，实际开口在起点；有标定时电流不超阈值。
+        DLL 传输读不到电流，不做该检查，并在 episode 元数据里记为跳过。"""
+        if hal_gripper_sampling_fields(config)["gripperWorkerTransport"] != "modbus":
+            self._gripper_idle_check = "skipped_dll_transport"
+            return ""
+        sides = tuple(hardware_sides(self._participation, "grippers"))
+        thresholds = self._gripper_idle_thresholds(config, sides)
+        reason = gripper_raw_samples.idle_start_blocker(
+            self._gripper_raw_collector(), sides, now_s=time.monotonic(), stroke_mm=stroke_mm,
+            expected_gap_mm=expected_gap_mm, gap_tolerance_mm=RECORD_START_GRIPPER_TOLERANCE_MM,
+            thresholds_raw=thresholds)
+        self._gripper_idle_check = "passed" if not reason else reason
+        if reason:
+            return reason
+        if any(thresholds.get(side) is None for side in sides):
+            self._gripper_idle_check = "passed_without_current_threshold"
         return ""
+
+    def _gripper_idle_thresholds(self, config: dict[str, Any], sides: Iterable[str]) -> dict[str, float | None]:
+        """空载阈值只来自与当前接线匹配的夹持力标定；未标定时只查有效性、连续性、故障、接触与开口。"""
+        thresholds: dict[str, float | None] = {}
+        for side in sides:
+            calibration = side_calibration(config, side)
+            baseline = calibration.get("baseline", {}) if calibration else {}
+            value = baseline.get("contactThresholdRaw") if isinstance(baseline, dict) else None
+            thresholds[side] = float(value) if isinstance(value, (int, float)) else None
+        return thresholds
+
+    async def _fetch_gripper_samples(
+        self,
+        collector: gripper_raw_samples.GripperRawCollector,
+        generation: int | None = None,
+        *,
+        timeout_s: float | None = None,
+    ) -> str:
+        """调用只读命令 gripper.samples 增量取读数，返回 ok / busy / error / stale。
+
+        应答须通过结构校验才算成功（空增量合法，格式不认识算失败）。generation 为后台线程所属会话代际：
+        会话核对与入库、失败计数在收集器同一把锁内完成，已结束会话的迟到应答（成功或失败）都不改动状态。
+        """
+        try:
+            command = self.hal.command("gripper.samples", collector.fetch_payload())
+            result = await (asyncio.wait_for(command, timeout_s) if timeout_s is not None else command)
+            response = result.get("response") if isinstance(result, dict) else None
+            reason = gripper_raw_samples.history_reply_error(response)
+            if reason:
+                raise RuntimeError(f"gripper.samples reply rejected: {reason}")
+            return "ok" if collector.ingest(response, session=generation) >= 0 else "stale"
+        except Exception as exc:  # noqa: BLE001
+            if not collector.note_fetch_error(session=generation):
+                return "stale"
+            self._gripper_fetch_last_error = f"{type(exc).__name__}: {exc}"
+            return "busy" if "channel is busy" in str(exc) else "error"
+
+    def _gripper_fetch_lock(self) -> Lock:
+        """单飞锁：同一时刻只允许一次 gripper.samples 在途，封存补读须先等在途读取入库。"""
+        lock = getattr(self, "_gripper_fetch_mutex", None)
+        if lock is None:
+            lock = self._gripper_fetch_mutex = Lock()
+        return lock
+
+    def _gripper_samples_enabled(self, config: dict[str, Any]) -> bool:
+        selected = getattr(self, "_participation", None)
+        return bool(selected and selected["grippers"] and self._using_real_hal_native_teleop(config))
+
+    def _gripper_samples_loop(self, stop: Event, generation: int) -> None:
+        """独立线程每 GRIPPER_SAMPLES_POLL_S 拉一次读数；与位置采样线程互不等待。"""
+        collector = self._gripper_raw_collector()
+        with asyncio.Runner() as runner:
+            while (self._session_active and not stop.is_set()
+                   and generation == getattr(self, "_gripper_samples_generation", 0)):
+                started = time.monotonic()
+                with self._gripper_fetch_lock():
+                    if stop.is_set():
+                        break
+                    runner.run(self._fetch_gripper_samples(collector, generation))
+                stop.wait(max(0.0, GRIPPER_SAMPLES_POLL_S - (time.monotonic() - started)))
+
+    def _start_gripper_samples_thread(self, config: dict[str, Any]) -> None:
+        """每个会话一个拉取线程，各用独立的停止事件和代际；上一会话的线程即使尚未退出也不会继续服务新会话。"""
+        self._retire_gripper_samples_thread()
+        if not self._gripper_samples_enabled(config):
+            return
+        generation = getattr(self, "_gripper_samples_generation", 0) + 1
+        stop = Event()
+        self._gripper_samples_generation = generation
+        self._gripper_raw_collector().set_session(generation)
+        self._gripper_samples_stop = stop
+        self._gripper_samples_thread = Thread(
+            target=self._gripper_samples_loop, args=(stop, generation), name="dataset-gripper-samples", daemon=True)
+        self._gripper_samples_thread.start()
+
+    def _retire_gripper_samples_thread(self) -> Thread | None:
+        """结束当前拉取线程：置停止事件并推进代际，之后到达的应答一律丢弃。"""
+        stop = getattr(self, "_gripper_samples_stop", None)
+        if stop is not None:
+            stop.set()
+        self._gripper_samples_generation = getattr(self, "_gripper_samples_generation", 0) + 1
+        self._gripper_raw_collector().set_session(self._gripper_samples_generation)
+        self._gripper_samples_stop = None
+        return getattr(self, "_gripper_samples_thread", None)
+
+    def _fetch_gripper_tail_blocking(self) -> str:
+        """封存前补读：等在途读取与补读共用 GRIPPER_TAIL_FETCH_BUDGET_S 总时限，只对通道暂忙短暂重试。
+
+        超限或失败记 failed 后照常保存训练数据，不能让保存请求拖到前端超时。
+        """
+        collector = self._gripper_raw_collector()
+        deadline = time.monotonic() + GRIPPER_TAIL_FETCH_BUDGET_S
+        lock = self._gripper_fetch_lock()
+        if not lock.acquire(timeout=GRIPPER_TAIL_FETCH_BUDGET_S):
+            self._gripper_fetch_last_error = "in-flight gripper.samples did not finish within tail budget"
+            return "failed"
+        try:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self._gripper_fetch_last_error = "tail fetch budget exhausted"
+                    return "failed"
+                status = asyncio.run(self._fetch_gripper_samples(collector, timeout_s=remaining))
+                if status == "ok":
+                    return "ok"
+                if status != "busy":
+                    return "failed"
+                time.sleep(min(GRIPPER_TAIL_FETCH_RETRY_S, max(0.0, deadline - time.monotonic())))
+        finally:
+            lock.release()
+
+    def _gripper_raw_collector(self) -> gripper_raw_samples.GripperRawCollector:
+        collector = getattr(self, "_gripper_raw", None)
+        if collector is None:
+            collector = gripper_raw_samples.GripperRawCollector()
+            self._gripper_raw = collector
+        return collector
 
     async def _native_writer_command(self, kind: str, payload: OriginMoveWrite | None = None) -> Any:
         """向 native 写线程发送控制命令，并异步等待执行结果。"""
@@ -2288,6 +2483,17 @@ class DatasetRecorderService:
             except Exception as exc:  # noqa: BLE001
                 origin_error = str(exc)
                 self.logs.warning("[ORIGIN_MOVE]", f"episode snapshot failed: {exc}")
+        gripper_raw: GripperRawWrite | None = None
+        try:
+            # 封存前按最后游标补读一次，避免两次轮询之间结束时丢掉尾部读数；未选夹爪的录制不补读。
+            self._gripper_tail_fetch = "skipped_no_grippers"
+            if getattr(self, "hal", None) is not None and self._gripper_samples_enabled(self._recording_config()):
+                self._gripper_tail_fetch = await asyncio.to_thread(self._fetch_gripper_tail_blocking)
+            gripper_raw = self._gripper_raw_episode_payload()
+        except Exception as exc:  # noqa: BLE001
+            # 旁路数据失败不能拖垮训练帧保存；元数据如实记下失败原因。
+            self._episode_gripper_raw_meta = {"recordingFormat": RECORDING_FORMAT_VERSION, "error": str(exc)}
+            self.logs.warning("[GRIPPER_RAW]", f"episode snapshot failed: {exc}")
         try:
             total_frames = await self._native_writer_command("save_episode")
             self._native_total_frames_cached = int(total_frames or 0)
@@ -2308,9 +2514,58 @@ class DatasetRecorderService:
                 await self._native_writer_command("write_origin_move", origin_move)
             except Exception as exc:  # noqa: BLE001
                 self.logs.warning("[ORIGIN_MOVE]", f"episode {origin_move.episode_index:06d} write failed: {exc}")
+        if gripper_raw is not None:
+            try:
+                await self._native_writer_command("write_gripper_raw", gripper_raw)
+                sidecar = f"gripper_raw/episode_{gripper_raw.episode_index:06d}.parquet"
+                self._episode_gripper_raw_meta["sidecar"] = sidecar
+            except Exception as exc:  # noqa: BLE001
+                self._episode_gripper_raw_meta["sidecarError"] = str(exc)
+                self.logs.warning("[GRIPPER_RAW]", f"episode {gripper_raw.episode_index:06d} write failed: {exc}")
+
+    def _gripper_raw_episode_payload(self) -> GripperRawWrite | None:
+        """封住本 episode 的夹爪读数：统计、接触片段写入 episode 元数据，逐读数行交给写线程。"""
+        snapshot = self._gripper_raw_collector().end_episode()
+        selected = getattr(self, "_participation", None)
+        sides = tuple(hardware_sides(selected, "grippers")) if selected else ()
+        config = self._recording_config()
+        gripper = config.get("gripper", {}) if isinstance(config.get("gripper"), dict) else {}
+        stroke = float(gripper.get("strokeMm", 26.0))
+        dataset_side = {side: operator_side_for_hardware_side(side) for side in ("left", "right")}
+        thresholds = self._gripper_idle_thresholds(config, sides)
+        meta: dict[str, Any] = {
+            "recordingFormat": RECORDING_FORMAT_VERSION,
+            "idleStartCheck": getattr(self, "_gripper_idle_check", "not_run"),
+            "transport": hal_gripper_sampling_fields(config)["gripperWorkerTransport"],
+            "sideSemantics": "hardware",
+            "datasetSideForHardwareSide": dataset_side,
+            "stats": gripper_raw_samples.episode_summary(snapshot, sides),
+            # HAL 重启（seq 重新计数）与增量拉取失败次数：非 0 时说明本 episode 有无法计数的缺样。
+            "halRestarts": snapshot.get("halRestarts", 0),
+            # 封存前尾部补读结果：failed 表示尾部可能缺读数（未能计入 missedSeq）。
+            "tailFetch": getattr(self, "_gripper_tail_fetch", "not_run"),
+            "tailFetchError": getattr(self, "_gripper_fetch_last_error", "")
+            if getattr(self, "_gripper_tail_fetch", "") == "failed" else "",
+            "fetchErrors": snapshot.get("fetchErrors", 0),
+            "contactThresholdRaw": thresholds,
+            # 标定完成前力值保留原码；接触片段只给原码峰值，不换算为牛顿。
+            "contactEvents": gripper_raw_samples.contact_events(
+                snapshot, sides, stroke_mm=stroke, min_gap_mm=icf_target_min_gap_mm(config),
+                fps=float(getattr(self, "_record_fps_hz", 30)), thresholds_raw=thresholds,
+                dataset_side_for_hardware=dataset_side, frame_count=getattr(self, "_episode_frames", None)),
+        }
+        self._episode_gripper_raw_meta = meta
+        rows = gripper_raw_samples.episode_rows(
+            snapshot, sides, stroke_mm=stroke, dataset_side_for_hardware=dataset_side)
+        if not rows:
+            return None
+        return GripperRawWrite(self._require_dataset_dir(), self._episode_index, tuple(rows))
 
     async def _clear_native_episode_buffer(self) -> None:
         """请求写线程清空未保存的 native episode 缓冲区。"""
+        # 丢弃的 episode 不留夹爪读数，收集器回到空闲保留模式。
+        self._gripper_raw_collector().end_episode()
+        self._episode_gripper_raw_meta = {}
         if hasattr(self, "_origin_move_lock"):
             with self._origin_move_lock:
                 self._origin_move_closed = True
@@ -2362,10 +2617,16 @@ class DatasetRecorderService:
                     daemon=True,
                 )
                 self._sampler_threads[source].start()
+        self._start_gripper_samples_thread(config)
 
     async def _stop_sampler_tasks(self) -> None:
         """通知所有采样线程停止，并等待线程退出。"""
         self._sampler_stop_event.set()
+        samples_thread = self._retire_gripper_samples_thread()
+        if samples_thread is not None:
+            # 拉取线程只读，可能正等 DDS 应答；短暂等待即可。它的停止事件与代际已失效，
+            # 即使尚未退出也不会再请求或把迟到应答交给下一会话。
+            await asyncio.to_thread(samples_thread.join, 0.2)
         threads = [(source, thread) for source, thread in self._sampler_threads.items() if thread.is_alive()]
         for _source, thread in threads:
             await asyncio.to_thread(thread.join, 1.0)
@@ -2698,12 +2959,16 @@ class DatasetRecorderService:
                 native_status = result.get("response") if isinstance(result, dict) else None
                 if not isinstance(native_status, dict):
                     raise RuntimeError("参与采集的夹爪 native 状态缺失")
-                if target_buffer is not None:
-                    targets = self._native_gripper_target_values(native_status)
-                    stamp = self._source_sample_monotonic(native_status, 0.0)
-                    if targets is not None and math.isfinite(stamp) and stamp > 0:
-                        # 目标用 DDS 状态时标，不能套用更早的夹爪位置 READ 时标。
-                        target_buffer.append(TimedSample("gripper_target", stamp, targets))
+                targets = self._native_gripper_target_values(native_status)
+                stamp = self._source_sample_monotonic(native_status, 0.0)
+                target_ok = targets is not None and math.isfinite(stamp) and stamp > 0
+                if target_buffer is not None and target_ok:
+                    # 目标用 DDS 状态时标，不能套用更早的夹爪位置 READ 时标。
+                    target_buffer.append(TimedSample("gripper_target", stamp, targets))
+                # 记下当时的命令开口供接触片段检测；读数本身由独立线程按 seq 增量拉取，
+                # 历史读取变慢不能拖住这里的位置样本（帧对齐只允许 70 ms 偏差）。
+                if target_ok and targets is not None:
+                    self._gripper_raw_collector().ingest_targets(stamp, list(targets))
                 return self._gripper_source_sync(
                     config, target_s, record_quality=False, native_status=native_status)
             return self._gripper_source_sync(config, target_s, record_quality=False)
@@ -3541,6 +3806,11 @@ class DatasetRecorderService:
             "observation.pulses": self._np_float32(frame["observation.pulses"]),
             "observation.force_left": self._np_float32(frame["observation.force_left"]),
             "observation.force_right": self._np_float32(frame["observation.force_right"]),
+            # 缺读数即“0 且无效”，与有效标志的语义一致，不伪造测量。
+            "observation.gripper_current_raw": self._np_float32(
+                frame.get("observation.gripper_current_raw", [0.0, 0.0])),
+            "observation.gripper_current_valid": self._np_float32(
+                frame.get("observation.gripper_current_valid", [0.0, 0.0])),
             "action": self._np_float32(frame["action"]),
             "task": self._task,
         }
@@ -3763,6 +4033,8 @@ class DatasetRecorderService:
         if not self._native_writer_active():
             raise DatasetSaveError(self._native_required_message())
         self._episode_force_calibration = self._force_calibration_snapshot(self._recording_config())
+        self._gripper_idle_check = "not_run"
+        self._episode_gripper_raw_meta = {}
         self._native_dataset_from_index = self._native_total_frames_cached
         self._samplers_paused = False
         self._gripper_sampler_paused = False
@@ -3822,6 +4094,7 @@ class DatasetRecorderService:
             "motionOrigin": self._episode_motion_origin_snapshot(config_snapshot),
             "motionCalibration": self._motion_calibration_snapshot(config_snapshot),
             "forceCalibration": deepcopy(getattr(self, "_episode_force_calibration", {})),
+            "gripperRaw": deepcopy(getattr(self, "_episode_gripper_raw_meta", {})),
             "session": getattr(self, "_session_id", ""),
         }
         episode["qualityAssessment"] = self._quality_assessment(episode)
@@ -4008,16 +4281,21 @@ class DatasetRecorderService:
         # A saved episode may be discarded during review; do not retain its sidecar.
         with contextlib.suppress(OSError):
             (dataset_dir / "origin_move" / f"{episode_id}.parquet").unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            (dataset_dir / "gripper_raw" / f"{episode_id}.parquet").unlink(missing_ok=True)
 
     def _write_appstation_info(self, dataset_dir: Path, config: dict[str, Any]) -> None:
         """写入 AppStation 扩展元数据，记录硬件、格式和录制参数。"""
         path = dataset_dir / "meta" / "appstation_info.json"
         info = self._read_json(path)
+        record_force = self._record_force_enabled(config)
         payload = {
             "name": str(info.get("name") or self._dataset_name),
             "status": str(info.get("status", "local")) if info else "local",
             "format": "lerobot-v3-native",
             "dataContract": data_contract_metadata(),
+            # 续录前已核对录制格式一致，这里总是写当前格式。
+            "recordingFormat": recording_format_metadata(),
             "codebase_version": "v3.0",
             "nativeLeRobotAvailable": True,
             "useVideos": self._native_use_videos,
@@ -4025,7 +4303,10 @@ class DatasetRecorderService:
             "streamingEncoding": True,
             "recording": {
                 "fps": self._record_fps_hz,
-                "forceSampleHz": self._force_sample_hz,
+                # 实机默认不录力；关闭时力字段全为 0，不能把配置频率当成实测采样。
+                "recordForce": record_force,
+                "forceFields": "measured" if record_force else "zero_filled_record_force_disabled",
+                "forceSampleHz": self._force_sample_hz if record_force else 0.0,
                 "alignment": (
                     "source samplers record host monotonic sample times; "
                     "record frames align at episode_start_s + frame_index / record_fps after warmup and start checks; "
@@ -4048,6 +4329,7 @@ class DatasetRecorderService:
                 "cameras": config.get("cameras", {}),
                 "cameraResolutions": self._camera_resolution_summary_from_config(config),
                 "force": self._force_metadata(config),
+                "gripper": self._gripper_metadata(config),
                 "motion": self._motion_calibration_snapshot(config),
             },
         }
@@ -4081,7 +4363,37 @@ class DatasetRecorderService:
         info = self._read_json(info_path)
         if info:
             info["dataContract"] = data_contract_metadata()
+            info["recordingFormat"] = recording_format_metadata()
             self._write_json(info_path, info)
+
+    def _gripper_metadata(self, config: dict[str, Any]) -> dict[str, Any]:
+        """记录夹爪接线、夹持力设定和实际采样方式，便于追溯夹爪数据的来源。"""
+        gripper = config.get("gripper", {}) if isinstance(config.get("gripper"), dict) else {}
+        teleop = config.get("teleop", {}) if isinstance(config.get("teleop"), dict) else {}
+        gripper_teleop = teleop.get("gripperTeleop", {}) if isinstance(teleop.get("gripperTeleop"), dict) else {}
+        return {
+            "model": "jodell_epg",
+            "strokeMm": gripper.get("strokeMm"),
+            "baudrate": gripper.get("baudrate"),
+            "minGapMm": gripper.get("icfTargetMinGapMm"),
+            # 硬件侧：left/right 为硬件左右，不随数据集操作者侧顺序交换。
+            "hardwareSides": {
+                side: {
+                    "port": gripper.get(f"{side}Port"),
+                    "slaveId": gripper.get(f"{side}SlaveId"),
+                    "enabled": bool(gripper.get(f"{side}Enabled", False)),
+                }
+                for side in ("left", "right")
+            },
+            # rFC 原始值 1–255；commandForceLimitN 未标定前只作显示，不参与下发。
+            "gripTorqueRaw": gripper_teleop.get("gripTorque"),
+            "releaseTorqueRaw": gripper_teleop.get("releaseTorque"),
+            "commandForceLimitN": gripper.get("commandForceLimitN"),
+            "forceCalibration": deepcopy(gripper.get("forceCalibration")),
+            # gripper.sampleHz 换算为 HAL 每次读完后的等待间隔；实测频率见每个 episode 的 gripper_raw 统计。
+            **hal_gripper_sampling_fields(config),
+            "configSampleHz": gripper.get("sampleHz"),
+        }
 
     def _force_metadata(self, config: dict[str, Any]) -> dict[str, Any]:
         force = config.get("force", {}) if isinstance(config.get("force"), dict) else {}
@@ -4281,6 +4593,11 @@ class DatasetRecorderService:
             "observation.force_left": {"dtype": "float32", "shape": (6,), "names": list(FORCE_FEATURE_NAMES)},
             "observation.force_right": {"dtype": "float32", "shape": (6,), "names": list(FORCE_FEATURE_NAMES)},
             "action": {"dtype": "float32", "shape": (14,), "names": list(STATE_FEATURE_NAMES)},
+            # 录制格式 RECORDING_FORMAT_VERSION：gCU 原码与有效标志，操作者左、操作者右。
+            "observation.gripper_current_raw": {
+                "dtype": "float32", "shape": (2,), "names": list(GRIPPER_CURRENT_FEATURE_NAMES)},
+            "observation.gripper_current_valid": {
+                "dtype": "float32", "shape": (2,), "names": list(GRIPPER_CURRENT_VALID_FEATURE_NAMES)},
         }
         for key in active_camera_keys(config):
             feature_key = CAMERA_FEATURE_KEYS[key]
@@ -4434,6 +4751,12 @@ class DatasetRecorderService:
             return ""
         if empty:
             return "无法续录：元数据与已有片段文件不一致，请先检查数据集"
+        saved_format = saved.get("recordingFormat")
+        saved_version = saved_format.get("version") if isinstance(saved_format, dict) else None
+        if saved_version != RECORDING_FORMAT_VERSION:
+            # 旧数据集（无录制格式或版本不同）仍可读取与回放，但新格式的 feature 不能续录进去。
+            return (f"无法续录：数据集录制格式为 {saved_version or '旧版（无夹爪电流）'}，"
+                    f"当前为 {RECORDING_FORMAT_VERSION}，请新建数据集")
         try:
             native = read_native_index(dataset_dir, info)
             _matched, untracked = match_records(episodes, native)

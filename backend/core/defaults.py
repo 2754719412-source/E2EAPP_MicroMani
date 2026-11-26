@@ -447,11 +447,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "leftEnabled": False,
         "rightEnabled": False,
         "commandForceLimitN": 8,
+        # 夹持力标定（scripts/calibrate_gripper_force.py 生成，按硬件侧存放）；
+        # 未显式开启 applyCommandForceLimit 时仍按 gripperTeleop.gripTorque 下发。
+        "forceCalibration": {"applyCommandForceLimit": False, "left": None, "right": None},
         "commandSpeed": 10,
         "commandTorque": 1,
         "icfTargetProtectionEnabled": True,
         "icfTargetMinGapMm": 1.02,
+        # 夹爪反馈读取频率，换算为 HAL 每次读完后的等待间隔（gripperSampleIntervalMs）。
         "sampleHz": 30,
+        # worker 访问夹爪的方式："dll"（vendor DLL）或 "modbus"（worker 独占串口直接读写，现场验收后启用）。
+        "workerTransport": "dll",
         "sampleStaleMs": 500,
         "sampleEnableOnNegative": True,
         "workerCommandTimeoutSec": 2.0,
