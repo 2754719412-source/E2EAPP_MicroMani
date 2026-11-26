@@ -15,6 +15,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "HalTypes.h"
 #include "JodellGripperDriver.h"
@@ -211,6 +212,8 @@ class NativeTeleopController {
   std::string statusJson() const;
   // 高频 DDS 使用精简历史；完整硬件诊断仍通过 statusJson 按需读取。
   std::string telemetryJson() const;
+  // 录制用：只返回本 HAL 实例中 seq 大于 afterSeq 的读数；knownInstanceId 与当前实例不同（HAL 已重启）时返回全部历史。
+  std::string gripperSamplesJson(const std::string& knownInstanceId, std::array<std::uint64_t, 2> afterSeq) const;
   bool running() const;
   void setLeaderStatePublisher(LeaderStatePublisher publisher);
   void setHardwareTargetPublisher(HardwareTargetPublisher publisher);
@@ -398,11 +401,15 @@ class NativeTeleopController {
     bool halTimestamp{false};
   };
   void resetGripperSampleStatsUnlocked();
+  bool recordGripperSamplesUnlocked(int index, const std::vector<jodell::GripperFeedbackSample>& samples,
+      std::int64_t windowStartUs, std::int64_t windowEndUs);
   bool recordGripperSampleUnlocked(int index, jodell::GripperFeedbackSample sample,
       std::int64_t windowStartUs, std::int64_t windowEndUs);
   std::array<GripperSampleRecord, 2> gripperLatestSample_{};
   std::array<std::deque<GripperSampleRecord>, 2> gripperSampleHistory_{};
   std::array<std::uint64_t, 2> gripperSampleSeq_{};
+  // 每次 HAL 启动随机生成；seq 只在同一实例内单调，后端据此识别重启。
+  const std::string gripperSampleInstanceId_;
   // 验收统计：自上次重置以来的样本数、首末样本时间和最长相邻间隔（断样）。
   std::array<double, 2> gripperMaxSampleGapMs_{};
   std::array<std::uint64_t, 2> gripperStatsSamples_{};

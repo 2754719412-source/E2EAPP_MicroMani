@@ -144,13 +144,14 @@ inline bool checkWriteResponse(
 }
 
 inline int positionRawForGapMm(double gapMm, double strokeMm) {
-  const double stroke = std::max(0.001, strokeMm);
+  // (std::max) 防止 windows.h 未定义 NOMINMAX 时 max 宏展开。
+  const double stroke = (std::max)(0.001, strokeMm);
   const double ratio = std::clamp(1.0 - gapMm / stroke, 0.0, 1.0);
   return static_cast<int>(std::lround(ratio * 255.0));
 }
 
 inline double gapMmForPositionRaw(int positionRaw, double strokeMm) {
-  return std::max(0.001, strokeMm) * (1.0 - std::clamp(positionRaw, 0, 255) / 255.0);
+  return (std::max)(0.001, strokeMm) * (1.0 - std::clamp(positionRaw, 0, 255) / 255.0);
 }
 
 // 一次读取得到的结构化反馈。monotonicUs 为 steady_clock 微秒（Windows 上 MSVC 与 Python 都基于 QPC），
@@ -238,6 +239,17 @@ inline bool parseSampleFields(const std::vector<std::string>& parts, std::size_t
   if (sample.currentValid && (sample.currentRaw < 0 || sample.currentRaw > 255)) sample.currentValid = false;
   *out = sample;
   return true;
+}
+
+// 一行应答可以带多个样本（例如使能等待期间的多次读取），依次解析直到没有 SAMPLE1 字段。
+inline std::vector<GripperFeedbackSample> parseSamples(const std::vector<std::string>& parts, std::size_t offset) {
+  std::vector<GripperFeedbackSample> samples;
+  GripperFeedbackSample sample;
+  while (parseSampleFields(parts, offset, &sample)) {
+    samples.push_back(sample);
+    offset += kSampleFieldCount;
+  }
+  return samples;
 }
 
 }  // namespace appstation::hal::jodell

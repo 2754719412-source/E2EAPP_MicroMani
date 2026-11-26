@@ -44,6 +44,7 @@ def test_shared_hal_command_protocol_covers_existing_real_hal_commands() -> None
         "gripper.prepare_replay": ("POST", "/gripper/prepare_replay"),
         "gripper.feedback.configure": ("POST", "/gripper/feedback/configure"),
         "gripper.replay_target": ("POST", "/gripper/replay_target"),
+        "gripper.samples": ("POST", "/gripper/samples"),
     }
 
     assert set(HAL_COMMANDS) == set(expected_paths)

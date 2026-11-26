@@ -574,3 +574,32 @@ def test_tare_lost_reply_never_retries_or_keeps_control_lease() -> None:
             asyncio.run(client.command("control.lease"))
     finally:
         client.close()
+
+
+def test_gripper_samples_bypass_telemetry_cache_and_use_dedicated_lane() -> None:
+    """遥测缓存只带最新样本；增量读数必须真正请求 HAL，且不占控制通道、超时不隔离控制传输。"""
+    from backend.hal_client.dds_types import now_unix_ms
+
+    transport = FakeDdsTransport()
+    transport.latest[TOPIC_HAL_NATIVE_TELEOP_STATUS] = JsonEnvelope(
+        stamp_unix_ms=now_unix_ms(), stamp_monotonic_ms=1, source="hal-cpp", payload_json=json.dumps({"running": True}))
+    history = {"gripperSampleInstanceId": "a", "gripperSampleHistoryFormat": "fmt", "gripperSampleHistory": {}}
+
+    def publish_and_reply(request: Any) -> None:
+        transport.requests.append(request)
+        transport.replies[request.request_id] = HalCommandReply(
+            request_id=request.request_id, ok=True, result_json=json.dumps(history), error="")
+
+    transport.publish_command_request = publish_and_reply  # type: ignore[method-assign]
+    client = DdsHalClient(LogService(emit_startup=False), transport=transport, reply_timeout_s=0.05)
+    client._command_lane = None  # type: ignore[assignment]  # 若误用控制通道会直接报错
+
+    result = asyncio.run(client.command("gripper.samples", {"instanceId": "a", "afterSeqLeft": 3}))
+    assert result["response"] == history
+    assert [request.name for request in transport.requests] == ["gripper.samples"]
+    assert "commandExpiresAtUnixMs" not in json.loads(transport.requests[0].payload_json)
+
+    transport.publish_command_request = transport.requests.append  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="timed out"):
+        asyncio.run(client.command("gripper.samples", {}))
+    assert client._control_transport_failed is False

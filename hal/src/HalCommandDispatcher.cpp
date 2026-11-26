@@ -189,6 +189,15 @@ std::string HalCommandDispatcher::handle(const std::string& name, const std::str
   if (name == "teleop.native.status") {
     return nativeTeleop_.statusJson();
   }
+  if (name == "gripper.samples") {
+    // 只读：录制按 seq 增量取夹爪真实读数，不受 100 Hz 遥测缓存只带最新样本的限制。
+    const auto after = [&](const char* key) {
+      const double value = jsonNumberValue(bodyText, key, 0.0);
+      return value > 0.0 && std::isfinite(value) ? static_cast<std::uint64_t>(value) : std::uint64_t{0};
+    };
+    return nativeTeleop_.gripperSamplesJson(
+        jsonStringValue(bodyText, "instanceId"), {after("afterSeqLeft"), after("afterSeqRight")});
+  }
   if (name == "gripper.feedback.configure") {
     const auto config = jsonNativeTeleopConfig(bodyText);
     nativeTeleop_.configureGripperFeedback(config.gripper, config.gripperParticipating);

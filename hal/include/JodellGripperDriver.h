@@ -15,6 +15,7 @@
 
 #include "HalTypes.h"
 #include "JodellModbus.h"
+#include <vector>
 
 namespace appstation::hal {
 
@@ -66,8 +67,9 @@ class JodellGripperDriver {
   std::array<double, 2> positionMm() const;
   std::array<double, 2> positionMmSnapshot(std::array<double, 2> fallback) const;
   std::string lastError() const;
-  // 父进程：最近一次 worker 应答附带的结构化样本（旧 worker 无样本字段时各有效标志为 false）。
-  jodell::GripperFeedbackSample lastSample(Side side) const;
+  // 父进程：取走自上次调用以来 worker 应答附带的全部成功读数（含失败命令期间的读数）；旧 worker 无样本字段时为空。
+  // 取走即清空，失败或取消的请求不会把上一次读数再交一遍。
+  std::vector<jodell::GripperFeedbackSample> takeSamples(Side side);
   // worker 进程内 DLL 路径：最近一次内联读取的原码；电流来自 getClawCurrentTorque，状态位编码未知不解析。
   jodell::GripperFeedbackSample lastDllSample(Side side) const;
 
@@ -107,7 +109,7 @@ class JodellGripperDriver {
   std::array<double, 2> targetMm_{{0.0, 0.0}};
   std::array<double, 2> positionMm_{{-1.0, -1.0}};
   std::string lastError_;
-  std::array<jodell::GripperFeedbackSample, 2> lastSample_{};
+  std::array<std::vector<jodell::GripperFeedbackSample>, 2> pendingSamples_{};
   std::array<jodell::GripperFeedbackSample, 2> lastDllSample_{};
 
 #ifdef _WIN32

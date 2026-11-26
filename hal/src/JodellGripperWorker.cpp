@@ -5,7 +5,7 @@
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 #include "JodellGripperDriver.h"
-#include "JodellModbusClient.h"
+#include "JodellWorkerProtocol.h"
 
 #include <algorithm>
 #include <chrono>
@@ -82,15 +82,16 @@ double doubleArg(int argc, char** argv, const std::string& key, double fallback)
   return end == value.c_str() ? fallback : parsed;
 }
 
-// 响应前三段固定为：状态、位置、消息；之后追加 SAMPLE1 结构化样本字段。父进程逐行读取并按 tab 切分。
+// 应答行格式见 JodellWorkerProtocol.h：OK|ERR \t 位置 \t 消息，之后是本次请求内每个读数的 SAMPLE1 字段。
+void writeResponse(bool ok, double positionMm, const std::string& message,
+    const std::vector<appstation::hal::jodell::GripperFeedbackSample>& samples) {
+  std::cout << appstation::hal::jodell::formatResponse(ok, positionMm, message, samples) << '\n';
+  std::cout.flush();
+}
+
 void writeResponse(bool ok, double positionMm, const std::string& message,
     const appstation::hal::jodell::GripperFeedbackSample& sample) {
-  std::cout << (ok ? "OK" : "ERR")
-      << '\t' << positionMm
-      << '\t' << sanitizeField(message)
-      << '\t' << appstation::hal::jodell::formatSampleFields(sample)
-      << '\n';
-  std::cout.flush();
+  writeResponse(ok, positionMm, message, std::vector<appstation::hal::jodell::GripperFeedbackSample>{sample});
 }
 
 #ifdef _WIN32
@@ -218,41 +219,23 @@ int main(int argc, char** argv) {
 
   const std::string transport = argValue(argc, argv, "--transport", "dll");
   const int modbusTimeoutMs = intArg(argc, argv, "--modbus-timeout-ms", 100);
-  const int activationTimeoutMs = intArg(argc, argv, "--activation-timeout-ms", 1500);
   namespace jodell = appstation::hal::jodell;
 
   if (transport == "modbus") {
 #ifdef _WIN32
     // Modbus 模式：本进程直接独占串口，不加载 vendor DLL；读写共用同一串口句柄。
+    // 运动拆成 PREPARE / AWAIT / MOVE 三个请求（见 JodellWorkerProtocol.h），父进程在每个请求之前检查运动授权。
     Win32SerialTransport serial(config.ports[sideIndex], config.baudrate, modbusTimeoutMs);
     jodell::JodellModbusClient client(serial, config.slaveIds[sideIndex], config.strokeMm);
     std::string line;
     while (std::getline(std::cin, line)) {
       if (line == "EXIT") break;
-      jodell::GripperFeedbackSample sample;
-      if (line == "READ" || line == "READPOS") {
-        // 一次读取即包含位置、状态和电流，READ 与 READPOS 不再有代价差异。
-        std::string error;
-        const bool ok = client.readSample(&sample, &error);
-        writeResponse(ok, client.gapMm(sample), ok ? "modbus read" : error, sample);
-        continue;
-      }
-      const auto parts = splitTabs(line);
-      if (parts.size() == 4 && parts[0] == "COMMAND") {
-        const double targetMm = std::strtod(parts[1].c_str(), nullptr);
-        const int speed = std::clamp(static_cast<int>(std::strtol(parts[2].c_str(), nullptr, 10)), 1, 255);
-        const int torque = std::clamp(static_cast<int>(std::strtol(parts[3].c_str(), nullptr, 10)), 1, 255);
-        std::string message;
-        const bool ok = client.moveTo(targetMm, speed, torque, activationTimeoutMs, &sample, &message);
-        writeResponse(ok, client.gapMm(sample), message, sample);
-        continue;
-      }
-      writeResponse(false, -1.0, "unsupported command", sample);
+      std::cout << jodell::handleModbusLine(client, line) << '\n';
+      std::cout.flush();
     }
     return 0;
 #else
     (void)modbusTimeoutMs;
-    (void)activationTimeoutMs;
     writeResponse(false, -1.0, "modbus transport is Windows-only", jodell::GripperFeedbackSample{});
     return 1;
 #endif

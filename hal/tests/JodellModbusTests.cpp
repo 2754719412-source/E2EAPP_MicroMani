@@ -1,13 +1,26 @@
 // 离线测试：钧舵 Modbus 帧与手册 A.1 第 7 章示例逐字节一致，worker 样本字段往返无损，
 // 以及 worker 的使能/故障/应答校验逻辑（模拟设备）；不打开串口。
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
+#include <functional>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <utility>
 #include <vector>
 
-#include "JodellModbusClient.h"
+// 模拟先包含 windows.h 且未定义 NOMINMAX 的调用方（如 GripperFeedbackTests）：公共头文件不能依赖 max/min 名字。
+#define max(a, b) (((a) > (b)) ? (a) : (b))
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+#include "JodellWorkerProtocol.h"
+#undef max
+#undef min
 
 using namespace appstation::hal::jodell;
 namespace {
@@ -128,40 +141,105 @@ JodellModbusClient client(FakeDevice& device) {
   return JodellModbusClient(device, device.slave, 26.0, [] { return now += 1000; }, [](int) {});
 }
 
-void clientActivatesOnlyWhenNeeded() {
-  FakeDevice device;
-  auto gripper = client(device);
-  GripperFeedbackSample sample;
-  std::string message;
-  require(gripper.moveTo(5.0, 64, 30, 1500, &sample, &message), "move after activation failed");
-  require(device.requests[1] == activationRequest(9, true), "activation not written");
-  require(device.requests.back() == moveRequest(9, positionRawForGapMm(5.0, 26.0), 64, 30), "move frame wrong");
-  require(device.position == positionRawForGapMm(5.0, 26.0), "device did not move");
-  const auto before = device.requests.size();
-  require(gripper.moveTo(10.0, 64, 30, 1500, &sample, &message), "second move failed");
-  require(device.requests.size() == before + 2, "activated gripper was activated again");
-  for (std::size_t i = before; i < device.requests.size(); ++i) {
-    require(device.requests[i] != activationRequest(9, true), "re-activation sent");
-  }
+std::int64_t fakeNowUs() {
+  static std::int64_t now = 0;
+  return now += 1000;
 }
 
-void clientRejectsFaultAndActivationTimeout() {
-  FakeDevice faulted;
-  faulted.activated = true;
-  faulted.fault = 0x0B;
-  auto gripper = client(faulted);
-  GripperFeedbackSample sample;
-  std::string message;
-  require(!gripper.moveTo(5.0, 64, 30, 1500, &sample, &message) && message.find("fault") != std::string::npos,
-      "fault not rejected");
-  require(faulted.requests.size() == 1, "faulted gripper received a write");
+bool isActivation(const std::vector<std::uint8_t>& frame) { return frame == activationRequest(9, true); }
+bool isMove(const std::vector<std::uint8_t>& frame) { return frame[1] == kWriteMultipleRegisters && frame[5] == 3; }
+int countReads(const FakeDevice& device) {
+  int reads = 0;
+  for (const auto& frame : device.requests) reads += frame[1] == kReadInputRegisters ? 1 : 0;
+  return reads;
+}
 
-  FakeDevice stuck;
-  stuck.activationPolls = 1000000;
-  auto slow = client(stuck);
-  require(!slow.moveTo(5.0, 64, 30, 50, &sample, &message) && message.find("activation timeout") != std::string::npos,
+// 用与 worker 相同的 handleModbusLine 处理父进程请求，并收集每个应答里的样本。
+struct WorkerHarness {
+  FakeDevice device;
+  JodellModbusClient gripper{client(device)};
+  std::vector<std::string> lines;
+  std::vector<GripperFeedbackSample> samples;
+  bool request(const std::string& line, std::string* message) {
+    lines.push_back(line);
+    const auto parts = splitWorkerFields(handleModbusLine(gripper, line));
+    for (const auto& sample : parseSamples(parts, 3)) samples.push_back(sample);
+    if (message) *message = parts[2];
+    return parts[0] == "OK";
+  }
+  bool move(const std::function<bool()>& cancelled, std::string* message) {
+    return orchestrateModbusMove([this](const std::string& line, std::string* reply) { return request(line, reply); },
+        cancelled, moveCommandLine(5.0, 64, 30), message, fakeNowUs);
+  }
+};
+
+void moveActivatesOnlyWhenNeededAndReportsEveryRead() {
+  WorkerHarness worker;
+  std::string message;
+  require(worker.move([] { return false; }, &message), "move after activation failed");
+  require(isActivation(worker.device.requests[1]), "activation not written");
+  require(isMove(worker.device.requests.back()), "move frame not last");
+  require(worker.device.position == positionRawForGapMm(5.0, 26.0), "device did not move");
+  // 每次成功读取（运动前读 + 使能等待中的多次读）都随应答上报，不只最后一条。
+  require(static_cast<int>(worker.samples.size()) == countReads(worker.device) && worker.samples.size() >= 3,
+      "reads during activation were not all reported");
+  const auto before = worker.device.requests.size();
+  worker.lines.clear();
+  require(worker.move([] { return false; }, &message), "second move failed");
+  require(worker.device.requests.size() == before + 2, "activated gripper was activated again");
+  require(worker.lines.size() == 2 && worker.lines[0] == "PREPARE", "ready gripper still awaited activation");
+}
+
+void emergencyStopDuringActivationBlocksMove() {
+  // 审查复现：使能等待中撤销授权后，不得再有任何运动写入。
+  WorkerHarness worker;
+  worker.device.activationPolls = 1000000;
+  int awaits = 0;
+  std::string message;
+  const bool ok = worker.move([&] {
+    for (const auto& line : worker.lines) awaits += line.rfind("AWAIT", 0) == 0 ? 1 : 0;
+    const bool stop = awaits > 0;
+    awaits = 0;
+    return stop;
+  }, &message);
+  require(!ok && message.find("cancelled") != std::string::npos, "cancellation not reported");
+  for (const auto& frame : worker.device.requests) require(!isMove(frame), "move written after emergency stop");
+  require(worker.lines.back().rfind("AWAIT", 0) == 0, "no AWAIT slice was attempted before cancelling");
+
+  // 使能很快完成的情形：等待片之后授权已失效，最终运动写之前仍须拦下。
+  WorkerHarness quick;
+  quick.device.activationPolls = 2;
+  require(!quick.move([&] {
+    for (const auto& line : quick.lines) if (line.rfind("AWAIT", 0) == 0) return true;
+    return false;
+  }, &message), "quick activation ignored cancellation");
+  for (const auto& frame : quick.device.requests) require(!isMove(frame), "move written after emergency stop");
+
+  WorkerHarness beforePrepare;
+  require(!beforePrepare.move([] { return true; }, &message) && beforePrepare.device.requests.empty(),
+      "cancelled command still touched the device");
+}
+
+void faultAndTimeoutKeepReadings() {
+  WorkerHarness faulted;
+  faulted.device.activated = true;
+  faulted.device.fault = 0x0B;
+  std::string message;
+  require(!faulted.move([] { return false; }, &message) && message.find("fault") != std::string::npos,
+      "fault not rejected");
+  require(faulted.device.requests.size() == 1, "faulted gripper received a write");
+  require(faulted.samples.size() == 1 && faulted.samples[0].fault == 0x0B, "fault reading was not reported");
+
+  WorkerHarness stuck;
+  stuck.device.activationPolls = 1000000;
+  require(!stuck.move([] { return false; }, &message) && message.find("activation timeout") != std::string::npos,
       "activation timeout not reported");
-  require(stuck.requests.back()[1] == kReadInputRegisters, "move sent without activation");
+  for (const auto& frame : stuck.device.requests) require(!isMove(frame), "move sent without activation");
+  require(stuck.lines.back().rfind("AWAIT", 0) == 0, "timeout did not happen while awaiting");
+
+  WorkerHarness single;
+  require(splitWorkerFields(handleModbusLine(single.gripper, "COMMAND\t5\t64\t30"))[0] == "ERR",
+      "single-step COMMAND accepted in modbus mode");
 }
 
 void clientReadMarksExceptionInvalid() {
@@ -186,8 +264,9 @@ int main() {
     statusParsesManualReplies();
     positionConversionMatchesDriver();
     sampleFieldsRoundTrip();
-    clientActivatesOnlyWhenNeeded();
-    clientRejectsFaultAndActivationTimeout();
+    moveActivatesOnlyWhenNeededAndReportsEveryRead();
+    emergencyStopDuringActivationBlocksMove();
+    faultAndTimeoutKeepReadings();
     clientReadMarksExceptionInvalid();
   } catch (const std::exception& error) {
     std::cerr << "JodellModbusTests failed: " << error.what() << '\n';

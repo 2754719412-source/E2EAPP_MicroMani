@@ -43,13 +43,16 @@ HAL_COMMANDS: dict[str, HalCommandSpec] = {
     "gripper.command": HalCommandSpec("POST", "/gripper/command"),
     "gripper.prepare_replay": HalCommandSpec("POST", "/gripper/prepare_replay"),
     "gripper.feedback.configure": HalCommandSpec("POST", "/gripper/feedback/configure"),
+    # 只读：录制按 seq 增量取夹爪真实读数（DDS 遥测缓存只带最新样本）。
+    "gripper.samples": HalCommandSpec("POST", "/gripper/samples"),
     "gripper.replay_target": HalCommandSpec("POST", "/gripper/replay_target"),
 }
 
 _LONG_RUNNING_COMMANDS = {"motion.home_all", "motion.home_origin_side", "motion.home_side", "motion.return_home_reference"}
 # 仅只读和停止操作允许自动重试；未收到应答不代表运动、使能或确认未执行。
 _RETRY_SAFE_COMMANDS = {
-    "hal.reconnect", "teleop.native.status", "motion.emergency_stop",
+    "hal.reconnect", "teleop.native.status", "gripper.samples",
+    "motion.emergency_stop",
     "motion.disable_side", "motion.teleop_stop_side", "teleop.native.stop",
     "omega7.zero_force_feedback",
 }

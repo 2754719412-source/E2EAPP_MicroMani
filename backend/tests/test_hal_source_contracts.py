@@ -2219,8 +2219,7 @@ def test_hal_native_gripper_uses_isolated_jodell_worker_processes() -> None:
     assert "gripperDriver(side).readPositionMmIfIdle(side, kPolicyGripperReadTimeoutMs, &message)" in normalized_sample
     assert "const auto sampleMidpoint = readStarted + (readFinished - readStarted) / 2;" in normalized_sample
     # 有可信 worker 时间戳时用它，否则回落到 HAL 侧读取中点。
-    assert "gripperPositionSampleMonotonicMs_[index] = recorded && latest.sample.positionValid && !latest.halTimestamp" \
-        in normalized_sample
+    assert "gripperPositionSampleMonotonicMs_[index] = ok && recorded && latest.sample.positionValid" in normalized_sample
     assert "? latest.sample.monotonicUs / 1000 : sampleMonotonicMs;" in normalized_sample
     assert "std::array<std::int64_t, 2> gripperPositionSampleMonotonicMs_" in controller_header
     assert 'positionSampleMonotonicMs' in controller_source
@@ -2699,9 +2698,18 @@ def test_gripper_structured_sampling_contract() -> None:
     hal_json = (REPO_ROOT / "hal" / "src" / "HalJson.cpp").read_text(encoding="utf-8")
     assert '"gripperWorkerTransport"' in hal_json and '"gripperSampleIntervalMs"' in hal_json
     worker = (REPO_ROOT / "hal" / "src" / "JodellGripperWorker.cpp").read_text(encoding="utf-8")
-    assert 'transport == "modbus"' in worker and "formatSampleFields(sample)" in worker
+    assert 'transport == "modbus"' in worker and "jodell::handleModbusLine(client, line)" in worker
     driver = (REPO_ROOT / "hal" / "src" / "JodellGripperDriver.cpp").read_text(encoding="utf-8")
-    assert '" --transport "' in driver and "jodell::parseSampleFields(parts, 3, &sample)" in driver
+    assert '" --transport "' in driver and "jodell::parseSamples(parts, 3)" in driver
+    # Modbus 运动必须走分步编排，父进程在使能写、使能等待和最终运动写之前检查授权。
+    assert "jodell::orchestrateModbusMove(" in driver
+    controller = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
+    # 读数记录与命令成败无关：命令路径不再以 if (ok) 包住记录。
+    assert "recordGripperSamplesUnlocked(\n          command.targetIndex, commandSamples" in controller
+    dispatcher = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
+    assert 'name == "gripper.samples"' in dispatcher
+    dds_server = (REPO_ROOT / "hal" / "src" / "HalDdsControlServer.cpp").read_text(encoding="utf-8")
+    assert 'request.name == "gripper.samples"' in dds_server
     controller = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
     for token in ('"gripperSampleHistory', '\\"sampleStats\\"', "recordGripperSampleUnlocked", "gripperSampleIntervalUs_"):
         assert token in controller, token

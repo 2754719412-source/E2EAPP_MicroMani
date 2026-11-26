@@ -1,7 +1,8 @@
 /*
  * 阅读导航 06｜HAL 硬件与安全
- * 职责：worker 独占串口时的钧舵 Modbus 读写逻辑：一次读取状态/位置/电流、仅在未使能时使能、故障时拒绝运动。
- * 先看：ModbusTransport → JodellModbusClient::readSample → JodellModbusClient::moveTo。
+ * 职责：worker 独占串口时的钧舵 Modbus 读写逻辑：一次读取状态/位置/电流；运动拆成 prepare/awaitActive/writeMove，
+ *       父进程在每步之间检查运动授权；仅在未使能时使能，故障时拒绝运动。
+ * 先看：ModbusTransport → JodellModbusClient::readSample → prepare → awaitActive → writeMove。
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 #pragma once
@@ -60,18 +61,50 @@ class JodellModbusClient {
     return true;
   }
 
-  // 运动前先读一次：故障时拒绝；只有未使能（gACT=0 或 gSTA≠3）时才写 rACT=1 并等待使能完成，
-  // 因为手册说明使能过程可能带动手指，不能每条命令都重新使能。latest 返回运动前那次读数。
-  bool moveTo(double targetGapMm, int speedRaw, int forceRaw, int activationTimeoutMs,
-      GripperFeedbackSample* latest, std::string* message) {
+  // 运动分三步，由父进程在每步之间检查运动授权（急停后不再继续）：
+  // 1) prepare：读状态，故障时拒绝；只有未使能（gACT=0 或 gSTA≠3）时才写 rACT=1。手册说明使能过程可能带动手指，
+  //    所以父进程须在发送 prepare 前确认授权；已使能时不写任何寄存器。
+  // 2) awaitActive：在 sliceMs 内轮询使能是否完成，不写寄存器；父进程在两次调用之间可放弃。
+  // 3) writeMove：只写运动帧并校验回显，不再做任何等待。
+  // 每次成功的状态读取都追加到 samples，与命令成败无关，保证读数不因命令失败而丢失。
+  bool prepare(std::vector<GripperFeedbackSample>* samples, bool* activating, std::string* message) {
+    GripperFeedbackSample sample;
     std::string error;
-    if (!readSample(latest, &error)) return fail(message, "pre-move status read failed: " + error);
-    if (latest->fault != 0) return fail(message, "gripper fault code " + std::to_string(latest->fault));
-    if (!(latest->gACT == 1 && latest->gSTA == kGstaActivated)) {
-      if (!activate(activationTimeoutMs, latest, &error)) return fail(message, error);
+    if (!readInto(samples, &sample, &error)) return fail(message, "pre-move status read failed: " + error);
+    if (sample.fault != 0) return fail(message, "gripper fault code " + std::to_string(sample.fault));
+    *activating = !(sample.gACT == 1 && sample.gSTA == kGstaActivated);
+    if (!*activating) return true;
+    const auto request = activationRequest(slaveId_, true);
+    std::vector<std::uint8_t> response;
+    if (!transport_.exchange(request, kWriteResponseLength, &response, &error)
+        || !checkWriteResponse(response.data(), response.size(), request, &error)) {
+      return fail(message, "activation write failed: " + error);
     }
+    return true;
+  }
+
+  bool awaitActive(int sliceMs, std::vector<GripperFeedbackSample>* samples, bool* ready, std::string* message) {
+    const auto deadline = nowUs_() + static_cast<std::int64_t>((std::max)(1, sliceMs)) * 1000;
+    *ready = false;
+    while (true) {
+      GripperFeedbackSample sample;
+      std::string error;
+      if (readInto(samples, &sample, &error)) {
+        if (sample.fault != 0) return fail(message, "gripper fault during activation: " + std::to_string(sample.fault));
+        if (sample.gACT == 1 && sample.gSTA == kGstaActivated) {
+          *ready = true;
+          return true;
+        }
+      }
+      if (nowUs_() >= deadline) return true;
+      sleepMs_(10);
+    }
+  }
+
+  bool writeMove(double targetGapMm, int speedRaw, int forceRaw, std::string* message) {
     const auto request = moveRequest(slaveId_, positionRawForGapMm(targetGapMm, strokeMm_), speedRaw, forceRaw);
     std::vector<std::uint8_t> response;
+    std::string error;
     if (!transport_.exchange(request, kWriteResponseLength, &response, &error)
         || !checkWriteResponse(response.data(), response.size(), request, &error)) {
       return fail(message, "move write failed: " + error);
@@ -88,30 +121,10 @@ class JodellModbusClient {
   }
 
  private:
-  bool activate(int timeoutMs, GripperFeedbackSample* latest, std::string* error) {
-    const auto request = activationRequest(slaveId_, true);
-    std::vector<std::uint8_t> response;
-    if (!transport_.exchange(request, kWriteResponseLength, &response, error)
-        || !checkWriteResponse(response.data(), response.size(), request, error)) {
-      *error = "activation write failed: " + *error;
-      return false;
-    }
-    const auto deadline = nowUs_() + static_cast<std::int64_t>(timeoutMs) * 1000;
-    while (true) {
-      std::string readError;
-      if (readSample(latest, &readError)) {
-        if (latest->fault != 0) {
-          *error = "gripper fault during activation: " + std::to_string(latest->fault);
-          return false;
-        }
-        if (latest->gACT == 1 && latest->gSTA == kGstaActivated) return true;
-      }
-      if (nowUs_() >= deadline) {
-        *error = "activation timeout (gSTA=" + std::to_string(latest->gSTA) + ")";
-        return false;
-      }
-      sleepMs_(10);
-    }
+  bool readInto(std::vector<GripperFeedbackSample>* samples, GripperFeedbackSample* sample, std::string* error) {
+    if (!readSample(sample, error)) return false;
+    if (samples) samples->push_back(*sample);
+    return true;
   }
 
   static bool fail(std::string* message, const std::string& text) {
