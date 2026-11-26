@@ -224,7 +224,7 @@ int main(int argc, char** argv) {
   if (transport == "modbus") {
 #ifdef _WIN32
     // Modbus 模式：本进程直接独占串口，不加载 vendor DLL；读写共用同一串口句柄。
-    // 运动拆成 PREPARE / AWAIT / MOVE 三个请求（见 JodellWorkerProtocol.h），父进程在每个请求之前检查运动授权。
+    // 运动拆成 STATUS / ACTIVATE / AWAIT / MOVE 四类请求（见 JodellWorkerProtocol.h），父进程在每个请求之前检查运动授权。
     Win32SerialTransport serial(config.ports[sideIndex], config.baudrate, modbusTimeoutMs);
     jodell::JodellModbusClient client(serial, config.slaveIds[sideIndex], config.strokeMm);
     std::string line;

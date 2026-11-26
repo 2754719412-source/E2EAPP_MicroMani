@@ -187,7 +187,7 @@ void moveActivatesOnlyWhenNeededAndReportsEveryRead() {
   worker.lines.clear();
   require(worker.move([] { return false; }, &message), "second move failed");
   require(worker.device.requests.size() == before + 2, "activated gripper was activated again");
-  require(worker.lines.size() == 2 && worker.lines[0] == "PREPARE", "ready gripper still awaited activation");
+  require(worker.lines.size() == 2 && worker.lines[0] == "STATUS", "ready gripper still activated or awaited");
 }
 
 void emergencyStopDuringActivationBlocksMove() {
@@ -214,6 +214,20 @@ void emergencyStopDuringActivationBlocksMove() {
     return false;
   }, &message), "quick activation ignored cancellation");
   for (const auto& frame : quick.device.requests) require(!isMove(frame), "move written after emergency stop");
+
+  // 审查复现：首次状态读取返回时授权已撤销，不得再写使能（使能本身可能带动手指）。
+  WorkerHarness revokedAfterStatus;
+  require(!revokedAfterStatus.move([&] { return !revokedAfterStatus.lines.empty(); }, &message)
+      && message.find("before activation") != std::string::npos, "revocation after status not reported");
+  for (const auto& frame : revokedAfterStatus.device.requests) {
+    require(!isActivation(frame) && !isMove(frame), "activation or move written after emergency stop");
+  }
+  require(revokedAfterStatus.lines.size() == 1 && revokedAfterStatus.lines[0] == "STATUS", "extra request sent");
+  // STATUS 本身不写寄存器，即使设备未使能。
+  WorkerHarness statusOnly;
+  require(splitWorkerFields(handleModbusLine(statusOnly.gripper, "STATUS"))[2] == kWorkerStateNeedsActivation,
+      "status did not report activation need");
+  for (const auto& frame : statusOnly.device.requests) require(frame[1] == kReadInputRegisters, "STATUS wrote");
 
   WorkerHarness beforePrepare;
   require(!beforePrepare.move([] { return true; }, &message) && beforePrepare.device.requests.empty(),

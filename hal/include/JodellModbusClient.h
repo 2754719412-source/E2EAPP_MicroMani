@@ -1,8 +1,8 @@
 /*
  * 阅读导航 06｜HAL 硬件与安全
- * 职责：worker 独占串口时的钧舵 Modbus 读写逻辑：一次读取状态/位置/电流；运动拆成 prepare/awaitActive/writeMove，
+ * 职责：worker 独占串口时的钧舵 Modbus 读写逻辑：一次读取状态/位置/电流；运动拆成 checkStatus/activate/awaitActive/writeMove，
  *       父进程在每步之间检查运动授权；仅在未使能时使能，故障时拒绝运动。
- * 先看：ModbusTransport → JodellModbusClient::readSample → prepare → awaitActive → writeMove。
+ * 先看：ModbusTransport → JodellModbusClient::readSample → checkStatus → activate → awaitActive → writeMove。
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 #pragma once
@@ -61,21 +61,26 @@ class JodellModbusClient {
     return true;
   }
 
-  // 运动分三步，由父进程在每步之间检查运动授权（急停后不再继续）：
-  // 1) prepare：读状态，故障时拒绝；只有未使能（gACT=0 或 gSTA≠3）时才写 rACT=1。手册说明使能过程可能带动手指，
-  //    所以父进程须在发送 prepare 前确认授权；已使能时不写任何寄存器。
-  // 2) awaitActive：在 sliceMs 内轮询使能是否完成，不写寄存器；父进程在两次调用之间可放弃。
-  // 3) writeMove：只写运动帧并校验回显，不再做任何等待。
+  // 运动分四步，每步一个 worker 请求，父进程在每个请求之前检查运动授权（急停后不再继续）：
+  // 1) checkStatus：只读状态，故障时拒绝；报告是否需要使能。不写任何寄存器。
+  // 2) activate：只写 rACT=1。手册说明使能过程可能带动手指，因此与状态读取分成两个请求，
+  //    父进程读到“需要使能”后先重新核对授权再发送。
+  // 3) awaitActive：在 sliceMs 内轮询使能是否完成，不写寄存器；父进程在两次调用之间可放弃。
+  // 4) writeMove：只写运动帧并校验回显，不再做任何等待。
   // 每次成功的状态读取都追加到 samples，与命令成败无关，保证读数不因命令失败而丢失。
-  bool prepare(std::vector<GripperFeedbackSample>* samples, bool* activating, std::string* message) {
+  bool checkStatus(std::vector<GripperFeedbackSample>* samples, bool* needsActivation, std::string* message) {
     GripperFeedbackSample sample;
     std::string error;
     if (!readInto(samples, &sample, &error)) return fail(message, "pre-move status read failed: " + error);
     if (sample.fault != 0) return fail(message, "gripper fault code " + std::to_string(sample.fault));
-    *activating = !(sample.gACT == 1 && sample.gSTA == kGstaActivated);
-    if (!*activating) return true;
+    *needsActivation = !(sample.gACT == 1 && sample.gSTA == kGstaActivated);
+    return true;
+  }
+
+  bool activate(std::string* message) {
     const auto request = activationRequest(slaveId_, true);
     std::vector<std::uint8_t> response;
+    std::string error;
     if (!transport_.exchange(request, kWriteResponseLength, &response, &error)
         || !checkWriteResponse(response.data(), response.size(), request, &error)) {
       return fail(message, "activation write failed: " + error);

@@ -1,7 +1,7 @@
 /*
  * 阅读导航 06｜HAL 硬件与安全
  * 职责：夹爪 worker 管道协议的可移植部分：应答行格式、Modbus 模式单行命令处理，以及父进程侧
- *       PREPARE → AWAIT → MOVE 的运动编排（每步之前检查运动授权，急停后不再写运动帧）。
+ *       STATUS → ACTIVATE → AWAIT → MOVE 的运动编排（每个请求之前检查运动授权，急停后不再写使能或运动帧）。
  * 先看：formatResponse → handleModbusLine → orchestrateModbusMove。
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
@@ -22,6 +22,7 @@ namespace appstation::hal::jodell {
 
 constexpr const char* kWorkerStateReady = "READY";
 constexpr const char* kWorkerStateActivating = "ACTIVATING";
+constexpr const char* kWorkerStateNeedsActivation = "NEEDS_ACTIVATION";
 // 使能等待按片发送，父进程在两片之间检查授权；总时长超过上限即放弃。
 constexpr int kActivationSliceMs = 100;
 constexpr int kActivationTimeoutMs = 1500;
@@ -70,11 +71,17 @@ inline std::string handleModbusLine(JodellModbusClient& client, const std::strin
     if (ok) samples.push_back(sample);
     return formatResponse(ok, lastGap(), ok ? "modbus read" : message, samples);
   }
-  if (line == "PREPARE") {
-    bool activating = false;
-    const bool ok = client.prepare(&samples, &activating, &message);
-    return formatResponse(ok, lastGap(), ok ? (activating ? kWorkerStateActivating : kWorkerStateReady) : message,
-        samples);
+  if (line == "STATUS") {
+    // 只读：故障时 ERR，否则报告 READY 或 NEEDS_ACTIVATION；不写任何寄存器。
+    bool needsActivation = false;
+    const bool ok = client.checkStatus(&samples, &needsActivation, &message);
+    return formatResponse(ok, lastGap(),
+        ok ? (needsActivation ? kWorkerStateNeedsActivation : kWorkerStateReady) : message, samples);
+  }
+  if (line == "ACTIVATE") {
+    // 只写 rACT=1；父进程须在读到 NEEDS_ACTIVATION 之后、发送本请求之前重新核对授权。
+    const bool ok = client.activate(&message);
+    return formatResponse(ok, -1.0, ok ? kWorkerStateActivating : message, samples);
   }
   const auto parts = splitWorkerFields(line);
   if (parts.size() == 2 && parts[0] == "AWAIT") {
@@ -101,8 +108,8 @@ inline std::string moveCommandLine(double targetMm, int speed, int torque) {
 }
 
 // 父进程侧编排。request(line, &message) 发一条 worker 请求并返回是否 OK，message 为应答消息字段；
-// cancelled() 为 true 表示运动授权已失效（急停或代际变化）。授权在 PREPARE（可能写使能）之前、
-// 每片使能等待之间、MOVE（最终运动写）之前各检查一次；失效即返回，不再发送后续写命令。
+// cancelled() 为 true 表示运动授权已失效（急停或代际变化）。授权在每个请求之前检查：STATUS（只读）、
+// ACTIVATE（使能写）、每片 AWAIT、MOVE（最终运动写）；失效即返回，不再发送后续写命令。
 inline bool orchestrateModbusMove(
     const std::function<bool(const std::string&, std::string*)>& request,
     const std::function<bool()>& cancelled,
@@ -117,7 +124,12 @@ inline bool orchestrateModbusMove(
   };
   if (cancelled()) return stop("gripper command cancelled by emergency stop");
   std::string state;
-  if (!request("PREPARE", &state)) return stop(state);
+  if (!request("STATUS", &state)) return stop(state);
+  if (state == kWorkerStateNeedsActivation) {
+    // 状态读取期间授权可能已失效；使能本身可能带动手指，写之前重新核对。
+    if (cancelled()) return stop("gripper command cancelled by emergency stop before activation");
+    if (!request("ACTIVATE", &state)) return stop(state);
+  }
   const auto deadline = nowUs() + static_cast<std::int64_t>(activationTimeoutMs) * 1000;
   while (state == kWorkerStateActivating) {
     if (cancelled()) return stop("gripper command cancelled by emergency stop during activation");
