@@ -1,0 +1,250 @@
+{
+  "schema": "appstation.camera_calibration.v1",
+  "kind": "intrinsics",
+  "camera": "wrist_right",
+  "createdAt": "2026-11-26T19:47:30+08:00",
+  "method": "zhang_planar_chessboard",
+  "opencvVersion": "4.13.0",
+  "imageDir": "output\\camera-calibration-20261126-194315\\wrist_right\\images",
+  "cameraInfo": {
+    "source": "api",
+    "baseUrl": "http://127.0.0.1:18082",
+    "identity": "PCIROOT(0)#PCI(1400)#USBROOT(0)#USB(5)#USB(4)#USB(3)",
+    "descriptor": "IMX335 / index 2",
+    "resolution": "640x480",
+    "fps": 30,
+    "tuning": {
+      "autoExposure": true,
+      "exposure": -6,
+      "gain": 0,
+      "autoWhiteBalance": true
+    }
+  },
+  "board": {
+    "type": "chessboard",
+    "innerCorners": [
+      9,
+      6
+    ],
+    "squareMm": 20.0
+  },
+  "imageSize": {
+    "width": 640,
+    "height": 480
+  },
+  "distortionModel": "opencv_k1_k2_p1_p2_k3",
+  "fixK3": true,
+  "cameraMatrix": [
+    [
+      563.8674481441859,
+      0.0,
+      347.6659614534481
+    ],
+    [
+      0.0,
+      563.6270403486993,
+      226.84087566216795
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distCoeffs": [
+    0.06786282894356284,
+    -0.2581879872863211,
+    -0.012799407695191048,
+    0.010463601778982291,
+    0.0
+  ],
+  "fx": 563.8674481441859,
+  "fy": 563.6270403486993,
+  "cx": 347.6659614534481,
+  "cy": 226.84087566216795,
+  "stdDev": {
+    "fx": 2.084371,
+    "fy": 2.143063,
+    "cx": 2.104784,
+    "cy": 1.767517,
+    "k1": 0.008561,
+    "k2": 0.032126,
+    "p1": 0.001093,
+    "p2": 0.001187,
+    "k3": 0.0
+  },
+  "rmsPx": 0.4808,
+  "views": [
+    {
+      "image": "wrist_right_20261126_194527_193064.png",
+      "errorPx": 0.5789,
+      "tiltDeg": 41.87
+    },
+    {
+      "image": "wrist_right_20261126_194530_083369.png",
+      "errorPx": 0.3474,
+      "tiltDeg": 27.95
+    },
+    {
+      "image": "wrist_right_20261126_194533_822852.png",
+      "errorPx": 0.4396,
+      "tiltDeg": 27.96
+    },
+    {
+      "image": "wrist_right_20261126_194545_265538.png",
+      "errorPx": 0.3609,
+      "tiltDeg": 12.04
+    },
+    {
+      "image": "wrist_right_20261126_194550_304119.png",
+      "errorPx": 0.3051,
+      "tiltDeg": 12.72
+    },
+    {
+      "image": "wrist_right_20261126_194552_012611.png",
+      "errorPx": 0.4671,
+      "tiltDeg": 19.71
+    },
+    {
+      "image": "wrist_right_20261126_194556_596124.png",
+      "errorPx": 0.6072,
+      "tiltDeg": 31.36
+    },
+    {
+      "image": "wrist_right_20261126_194600_058005.png",
+      "errorPx": 0.5886,
+      "tiltDeg": 52.56
+    },
+    {
+      "image": "wrist_right_20261126_194602_796265.png",
+      "errorPx": 0.4805,
+      "tiltDeg": 25.46
+    },
+    {
+      "image": "wrist_right_20261126_194605_429345.png",
+      "errorPx": 0.3219,
+      "tiltDeg": 9.72
+    },
+    {
+      "image": "wrist_right_20261126_194607_161719.png",
+      "errorPx": 0.3996,
+      "tiltDeg": 28.9
+    },
+    {
+      "image": "wrist_right_20261126_194616_860228.png",
+      "errorPx": 0.4554,
+      "tiltDeg": 42.24
+    },
+    {
+      "image": "wrist_right_20261126_194621_755539.png",
+      "errorPx": 0.1794,
+      "tiltDeg": 20.32
+    },
+    {
+      "image": "wrist_right_20261126_194623_160830.png",
+      "errorPx": 0.26,
+      "tiltDeg": 18.83
+    },
+    {
+      "image": "wrist_right_20261126_194625_835597.png",
+      "errorPx": 0.4556,
+      "tiltDeg": 40.19
+    },
+    {
+      "image": "wrist_right_20261126_194628_593737.png",
+      "errorPx": 0.5683,
+      "tiltDeg": 63.13
+    },
+    {
+      "image": "wrist_right_20261126_194634_094614.png",
+      "errorPx": 0.2555,
+      "tiltDeg": 10.05
+    },
+    {
+      "image": "wrist_right_20261126_194637_207235.png",
+      "errorPx": 0.2873,
+      "tiltDeg": 4.9
+    },
+    {
+      "image": "wrist_right_20261126_194659_572340.png",
+      "errorPx": 0.6908,
+      "tiltDeg": 46.18
+    },
+    {
+      "image": "wrist_right_20261126_194702_556332.png",
+      "errorPx": 0.8233,
+      "tiltDeg": 60.15
+    },
+    {
+      "image": "wrist_right_20261126_194710_876506.png",
+      "errorPx": 0.7006,
+      "tiltDeg": 19.57
+    },
+    {
+      "image": "wrist_right_20261126_194713_515405.png",
+      "errorPx": 0.4465,
+      "tiltDeg": 7.76
+    },
+    {
+      "image": "wrist_right_20261126_194715_526139.png",
+      "errorPx": 0.4708,
+      "tiltDeg": 7.92
+    },
+    {
+      "image": "wrist_right_20261126_194717_445436.png",
+      "errorPx": 0.5428,
+      "tiltDeg": 10.3
+    },
+    {
+      "image": "wrist_right_20261126_194719_707465.png",
+      "errorPx": 0.365,
+      "tiltDeg": 8.01
+    }
+  ],
+  "rejected": [],
+  "undetected": [],
+  "coverage": {
+    "grid": 4,
+    "fraction": 0.938,
+    "cells": [
+      [
+        1,
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        0,
+        1
+      ]
+    ],
+    "reachesEdges": {
+      "left": false,
+      "right": true,
+      "top": true,
+      "bottom": false
+    }
+  },
+  "tiltDeg": {
+    "min": 4.9,
+    "max": 63.13,
+    "tiltedViews": 16
+  },
+  "verdict": "ok",
+  "warnings": [],
+  "notes": []
+}
