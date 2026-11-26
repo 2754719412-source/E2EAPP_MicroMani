@@ -21,6 +21,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include "HighResolutionWait.h"
 #endif
 
 namespace appstation::hal {
@@ -152,7 +153,9 @@ bool readLineWithTimeout(HANDLE handle, double timeoutMs, std::string* line) {
       return false;
     }
     if (available == 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      // 普通 1 ms 睡眠在 Windows 上可能占去 15.6 ms，挤掉 30 Hz 周期内的读数时间。
+      static thread_local HighResolutionWait wait;
+      wait.until(std::min(deadline, std::chrono::steady_clock::now() + std::chrono::milliseconds(1)));
       continue;
     }
     char ch = '\0';

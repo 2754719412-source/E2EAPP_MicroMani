@@ -11,7 +11,7 @@
 | 写命令 | `hal/include/JodellWorkerProtocol.h` | 拆成四类 worker 请求：`STATUS`（只读状态，有故障就拒绝，报告是否需要使能）→ `ACTIVATE`（只在 `gACT/gSTA` 显示未使能时发送，只写 `rACT=1`；手册说明使能可能带动手指）→ `AWAIT`（每片 100 ms 轮询使能是否完成，总计 1.5 s，不写寄存器）→ `MOVE`（只写运动帧并校验回显）。父进程在每个请求之前都检查运动授权，急停或代际变化后不再继续，避免在途命令在急停后写入使能或运动帧。Modbus 模式拒绝单步 `COMMAND` |
 | 默认路径 | 同上 | 默认 `dll`，行为与原来一致。DLL 遥操作只读位置（READPOS），没有电流；样本里电流标为无效 |
 | 编号与历史 | `hal/src/NativeTeleopController.cpp` | worker 一次应答可带多个读数（如使能等待期间），每次成功读数都分配该侧递增的 `seq`，与命令成败无关（运动前读到的故障码也会入历史）。按 worker 时间戳去重；时间戳不在请求窗口内时，改用 HAL 侧中点（`timestampSource=hal_midpoint`）。`seq` 只在同一 HAL 实例内单调，实例 ID 每次启动随机生成。状态 JSON 提供最新样本 `grippers.<side>.sample` 和 `sampleStats`（样本数、有效频率、最长断样） |
-| 采样间隔 | `gripper.sampleHz` → `gripperSampleIntervalMs` | 默认 30 Hz，不变。HAL 每次读完等这么久再读下一次，并夹紧到 5–1000 ms |
+| 采样间隔 | `gripper.sampleHz` → `gripperSampleIntervalMs` | 默认每侧 30 Hz，目标周期约 33.3 ms，包含串口读取耗时。周期范围为 5–1000 ms。阻塞超过周期时，以真实读数的时间戳核对实际频率 |
 | 拉取 | 只读命令 `gripper.samples` | 100 Hz DDS 遥测缓存只带最新样本，录制器在独立线程中每 0.1 s 用该命令按 `instanceId` + `afterSeq` 增量拉取（HAL 每侧保留最近 256 条），历史读取变慢不会拖住位置采样。该命令单次最多等 0.5 s、不重试（漏掉的读数下一轮按游标补上）。每个会话一个拉取线程，各有停止事件和代际；会话核对与入库、失败计数在收集器同一把锁内完成，上一会话迟到的成功或失败应答都不改动新会话。应答须通过结构校验才算成功：双侧增量须与实例、请求游标及 HAL 声明的最新序号一致，合法空增量也要满足此条件。拉取是单飞的：保存 episode 前先等在途读取入库，再按最新游标补读到当前；两者共用 1 s 总时限，只对通道暂忙短暂重试，超限记 `failed` 后照常保存训练数据。结果记在 `gripperRaw.tailFetch`（`ok` / `failed` / `skipped_no_grippers`），失败原因在 `tailFetchError`；未选夹爪的录制不补读。走独立的 DDS 通道，不占控制命令容量，超时也不隔离控制传输 |
 | 收集 | `backend/services/gripper_raw_samples.py` | 按 `seq` 收入新读数。重复行丢弃；跳号计为 `missedSeq`（HAL 历史已滚动覆盖，样本确实丢失）。实例 ID 变化（HAL 重启）时清空已见序号，episode 元数据记 `halRestarts`；拉取失败记 `fetchErrors` |
 

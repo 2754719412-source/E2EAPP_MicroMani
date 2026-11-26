@@ -16,6 +16,16 @@ int main(int argc, char** argv) {
     return 0;
   }
   try {
+    using namespace std::chrono_literals;
+    const auto start = std::chrono::steady_clock::now();
+    const auto period = 33333us;
+    const auto next = nextGripperSampleAt(start, period, start + 19ms);
+    if (next != start + period || nextGripperSampleAt(next, period, next + 27ms) != start + 2 * period) {
+      throw std::runtime_error("serial read time added to the gripper sampling period");
+    }
+    if (nextGripperSampleAt(start, period, start + 500ms) < start + 500ms) {
+      throw std::runtime_error("delayed gripper read left a backlog of polls");
+    }
     JodellGripperDriver driver;
     JodellGripperConfig config;
     config.workerExePath = argv[0];
