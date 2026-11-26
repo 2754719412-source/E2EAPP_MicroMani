@@ -355,8 +355,7 @@ def test_slow_history_fetch_does_not_delay_position_sampling() -> None:
     recorder._sampler_stop_event = StopEvent()
     recorder._start_gripper_samples_thread(config)
     assert fetched.wait(2.0)
-    recorder._sampler_stop_event.set()
-    recorder._gripper_samples_thread.join(2.0)
+    recorder._retire_gripper_samples_thread().join(2.0)
     assert [s.seq for s in recorder._gripper_raw_collector().recent("right", 5.0)] == [1]
 
 
@@ -398,3 +397,151 @@ def test_save_fetches_tail_samples_before_sealing(tmp_path: Path) -> None:
     asyncio.run(recorder._save_native_episode())
     assert [row_["seq"] for row_ in written[0].rows] == [1, 2, 3]
     assert recorder._episode_gripper_raw_meta["stats"]["left"]["missedSeq"] == 0
+
+
+class _BlockingHalTransport:
+    """模拟 DDS 传输：HAL 当前已有的读数由 available 给出；第一个请求的应答被扣住，直到 release 置位。"""
+
+    def __init__(self) -> None:
+        from threading import Event
+
+        self.latest: dict[str, object] = {}
+        self.requests: list[object] = []
+        self.replies: dict[str, object] = {}
+        self.available = [row(1, 10.0)]
+        self.first_request = Event()
+        self.release = Event()
+
+    def start(self) -> None: ...
+    def close(self) -> None: ...
+
+    def get_latest(self, topic: str) -> object | None:
+        return None
+
+    def publish_command_request(self, request: object) -> None:
+        import json
+
+        from backend.hal_client.dds_types import HalCommandReply
+
+        payload = json.loads(request.payload_json)  # type: ignore[attr-defined]
+        after = int(payload.get("afterSeqLeft", 0))
+        reply = native_status([r for r in self.available if r[0] > after])
+        reply["gripperSampleInstanceId"] = "hal-a"
+        self.requests.append(request)
+        self.replies[request.request_id] = HalCommandReply(  # type: ignore[attr-defined]
+            request_id=request.request_id, ok=True, result_json=json.dumps(reply), error="")  # type: ignore[attr-defined]
+        if len(self.requests) == 1:
+            self.first_request.set()
+
+    def wait_for_command_reply(self, request_id: str, timeout_s: float) -> object | None:
+        if request_id == self.requests[0].request_id:  # type: ignore[attr-defined]
+            self.release.wait(timeout_s)
+        return self.replies.get(request_id)
+
+
+def _recorder_with_dds(tmp_path: Path, transport: _BlockingHalTransport, grippers: list[str]) -> DatasetRecorderService:
+    from backend.core.logging import LogService
+    from backend.hal_client.dds_client import DdsHalClient
+
+    recorder = object.__new__(DatasetRecorderService)
+    recorder.hal = DdsHalClient(LogService(emit_startup=False), transport=transport, reply_timeout_s=2.0)
+    recorder._record_fps_hz = 30
+    recorder._episode_index = 0
+    recorder._episode_frames = 30
+    # 操作者右 = 硬件左
+    recorder._participation = {"version": "appstation.participation.v1", "arms": ["right"], "grippers": grippers}
+    recorder._native_live_episode_metadata = {}
+    recorder._session_active = True
+    recorder.logs = SimpleNamespace(warning=lambda *a: None)
+    config = default_config()
+    recorder._recording_config = lambda: config  # type: ignore[method-assign]
+    recorder._require_dataset_dir = lambda: tmp_path  # type: ignore[method-assign]
+    recorder._using_real_hal_native_teleop = lambda _config: True  # type: ignore[method-assign]
+    return recorder
+
+
+def test_save_waits_for_inflight_fetch_then_reads_tail(tmp_path: Path) -> None:
+    """审查复现：后台读取占住容量为 1 的通道时触发保存；封存结果必须含 seq 1、2、3。"""
+    import asyncio
+    from threading import Timer
+
+    transport = _BlockingHalTransport()
+    recorder = _recorder_with_dds(tmp_path, transport, ["right"])
+    collector = recorder._gripper_raw_collector()
+    collector.begin_episode(9.0)
+    written: list[GripperRawWrite] = []
+
+    async def writer_command(kind: str, payload: object = None) -> object:
+        if kind == "write_gripper_raw":
+            written.append(payload)  # type: ignore[arg-type]
+        return {} if kind == "latest_episode_metadata" else 0
+
+    recorder._native_writer_command = writer_command  # type: ignore[method-assign]
+    recorder._start_gripper_samples_thread(recorder._recording_config())
+    assert transport.first_request.wait(2.0)  # 后台读取已在途，应答被扣住
+    transport.available = [row(1, 10.0), row(2, 10.01), row(3, 10.02)]  # 在途期间 HAL 又读到两条
+    Timer(0.2, transport.release.set).start()
+    asyncio.run(recorder._save_native_episode())
+    recorder._retire_gripper_samples_thread().join(2.0)
+
+    assert [item["seq"] for item in written[0].rows] == [1, 2, 3]
+    meta = recorder._episode_gripper_raw_meta
+    assert meta["tailFetch"] == "ok" and meta["fetchErrors"] == 0
+    assert meta["stats"]["left"]["missedSeq"] == 0
+
+
+def test_previous_session_thread_cannot_serve_next_session(tmp_path: Path) -> None:
+    """审查复现：上一会话的读取线程在停止后仍存活时，不能为未选夹爪的新会话请求或入库。"""
+    import asyncio
+
+    transport = _BlockingHalTransport()
+    recorder = _recorder_with_dds(tmp_path, transport, ["right"])
+    recorder._sampler_threads = {}
+    recorder._sampler_stop_event = __import__("threading").Event()
+    collector = recorder._gripper_raw_collector()
+    recorder._start_gripper_samples_thread(recorder._recording_config())
+    assert transport.first_request.wait(2.0)
+    asyncio.run(recorder._stop_sampler_tasks())  # 只等 200 ms，旧线程仍卡在应答上
+    old = recorder._gripper_samples_thread
+    assert old.is_alive()
+
+    recorder._participation = {"version": "appstation.participation.v1", "arms": ["right"], "grippers": []}
+    recorder._start_gripper_samples_thread(recorder._recording_config())
+    transport.release.set()
+    old.join(2.0)
+    assert not old.is_alive()
+    assert len(transport.requests) == 1  # 新会话没有再发 gripper.samples
+    assert collector.recent("left", 10.0) == []  # 旧会话的迟到应答未入库
+
+
+def test_save_without_grippers_skips_tail_fetch(tmp_path: Path) -> None:
+    """审查复现：未选择夹爪的 episode 保存时不调用 gripper.samples，也不记录无关的 fetchErrors。"""
+    import asyncio
+
+    transport = _BlockingHalTransport()
+    transport.release.set()
+    recorder = _recorder_with_dds(tmp_path, transport, [])
+
+    async def writer_command(kind: str, payload: object = None) -> object:
+        return {} if kind == "latest_episode_metadata" else 0
+
+    recorder._native_writer_command = writer_command  # type: ignore[method-assign]
+    recorder._gripper_raw_collector().begin_episode(9.0)
+    asyncio.run(recorder._save_native_episode())
+    assert transport.requests == []
+    meta = recorder._episode_gripper_raw_meta
+    assert meta["tailFetch"] == "skipped_no_grippers" and meta["fetchErrors"] == 0
+
+
+def test_contact_evidence_ignores_readings_after_last_frame() -> None:
+    """审查复现：录像内只有位置证据（候选），录像结束后的一条 gOBJ=2 不能把它变成确认接触。"""
+    def position_only(seq: int, t_s: float) -> list[int]:
+        return [seq, int(round(t_s * 1_000_000)), 0, 1, 0, 0, 140, 0, -1, -1, -1, -1, -1]
+
+    rows = [position_only(i, 10.3 + i * 0.03) for i in range(1, 6)]  # 帧 9–13
+    rows.append(row(6, 10.3 + 7 * 0.03, pos=140, cur=0, gto=1, obj=2, valid=True))  # 0.51 s → 帧 15（录像外）
+    events = _events(_contact_snapshot(rows), frame_count=15)
+    assert len(events) == 1
+    event = events[0]
+    assert event["endSeq"] == 5 and event["clippedToLastFrame"] is True
+    assert event["evidence"] == ["position_only"] and event["candidate"] is True

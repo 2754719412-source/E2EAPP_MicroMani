@@ -65,6 +65,27 @@ def frame_evidence(
     return "position_only" if stalled else None
 
 
+def frame_evidences(
+    frames: Sequence[ContactFrame], *, min_gap_mm: float, current_threshold_raw: float | None = None
+) -> list[str | None]:
+    """逐帧证据（含“开口是否已停住”的判断）；检测片段与裁剪后重算证据共用同一套判据。"""
+    evidences: list[str | None] = []
+    previous_gap: float | None = None
+    for frame in frames:
+        stalled = (previous_gap is not None and math.isfinite(frame.gap_mm)
+                   and abs(frame.gap_mm - previous_gap) <= POSITION_STALL_TOLERANCE_MM)
+        previous_gap = frame.gap_mm if math.isfinite(frame.gap_mm) else previous_gap
+        evidences.append(frame_evidence(
+            frame, min_gap_mm=min_gap_mm, current_threshold_raw=current_threshold_raw, stalled=stalled))
+    return evidences
+
+
+def evidence_summary(evidences: Iterable[str | None]) -> tuple[list[str], bool]:
+    """片段证据列表与候选标志：只有位置证据的片段保留为候选，供人工复核，不计为确认接触。"""
+    kinds = sorted({evidence for evidence in evidences if evidence is not None})
+    return kinds, kinds == ["position_only"]
+
+
 def detect_contact_events(
     frames: Sequence[ContactFrame],
     *,
@@ -77,13 +98,8 @@ def detect_contact_events(
     events: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
     misses = 0
-    previous_gap: float | None = None
-    for index, frame in enumerate(frames):
-        stalled = (previous_gap is not None and math.isfinite(frame.gap_mm)
-                   and abs(frame.gap_mm - previous_gap) <= POSITION_STALL_TOLERANCE_MM)
-        previous_gap = frame.gap_mm if math.isfinite(frame.gap_mm) else previous_gap
-        evidence = frame_evidence(
-            frame, min_gap_mm=min_gap_mm, current_threshold_raw=current_threshold_raw, stalled=stalled)
+    evidences = frame_evidences(frames, min_gap_mm=min_gap_mm, current_threshold_raw=current_threshold_raw)
+    for index, (frame, evidence) in enumerate(zip(frames, evidences, strict=True)):
         if evidence is None:
             if current is not None:
                 misses += 1
@@ -107,9 +123,7 @@ def detect_contact_events(
     if current is not None:
         events.append(current)
     for event in events:
-        event["evidence"] = sorted(event["evidence"])
-        # 只有位置证据的片段保留为候选，供人工复核；不计为确认接触。
-        event["candidate"] = event["evidence"] == ["position_only"]
+        event["evidence"], event["candidate"] = evidence_summary(event["evidence"])
         event["frames"] = event["endFrame"] - event["startFrame"] + 1
         if fps:
             event["startS"] = round(event["startFrame"] / fps, 6)

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
-from backend.core.gripper_contact import ContactFrame, detect_contact_events
+from backend.core.gripper_contact import ContactFrame, detect_contact_events, evidence_summary, frame_evidences
 from backend.core.jodell_modbus import GOBJ_CONTACT_CLOSING, GOBJ_CONTACT_OPENING, gap_mm_for_position_raw
 
 GRIPPER_SAMPLE_HISTORY_FORMAT = "seq_monotonicUs_halTs_pv_sv_cv_pos_cur_act_gto_sta_obj_fault_v1"
@@ -391,8 +391,9 @@ def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_
                 )
                 for sample in samples
             ]
-            detected = detect_contact_events(
-                frames, min_gap_mm=min_gap_mm, current_threshold_raw=thresholds_raw.get(side))
+            threshold = thresholds_raw.get(side)
+            detected = detect_contact_events(frames, min_gap_mm=min_gap_mm, current_threshold_raw=threshold)
+            evidences = frame_evidences(frames, min_gap_mm=min_gap_mm, current_threshold_raw=threshold)
             for event in detected:
                 segment = samples[event["startFrame"]:event["endFrame"] + 1]
                 # 只保留落在已写入帧内的读数；结束时间、序号、最小开口和峰值都按保留的读数重新计算，
@@ -402,6 +403,9 @@ def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_
                 if not kept:
                     continue
                 first, last = kept[0], kept[-1]
+                # 证据与候选标志也只按保留的读数重算：录像结束后的 gOBJ/电流不能改变录像内片段的标签。
+                kept_evidence, kept_candidate = evidence_summary(
+                    evidences[event["startFrame"]:event["startFrame"] + len(kept)])
                 currents = [sample for sample in kept if sample.current_valid]
                 peak = max(currents, key=lambda sample: sample.current_raw) if currents else None
                 start_t = first.monotonic_s - start_s
@@ -416,8 +420,8 @@ def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_
                     "clippedToLastFrame": len(kept) < len(segment),
                     "startSeq": first.seq,
                     "endSeq": last.seq,
-                    "evidence": event["evidence"],
-                    "candidate": event["candidate"],
+                    "evidence": kept_evidence,
+                    "candidate": kept_candidate,
                     "minGapMm": round(
                         min(gap_mm_for_position_raw(sample.position_raw, stroke_mm) for sample in kept), 4),
                     "peakCurrentRaw": float(peak.current_raw) if peak is not None else None,
