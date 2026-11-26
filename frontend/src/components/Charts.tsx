@@ -5,7 +5,8 @@
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 import { memo, useEffect, useMemo, useRef } from 'react'
-import { axisNames, forceChannels } from '../data'
+import { axisHues, axisNames, forceChannels } from '../data'
+import { recentForceHistory } from '../forceDisplay'
 import type { TelemetrySample } from '../types'
 
 const axisText = '#7a8b9c'
@@ -14,7 +15,6 @@ const axisFont = '11px ui-monospace, Consolas, monospace'
 const lineColor = '#d9e0e8'
 // 曲线配色避开状态色（红、橙、绿），这些颜色只用于正常/注意/风险。
 // X/Y/Z 与 Roll/Pitch/Yaw、Fx/Fy/Fz 与 Mx/My/Mz 按轴共用色相；力矩用虚线与力区分。
-const axisHues = ['#1f6fd1', '#c0399a', '#14919b']
 const palette = [...axisHues, '#6d4fc2', '#3d5a80', '#8a5a9e', '#5e7d8c', '#7a8b9c']
 const referenceColor = '#7a8b9c'
 const semanticAxes = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw']
@@ -54,7 +54,6 @@ function LiveLineChart({
   dataAttrs,
 }: LiveLineChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const wrapRef = useRef<HTMLDivElement | null>(null)
 
   const bounds = useMemo(() => {
     let min = Number.POSITIVE_INFINITY
@@ -87,17 +86,15 @@ function LiveLineChart({
 
   useEffect(() => {
     const canvas = canvasRef.current
-    const wrap = wrapRef.current
-    if (!canvas || !wrap) return
+    if (!canvas) return
 
     const draw = () => {
-      const width = wrap.clientWidth || 240
-      const cssHeight = height
+      const width = canvas.clientWidth
+      const cssHeight = canvas.clientHeight
+      if (!width || !cssHeight) return
       const dpr = window.devicePixelRatio || 1
       canvas.width = Math.max(1, Math.floor(width * dpr))
       canvas.height = Math.max(1, Math.floor(cssHeight * dpr))
-      canvas.style.width = `${width}px`
-      canvas.style.height = `${cssHeight}px`
       const ctx = canvas.getContext('2d')
       if (!ctx) return
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -172,15 +169,14 @@ function LiveLineChart({
 
     draw()
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => draw()) : null
-    ro?.observe(wrap)
+    ro?.observe(canvas)
     return () => ro?.disconnect()
   }, [series, height, bounds, yUnit, showXLabels])
 
   return (
     <div
-      ref={wrapRef}
       data-testid={testId}
-      style={{ width: '100%', height, position: 'relative' }}
+      style={{ width: '100%', height, display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)' }}
       {...dataAttrs}
     >
       <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 6, rowGap: 0, marginBottom: 2, minHeight: 14 }}>
@@ -203,7 +199,7 @@ function LiveLineChart({
           </span>
         ))}
       </div>
-      <canvas ref={canvasRef} style={{ display: 'block', width: '100%' }} />
+      <canvas ref={canvasRef} aria-label={yUnit} style={{ display: 'block', width: '100%', height: '100%', minHeight: 0, minWidth: 0 }} />
     </div>
   )
 }
@@ -256,22 +252,24 @@ export const ForceChart = memo(function ForceChart({
   history,
   side,
   height = 220,
-}: HistoryProps & { side: 'left' | 'right' }) {
+  voltage = false,
+}: HistoryProps & { side: 'left' | 'right'; voltage?: boolean }) {
   const series = useMemo(() => {
-    const scale = 1000
+    const scale = voltage ? 1 : 1000
+    const samples = recentForceHistory(history, voltage, side)
     return forceChannels.map((name, index) => ({
       name,
       color: axisHues[index % 3],
       dashed: index >= 3,
-      values: history.map((sample) => (side === 'left' ? sample.forceLeft[index] : sample.forceRight[index]) * scale),
+      values: samples.map((sample) => (side === 'left' ? sample.forceLeft[index] : sample.forceRight[index]) * scale),
     }))
-  }, [history, side])
+  }, [history, side, voltage])
   const fxJson = useMemo(() => JSON.stringify(series[0]?.values ?? []), [series])
   return (
     <LiveLineChart
       series={series}
       height={height}
-      yUnit="mN"
+      yUnit={voltage ? '未标定 · V' : '力 mN / 力矩 mN·m'}
       dataAttrs={{ 'data-side': side, 'data-fx': fxJson }}
     />
   )

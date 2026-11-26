@@ -6,6 +6,7 @@ import type { Participation } from '../types'
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 import { create } from 'zustand'
+import { forceSampleReady, isForceVoltage } from '../forceDisplay'
 import {
   installControlCommandTimeoutHandler,
   installControlSessionProvider,
@@ -645,6 +646,7 @@ function buildFrame(state: TelemetryStore): TelemetryFrame {
     forceRight,
     forceStatus: {
       source: state.config.force.source,
+      sampleVoltage: state.config.force.source === 'nidaq' && !state.config.force.calibrationEnabled,
       protocol: state.config.force.serial.protocol,
       sides: {
         left: { port: state.config.force.serial.leftPort, connected: true, healthy: true, sampleAgeMs: 1, sampleHz: 1000, crcErrors: 0 },
@@ -776,10 +778,15 @@ function appendLog(logs: LogEntry[], entry: LogEntry) {
 }
 
 /** Strip a backend telemetry frame down to the fields rendered in charts. */
-function telemetrySampleFromFrame(frame: TelemetryFrame): TelemetrySample {
+function telemetrySampleFromFrame(frame: TelemetryFrame, config: AppConfig): TelemetrySample {
   // 图表只保留绘制需要的字段，避免历史缓冲持有整帧对象造成渲染压力。
   return {
     time: frame.elapsedSec,
+    forceVoltage: isForceVoltage(config.force, frame.forceStatus),
+    forceHealthy: {
+      left: frame.wsOk && frame.halOk && forceSampleReady(frame.forceStatus, 'left'),
+      right: frame.wsOk && frame.halOk && forceSampleReady(frame.forceStatus, 'right'),
+    },
     joints: frame.jointPositions,
     forceLeft: frame.forceLeft,
     forceRight: frame.forceRight,
@@ -949,7 +956,6 @@ function nextRecordSessionFromBackend(state: TelemetryStore, frame: TelemetryFra
 /** 处理对应的用户交互。 */
 function commitBackendFrame(set: TelemetryStoreSet, frame: TelemetryFrame, forceHistory: boolean) {
   const now = Date.now()
-  const sample = telemetrySampleFromFrame(frame)
   let historyCommitted = false
   set((state) => {
     const shouldCommitHistory =
@@ -975,7 +981,7 @@ function commitBackendFrame(set: TelemetryStoreSet, frame: TelemetryFrame, force
       episodeCount: nextFrame.episodeCount,
       frameCount: nextFrame.frameCount,
       recordSession: nextRecordSessionFromBackend(state, nextFrame),
-      ...(shouldCommitHistory ? { history: appendTelemetryHistory(state.history, sample) } : {}),
+      ...(shouldCommitHistory ? { history: appendTelemetryHistory(state.history, telemetrySampleFromFrame(frame, state.config)) } : {}),
     }
   })
   lastBackendFrameCommitAt = now
@@ -1469,15 +1475,6 @@ startMock: () => {
         const recordSession = advanceRecordSession(state.recordSession)
         const frame = buildFrame({ ...state, recordSession })
         const tick = state.tick + 1
-        const sample: TelemetrySample = {
-          time: frame.elapsedSec,
-          joints: frame.jointPositions,
-          forceLeft: frame.forceLeft,
-          forceRight: frame.forceRight,
-          danger: frame.dangerIndex,
-          queueLeft: frame.queueDepth.left,
-          queueRight: frame.queueDepth.right,
-        }
         let logs = state.logs
         if (tick % 25 === 0) {
           logs = appendLog(
@@ -1499,7 +1496,7 @@ startMock: () => {
           recordSession,
           frameCount: frame.frameCount,
           history: state.history.length === 0 || tick % Math.max(1, Math.round(chartHistoryIntervalMs / mockTelemetryIntervalMs)) === 0
-            ? appendTelemetryHistory(state.history, sample)
+            ? appendTelemetryHistory(state.history, telemetrySampleFromFrame(frame, state.config))
             : state.history,
           logs,
         }

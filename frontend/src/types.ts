@@ -118,6 +118,7 @@ export interface ForceCalibrationSideStatus {
 }
 
 export interface ForceStatus {
+  sampleVoltage?: boolean | null
   source?: 'nidaq' | 'hkvl_serial' | 'test' | string
   protocol?: string
   sensorRawLeft?: number[]
@@ -251,6 +252,9 @@ export interface TelemetryFrame {
 
 export interface TelemetrySample {
   time: number
+  /** 未标定 NI-DAQ 历史使用电压；旧样本沿用 SI 约定。 */
+  forceVoltage?: boolean
+  forceHealthy?: { left: boolean; right: boolean }
   joints: number[]
   forceLeft: number[]
   forceRight: number[]

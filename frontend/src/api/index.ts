@@ -561,11 +561,11 @@ export async function returnMotionOriginSide(side: ManualControlSide) {
     if (e.status !== 409 || e.code !== 'CONFIRM_ORIGIN_CONTINUITY' || typeof confirmation !== 'string') throw error
     returnOriginPending = true
     try {
-      if (!await askOriginContinuity(side)) throw new Error('已取消回工作原点；若电脑重启或计数不确定，请重新建参考')
+      if (!await askOriginContinuity(side)) throw new Error('已取消回工作原点；若电脑重启或计数不确定，请重新建参考', { cause: error })
     } finally {
       returnOriginPending = false
     }
-    if (session !== controlSessionId()) throw new Error('控制会话已变化，请重新点击回工作原点')
+    if (session !== controlSessionId()) throw new Error('控制会话已变化，请重新点击回工作原点', { cause: error })
     return postCommand(path, { confirmUnchangedCounts: confirmation })
   }
 }

@@ -24,6 +24,8 @@ export const axisNames = [
 ]
 
 export const forceChannels = ['Fx', 'Fy', 'Fz', 'Mx', 'My', 'Mz']
+/** 实时监看与数据集回放按 X/Y/Z 共用色相。 */
+export const axisHues = ['#1f6fd1', '#c0399a', '#14919b']
 
 export const semanticAxes = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw'] as const
 
@@ -44,11 +46,6 @@ export function operatorSideLabel(side: RobotSide) {
 /** 力觉数据源对应的显示型号，随 config.force.source 实时切换。 */
 export function forceSensorModelLabel(source?: string) {
   return source === 'hkvl_serial' ? 'HKVL-36A' : 'Nano-17'
-}
-
-/** 力觉主通道显示单位：HKVL 用 N，Nano-17 用 mN。 */
-export function forceSensorUnitLabel(source?: string) {
-  return source === 'hkvl_serial' ? 'N / Nm' : 'mN'
 }
 
 export function hardwareChannelLabel(side: RobotSide) {

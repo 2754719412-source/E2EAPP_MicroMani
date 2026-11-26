@@ -175,6 +175,7 @@ select {
 }
 
 .brand-lockup {
+  text-decoration: none;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -679,6 +680,25 @@ select {
   color: var(--color-text-secondary);
   font-size: 12px;
   white-space: nowrap;
+}
+
+@container (max-width: 480px) {
+  .device-chip-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .device-chip {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .device-chip span, .device-chip b {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .device-chip b {
+    grid-column: 2;
+    margin-left: 0;
+  }
+  .hardware-section-title { flex-wrap: wrap; }
 }
 
 .device-chip-ok {
@@ -1648,6 +1668,20 @@ select {
   height: 132px;
 }
 
+.record-safety-values {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.record-safety-values > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.record-safety-values b {
+  font-family: ui-monospace, Consolas, monospace;
+}
+
 .record-force-meter-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1785,7 +1819,7 @@ select {
   background: var(--color-warning);
 }
 
-.record-force-meter-danger i {
+.record-force-meter-error i {
   background: var(--color-danger);
 }
 
@@ -2572,6 +2606,7 @@ select {
 }
 
 .dataset-quality-workbench {
+  container-type: inline-size;
   padding: 10px;
 }
 
@@ -2612,6 +2647,10 @@ select {
   grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 7px;
   align-items: stretch;
+}
+
+@container (max-width: 870px) {
+  .dataset-cockpit-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 .dataset-video-pane {
@@ -2768,18 +2807,6 @@ select {
 .dataset-line {
   fill: none;
   stroke-width: 1.8;
-}
-
-.dataset-line-x {
-  stroke: var(--color-primary);
-}
-
-.dataset-line-y {
-  stroke: var(--color-info);
-}
-
-.dataset-line-z {
-  stroke: var(--color-warning);
 }
 
 .dataset-chart-readout {

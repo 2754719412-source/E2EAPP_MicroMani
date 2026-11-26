@@ -26,6 +26,7 @@ import {
   type RobotSide,
 } from '../data'
 import { numberArrayEqual, teleopHandFrameEqual, teleopHandFrameSlice, useFrameField } from '../stores/frameSelectors'
+import { reportedForceDanger } from '../forceDisplay'
 import { useTelemetryStore } from '../stores/telemetry'
 import { canAcknowledgeControlSafety } from '../utils/controlSafety'
 import { GripperCard } from './settings/GripperCards'
@@ -106,7 +107,7 @@ export function SettingsView() {
   const activeTab = tabSelection.focusHash === focusHash ? tabSelection.tab : tabForHardwareHash(focusHash)
   if (tabSelection.focusHash !== focusHash) setTabSelection({ focusHash, tab: activeTab })
   const config = useTelemetryStore((state) => state.config)
-  const dangerIndex = useTelemetryStore((state) => activeTab === 'force' ? state.frame.dangerIndex : 0)
+  const dangerIndex = useTelemetryStore((state) => activeTab === 'force' ? reportedForceDanger(state) : null)
   const forceLeft = useFrameField((frame) => activeTab === 'force' ? frame.forceLeft : emptyValues, numberArrayEqual)
   const forceRight = useFrameField((frame) => activeTab === 'force' ? frame.forceRight : emptyValues, numberArrayEqual)
   const jointPositions = useFrameField((frame) => activeTab === 'motion' ? frame.jointPositions : emptyValues, numberArrayEqual)
@@ -268,7 +269,7 @@ export function SettingsView() {
           <div className="module-group">
             <div className="module-group-head">
               安全链路 / 急停 / 软限位
-              <small>danger_index {dangerIndex.toFixed(2)}</small>
+              <small>danger_index {dangerIndex?.toFixed(2) ?? '不可用'}</small>
             </div>
             <SafetyCard
               config={config}

@@ -5,9 +5,11 @@
 
 from __future__ import annotations
 
+from concurrent.futures import Future
 from typing import Any
 
 from backend.core.defaults import default_config
+from backend.drivers.force_nidaq import ForceProbeResult, NidaqForceDriver
 from backend.services.telemetry_hub import TelemetryHub
 
 
@@ -83,6 +85,28 @@ def test_nidaq_force_status_reports_the_motion_estop_latch() -> None:
         }
     finally:
         telemetry.shutdown()
+
+
+def test_nidaq_cached_readings_keep_the_unit_from_sampling() -> None:
+    settings = FakeSettings()
+    settings.config["force"]["source"] = "nidaq"
+    hub = TelemetryHub(settings, FakeHardware())
+    driver = NidaqForceDriver()
+    try:
+        for calibrated in (False, True):
+            settings.config["force"]["calibrationEnabled"] = calibrated
+            sample = ForceProbeResult(True, "", [2.0] * 6, [3.0] * 6, calibration=driver.calibration_info(settings.config))
+            hub._force_future = Future()
+            hub._force_future.set_result(sample)
+            hub._last_force_sample_at = float("inf")
+            settings.config["force"]["calibrationEnabled"] = not calibrated
+            for _ in range(2):
+                frame = hub.next_frame(hal_ok=True)
+                assert frame.forceStatus["sampleVoltage"] is (not calibrated)
+                assert frame.forceStatus["sides"]["left"]["healthy"] is True
+                assert frame.forceLeft == sample.left
+    finally:
+        hub.shutdown()
 
 
 def test_default_force_source_does_not_start_nidaq_when_hkvl_state_is_missing() -> None:

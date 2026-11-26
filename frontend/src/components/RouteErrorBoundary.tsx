@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react'
+import { mockMode } from '../api'
 import { UiButton, UiText, UiTitle } from './ui'
 import { useTelemetryStore } from '../stores/telemetry'
 
@@ -25,8 +26,13 @@ export class RouteErrorBoundary extends Component<{ children: ReactNode }, { fai
           <UiButton variant="primary" onClick={() => {
             this.setState({ failed: false })
             const store = useTelemetryStore.getState()
-            store.stopBackend()
-            store.startBackend()
+            if (mockMode) {
+              store.stopMock()
+              store.startMock()
+            } else {
+              store.stopBackend()
+              store.startBackend()
+            }
           }}>
             重试页面并重新核验
           </UiButton>

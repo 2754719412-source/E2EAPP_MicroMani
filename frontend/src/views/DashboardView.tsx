@@ -9,16 +9,16 @@ import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CameraPreview } from '../components/CameraPreview'
 import { AxisGroupChart, ForceChart } from '../components/Charts'
+import { forceChannelLevel, forceChannelLimits, forceFeedbackLive, forceSampleReady, formatForceReadout, isForceVoltage, reportedForceDanger } from '../forceDisplay'
 import { MetricPill } from '../components/MetricPill'
 import { UiSpace, UiTag, UiText } from '../components/ui'
-import { armHardwareSpecs, forceSensorModelLabel, forceSensorUnitLabel, hardwareSideForOperatorSide } from '../data'
+import { armHardwareSpecs, forceChannels, forceSensorModelLabel, hardwareSideForOperatorSide } from '../data'
 import { numberArrayEqual, useFrameField } from '../stores/frameSelectors'
 import { useTelemetryStore } from '../stores/telemetry'
 import { teleopHandState, teleopHandValue, teleopPairState, teleopPairValue } from '../teleopStatus'
 import type { ConnectionState, DiagnosticItem, TelemetryFrame, TelemetrySample } from '../types'
 
 const semanticAxes = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw']
-const forceChannels = ['Fx', 'Fy', 'Fz', 'Mx', 'My', 'Mz']
 /** 计算对应的业务值或展示值。 */
 function diagnosticState(diagnostics: DiagnosticItem[], key: string): ConnectionState {
   return diagnostics.find((item) => item.key === key)?.status ?? 'pending'
@@ -48,10 +48,6 @@ function formatAxisValue(value: number, index: number) {
   return index < 3 ? `${value.toFixed(1)} µm` : `${value.toFixed(2)}°`
 }
 /** 格式化对应数值用于界面展示。 */
-function formatForceValue(value: number, index: number) {
-  return index < 3 ? `${(value * 1000).toFixed(0)}` : `${(value * 1000).toFixed(1)}`
-}
-/** 格式化对应数值用于界面展示。 */
 function formatGripperValue(value: number | undefined) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? `${value.toFixed(1)}mm` : '不可用'
 }
@@ -62,8 +58,8 @@ const axisReadoutGroups = [
 ]
 
 const forceReadoutGroups = [
-  { key: 'force', label: '力 · mN', channels: forceChannels.slice(0, 3), start: 0 },
-  { key: 'moment', label: '力矩 · mN·m', channels: forceChannels.slice(3, 6), start: 3 },
+  { key: 'force', label: '力', channels: forceChannels.slice(0, 3), start: 0 },
+  { key: 'moment', label: '力矩', channels: forceChannels.slice(3, 6), start: 3 },
 ]
 /** 渲染当前界面单元，并连接所需数据。 */
 function HardwareStatusButton({
@@ -118,15 +114,21 @@ function DeviceChip({
 function GlobalHardwarePanel({ diagnostics }: { diagnostics: DiagnosticItem[] }) {
   const navigate = useNavigate()
   const halOk = useTelemetryStore((state) => state.frame.halOk)
-  const dangerIndex = useTelemetryStore((state) => state.frame.dangerIndex)
+  const dangerIndex = useTelemetryStore(reportedForceDanger)
   const wsHz = useTelemetryStore((state) => state.frame.resource.wsHz)
   const forceStatus = useTelemetryStore((state) => state.frame.forceStatus)
   const globalCamera = useTelemetryStore((state) => state.frame.cameras.find((camera) => camera.key === 'global'))
   const teleopHands = useTelemetryStore((state) => state.frame.teleopHands)
   const omegaState = teleopPairState({ teleopHands } as TelemetryFrame, diagnostics)
-  const halState: ConnectionState = halOk ? 'ok' : 'error'
+  const live = useTelemetryStore(forceFeedbackLive)
+  const wsLive = useTelemetryStore((state) => state.telemetryLink.state === 'live' && state.frame.wsOk)
+  const pico = useTelemetryStore((state) => state.picoConnection)
+  const halState: ConnectionState = !wsLive ? 'pending' : halOk ? 'ok' : 'error'
+  const requested = useTelemetryStore((state) => state.controlSafety.emergencyRequested)
   const safetyLatched = Boolean(forceStatus?.safety?.latched)
-  const safetyState: ConnectionState = safetyLatched || dangerIndex > 0.85 ? 'error' : dangerIndex > 0.6 ? 'warn' : 'ok'
+  const safetyKnown = dangerIndex !== null
+  const safetyState: ConnectionState = safetyLatched || requested ? 'error' : !safetyKnown ? 'pending' : dangerIndex >= 1 ? 'error' : dangerIndex > 0.7 ? 'warn' : 'ok'
+  const safetyText = safetyLatched ? (live ? '安全锁存' : '上次反馈已锁存') : requested ? '已请求急停' : safetyKnown ? dangerIndex.toFixed(2) : '不可用'
  /** 描述当前方法的功能边界。 */
  const go = (hash: string) => navigate(`/settings#${hash}`)
 
@@ -138,7 +140,7 @@ function GlobalHardwarePanel({ diagnostics }: { diagnostics: DiagnosticItem[] })
           <MetricPill state={halState} label="HAL" />
           <MetricPill state={globalCamera?.health ?? 'pending'} label="全局相机" />
           <MetricPill state={omegaState} label="主手" />
-          <MetricPill state={safetyState} label={`Safety ${safetyLatched ? 'LOCK' : dangerIndex.toFixed(2)}`} />
+          <MetricPill state={safetyState} label={`Safety ${safetyText}`} />
         </UiSpace>
       </div>
       <div className="global-hardware-layout">
@@ -148,14 +150,14 @@ function GlobalHardwarePanel({ diagnostics }: { diagnostics: DiagnosticItem[] })
             label="HAL 通信"
             state={halState}
             value="HalServer.exe"
-            detail={`运动状态 ${wsHz}Hz，硬件急停状态可读`}
+            detail={live ? `运动状态 ${wsHz}Hz` : '等待实时硬件反馈'}
             icon={<RadioTower size={15} />}
             onClick={() => go('hal')}
           />
           <HardwareStatusButton
             label="PICO-4 视觉"
-            state="pending"
-            value="视频推流待连接"
+            state={pico.state}
+            value={pico.message}
             detail="ADB 与 TCP 视频链路配置放到设置页"
             icon={<Camera size={15} />}
             onClick={() => go('teleop')}
@@ -171,7 +173,7 @@ function GlobalHardwarePanel({ diagnostics }: { diagnostics: DiagnosticItem[] })
           <HardwareStatusButton
             label="安全链路"
             state={safetyState}
-            value={safetyLatched ? '安全锁存' : `danger_index ${dangerIndex.toFixed(2)}`}
+            value={safetyKnown && !safetyLatched && !requested ? `danger_index ${safetyText}` : safetyText}
             detail="外部急停、软限位和力觉保护汇总"
             icon={<ShieldCheck size={15} />}
             onClick={() => go('safety')}
@@ -192,9 +194,13 @@ function ArmHardwarePanel({
   diagnostics: DiagnosticItem[]
 }) {
   const navigate = useNavigate()
-  const forceSource = useTelemetryStore((state) => state.config.force.source)
+  const forceSource = useTelemetryStore((state) => state.frame.forceStatus?.source ?? state.config.force.source)
+  const voltage = useTelemetryStore((state) => isForceVoltage(state.config.force, state.frame.forceStatus))
+  const live = useTelemetryStore(forceFeedbackLive)
+  const safety = useTelemetryStore((state) => state.config.safety)
   const halOk = useTelemetryStore((state) => state.frame.halOk)
-  const dangerIndex = useTelemetryStore((state) => state.frame.dangerIndex)
+  const dangerIndex = useTelemetryStore(reportedForceDanger)
+  const requested = useTelemetryStore((state) => state.controlSafety.emergencyRequested)
   const forceStatus = useTelemetryStore((state) => state.frame.forceStatus)
   const teleopHands = useTelemetryStore((state) => state.frame.teleopHands)
   const forceLeft = useFrameField((frame) => frame.forceLeft, numberArrayEqual)
@@ -216,11 +222,16 @@ function ArmHardwarePanel({
   const gripperState = diagnosticState(diagnostics, 'gripper')
   const teleopState = teleopHandState({ teleopHands } as TelemetryFrame, diagnostics, side)
   const motionState: ConnectionState = halOk ? 'ok' : 'error'
+  const forceReady = live && forceSampleReady(forceStatus, hardwareSide)
   const forceNorm = forceMagnitude(forceValues)
-  const safetyState: ConnectionState = forceStatus?.safety?.latched || forceNorm > 2.5 || dangerIndex > 0.65 ? 'warn' : 'ok'
+  const levels = forceValues.map((value, axis) => forceChannelLevel(value, forceChannelLimits(safety, axis)))
+  const safetyState: ConnectionState = requested || forceStatus?.safety?.latched ? 'error'
+    : !forceReady || voltage ? 'pending'
+    : levels.includes('error') || (dangerIndex !== null && dangerIndex >= 1) ? 'error'
+    : levels.includes('warn') || (dangerIndex !== null && dangerIndex > 0.7) ? 'warn' : dangerIndex === null || levels.includes('pending') ? 'pending' : 'ok'
   const gripperValue = formatGripperValue(gripperPositions[isHardwareLeft ? 0 : 1])
   const forceModel = forceSensorModelLabel(forceSource)
-  const forceUnit = forceSensorUnitLabel(forceSource)
+  const forceUnit = voltage ? 'V' : 'mN'
  /** 描述当前方法的功能边界。 */
  const go = (hash: string) => navigate(`/settings#${hash}`)
 
@@ -240,7 +251,7 @@ function ArmHardwarePanel({
       <div className="device-chip-row">
         <DeviceChip label="运动控制卡" state={motionState} value={cardNo} icon={<Cpu size={14} />} onClick={() => go(side === 'left' ? 'motion-left' : 'motion-right')} />
         <DeviceChip label="物理轴号" state={motionState} value={axisOrder} icon={<MapPinned size={14} />} onClick={() => go(side === 'left' ? 'motion-left' : 'motion-right')} />
-        <DeviceChip label={forceModel} state={forceState} value={forceUnit.split(' / ')[0]} icon={<Waves size={14} />} onClick={() => go(side === 'left' ? 'force-left' : 'force-right')} />
+        <DeviceChip label={forceModel} state={forceState} value={forceUnit} icon={<Waves size={14} />} onClick={() => go(side === 'left' ? 'force-left' : 'force-right')} />
         <DeviceChip label="夹爪" state={gripperState} value={gripperValue} icon={<Hand size={14} />} onClick={() => go(side === 'left' ? 'gripper-left' : 'gripper-right')} />
         <DeviceChip label="主手" state={teleopState} value={teleopHandValue({ teleopHands } as TelemetryFrame, side)} icon={<Gamepad2 size={14} />} onClick={() => go(side === 'left' ? 'teleop-left' : 'teleop-right')} />
       </div>
@@ -281,29 +292,27 @@ function ArmHardwarePanel({
 
       <div className="arm-force-layout">
         <button className="force-chart-card" type="button" onClick={() => go(side === 'left' ? 'force-left' : 'force-right')}>
-          <UiText strong>{forceModel} 六维力觉 · {forceSource === 'hkvl_serial' ? 'N' : 'mN'}</UiText>
-          <ForceChart history={history} side={hardwareSide} height={116} />
+          <UiText strong>{forceModel} {voltage ? '未标定电压' : '六维力觉'}</UiText>
+          <ForceChart history={history} side={hardwareSide} height={116} voltage={voltage} />
         </button>
         <div className="force-summary-card">
-          <b>|F| {(forceNorm * 1000).toFixed(0)} mN</b>
+          <b>{!forceReady ? '力觉反馈不可用' : voltage ? '未标定 · V' : `|F| ${(forceNorm * 1000).toFixed(0)} mN`}</b>
           <div className="force-readout-compact force-readout-grouped">
             {forceReadoutGroups.map((group) => (
               <div className="force-readout-column" key={group.key}>
-                <small>{group.label}</small>
+                <small>{voltage ? '电压 · V' : `${group.label} · ${group.start === 0 ? 'mN' : 'mN·m'}`}</small>
                 {group.channels.map((channel, groupIndex) => {
                   const channelIndex = group.start + groupIndex
                   return (
                     <span key={channel}>
                       <b>{channel}</b>
-                      <em>{formatForceValue(forceValues[channelIndex], channelIndex)}</em>
+                      <em>{forceReady ? formatForceReadout(forceValues[channelIndex], channelIndex, voltage) : '—'}</em>
                     </span>
                   )
                 })}
               </div>
             ))}
           </div>
-          <span>Fx/Fy/Fz: mN</span>
-          <span>Mx/My/Mz: mN·m</span>
           <UiTag tone={stateTone(forceState)}>{stateText(forceState)}</UiTag>
         </div>
       </div>

@@ -41,10 +41,9 @@ const kbdStyle: React.CSSProperties = {
 }
 
 const HINTS = [
-  { key: 'Ctrl', desc: '离合器切换' },
+  { key: 'Ctrl', desc: '单独按下并松开以切换离合器' },
   { key: '1/2/3', desc: '速度粗/中/细' },
   { key: 'R', desc: '回工作原点' },
-  { key: 'P', desc: '暂停遥操作' },
 ]
 /** 格式化对应数值用于界面展示。 */
 const formatTime = (s: number) =>
@@ -228,14 +227,14 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
       {(phase === 'recording' || phase === 'interrupted') && (
         <div className="record-action-stack">
           <div className="record-action-grid">
-            <UiButton variant="primary" onClick={saveRecordEpisode} block disabled={busy}>
+            <UiButton data-record-action="advance" variant="primary" onClick={saveRecordEpisode} block disabled={busy}>
               保存 <kbd style={kbdStyle}>Space</kbd>
             </UiButton>
-            <UiButton onClick={discardRecordEpisode} block disabled={busy}>
+            <UiButton data-record-action="discard" onClick={discardRecordEpisode} block disabled={busy}>
               丢弃重录
             </UiButton>
           </div>
-          <UiButton danger block onClick={finishRecordSession} disabled={busy}>
+          <UiButton data-record-action="finish" danger block onClick={finishRecordSession} disabled={busy}>
             ESC - 结束采集会话并 finalize()
           </UiButton>
         </div>
@@ -244,10 +243,10 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
       {phase === 'resetting' && (
         <div className="record-action-stack">
           {startError && startErrorAlert('未能开始下一条')}
-          <UiButton variant="primary" block onClick={() => guardGripperOpen('skip')} disabled={busy || returnOriginInFlight || !resetReady}>
+          <UiButton data-record-action="advance" variant="primary" block onClick={() => guardGripperOpen('skip')} disabled={busy || returnOriginInFlight || !resetReady}>
             跳过复位，立即开始
           </UiButton>
-          <UiButton danger block onClick={finishRecordSession} disabled={busy}>
+          <UiButton data-record-action="finish" danger block onClick={finishRecordSession} disabled={busy}>
             ESC - 结束采集会话并 finalize()
           </UiButton>
         </div>

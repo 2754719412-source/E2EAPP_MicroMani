@@ -42,6 +42,7 @@ class TelemetryHub:
         self.gripper_positions = [-1.0, -1.0]
         self.estop_active = False
         self.force_tare_active = False
+        self._force_sample_voltage: bool | None = None
         self.force_left = [0.0] * 6
         self.force_right = [0.0] * 6
         self.force_ok = False
@@ -152,6 +153,7 @@ class TelemetryHub:
         if real_mode and native_gripper_status is not None:
             self.apply_native_gripper_status(native_gripper_status, now)
         if real_mode and force_source == "hkvl_serial":
+            self._force_sample_voltage = None
             if isinstance(force_state, dict):
                 raw_left = force_state.get("left")
                 raw_right = force_state.get("right")
@@ -180,6 +182,7 @@ class TelemetryHub:
             self._refresh_force_values(config, now)
             force_left = list(self.force_left)
             force_right = list(self.force_right)
+            force_status["sampleVoltage"] = self._force_sample_voltage
             force_status["sides"]["left"]["healthy"] = self.force_ok
             force_status["sides"]["right"]["healthy"] = self.force_ok
         if real_mode and force_source == "hkvl_serial" and isinstance(force_state, dict):
@@ -618,6 +621,7 @@ class TelemetryHub:
             try:
                 result = self._force_future.result()
                 self.force_ok = bool(result.ok)
+                self._force_sample_voltage = getattr(result, "sample_voltage", None)
                 self.force_left = [float(value) for value in result.left]
                 self.force_right = [float(value) for value in result.right]
             except Exception:

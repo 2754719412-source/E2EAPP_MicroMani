@@ -19,6 +19,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { axisHues } from '../data'
 import { CameraPreview } from '../components/CameraPreview'
 import { DatasetReplayPanel } from '../components/DatasetReplayPanel'
 import {
@@ -402,9 +403,9 @@ function TrajectoryPanel({
     <UiCard title={title}>
       <svg className="dataset-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
         <line x1="0" y1={height / 2} x2={width} y2={height / 2} className="dataset-chart-axis" />
-        <polyline points={linePoints(episode.samples, side, 0, width, height)} className="dataset-line dataset-line-x" />
-        <polyline points={linePoints(episode.samples, side, 1, width, height)} className="dataset-line dataset-line-y" />
-        <polyline points={linePoints(episode.samples, side, 2, width, height)} className="dataset-line dataset-line-z" />
+        <polyline points={linePoints(episode.samples, side, 0, width, height)} className="dataset-line" stroke={axisHues[0]} />
+        <polyline points={linePoints(episode.samples, side, 1, width, height)} className="dataset-line" stroke={axisHues[1]} />
+        <polyline points={linePoints(episode.samples, side, 2, width, height)} className="dataset-line" stroke={axisHues[2]} />
         <line x1={currentX} y1="0" x2={currentX} y2={height} className="dataset-chart-cursor" />
       </svg>
       <div className="dataset-chart-readout">
@@ -445,9 +446,9 @@ function ForcePanel({
     <UiCard title={title}>
       <svg className="dataset-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
         <line x1="0" y1={height / 2} x2={width} y2={height / 2} className="dataset-chart-axis" />
-        <polyline points={forcePoints(episode.samples, side, 0, width, height)} className="dataset-line dataset-line-x" />
-        <polyline points={forcePoints(episode.samples, side, 1, width, height)} className="dataset-line dataset-line-y" />
-        <polyline points={forcePoints(episode.samples, side, 2, width, height)} className="dataset-line dataset-line-z" />
+        <polyline points={forcePoints(episode.samples, side, 0, width, height)} className="dataset-line" stroke={axisHues[0]} />
+        <polyline points={forcePoints(episode.samples, side, 1, width, height)} className="dataset-line" stroke={axisHues[1]} />
+        <polyline points={forcePoints(episode.samples, side, 2, width, height)} className="dataset-line" stroke={axisHues[2]} />
         <line x1={currentX} y1="0" x2={currentX} y2={height} className="dataset-chart-cursor" />
       </svg>
       <div className="dataset-chart-readout">

@@ -17,8 +17,9 @@ import {
   SquareStack,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { telemetryStaleAfterMs } from '../hardwareStatus'
+import { reportedForceDanger } from '../forceDisplay'
 import { useTelemetryStore } from '../stores/telemetry'
 import { LogPanel } from './LogPanel'
 import { MetricPill } from './MetricPill'
@@ -59,7 +60,7 @@ function workModeFromLocation(pathname: string, hash: string): WorkMode | null {
 function TopStatus({ clock }: { clock: string }) {
   const halOk = useTelemetryStore((state) => state.frame.halOk)
   const wsHz = useTelemetryStore((state) => state.frame.resource.wsHz)
-  const dangerIndex = useTelemetryStore((state) => state.frame.dangerIndex)
+  const dangerIndex = useTelemetryStore(reportedForceDanger)
   const safetyLatched = useTelemetryStore((state) => Boolean(state.frame.forceStatus?.safety?.latched))
   const emergencyRequested = useTelemetryStore((state) => state.controlSafety.emergencyRequested)
   const leaseBlocked = useTelemetryStore((state) => Boolean(controlLeaseBlockReason(state.controlLease)))
@@ -69,7 +70,7 @@ function TopStatus({ clock }: { clock: string }) {
   const phase = useTelemetryStore((state) => state.recordSession.phase)
   const recorderFps = useTelemetryStore((state) => state.recordSession.recorderFps)
   const safetyLocked = emergencyRequested || safetyLatched
-  const safetyAvailable = telemetryLive && halOk && !leaseBlocked
+  const safetyAvailable = dangerIndex !== null && !leaseBlocked
 
   return (
     <UiSpace className="top-status" size={8}>
@@ -109,13 +110,13 @@ export function AppLayout() {
   return (
     <div className="app-shell">
       <header className="top-bar">
-        <div className="brand-lockup" onClick={() => navigate('/')} role="button" tabIndex={0}>
+        <Link className="brand-lockup" to="/" aria-label="AppStation 主页">
           <SquareStack size={20} />
           <div>
             <UiText strong>AppStation</UiText>
             <UiText secondary>Robot Hardware Console</UiText>
           </div>
-        </div>
+        </Link>
         <UiSegmented
           value={workMode}
           options={[

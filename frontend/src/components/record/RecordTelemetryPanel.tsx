@@ -1,18 +1,19 @@
 /*
  * 阅读导航 01｜入口与界面
  * 职责：显示录制期间各轴位姿和双侧力的数值与比例条。
- * 先看：formatAxisValue → axisRatio → forceRatio → forceTone。
+ * 轴位置与力觉的比例条仅用于监看。
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 import { memo, type CSSProperties } from 'react'
 import { AxisGroupChart, ForceChart } from '../Charts'
 import { useTelemetryStore } from '../../stores/telemetry'
 import { numberArrayEqual, useFrameField } from '../../stores/frameSelectors'
+import { forceChannels } from '../../data'
+import { forceChannelLevel, forceChannelLimits, forceFeedbackLive, forceSampleReady, isForceVoltage } from '../../forceDisplay'
 import type { TelemetrySample } from '../../types'
 import { UiCard, UiTag } from '../ui'
 
 const axes = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw'] as const
-const forceLabels = ['Fx', 'Fy', 'Fz', 'Mx', 'My', 'Mz'] as const
 /** 格式化对应数值用于界面展示。 */
 function formatAxisValue(value: number, index: number) {
   const unit = index < 3 ? 'um' : 'deg'
@@ -25,23 +26,6 @@ function axisRatio(value: number, index: number) {
   return Math.min(100, Math.abs(value) / max * 100)
 }
 /** 计算对应的业务值或展示值。 */
-function forceRatio(value: number, index: number) {
-  const max = index < 3 ? 5 : 0.04
-  return Math.min(100, Math.abs(value) / max * 100)
-}
-/** 计算对应的业务值或展示值。 */
-function forceTone(value: number, index: number) {
-  const abs = Math.abs(value)
-  if (index < 3) {
-    if (abs >= 4) return 'danger'
-    if (abs >= 2) return 'warn'
-  } else {
-    if (abs >= 0.04) return 'danger'
-    if (abs >= 0.02) return 'warn'
-  }
-  return 'ok'
-}
-/** 描述当前方法的功能边界。 */
 function poseStyle(values: number[]) {
   const x = Math.max(-42, Math.min(42, (values[0] ?? 0) / 14))
   const y = Math.max(-32, Math.min(32, (values[1] ?? 0) / 16))
@@ -68,9 +52,14 @@ const ArmMonitor = memo(function ArmMonitor({
   force: number[]
   history: TelemetrySample[]
 }) {
-  const forcePeak = Math.max(...force.map((value) => Math.abs(value)))
- /** 描述当前方法的功能边界。 */
- const valueAt = (index: number) => positions[axisOffset + index] ?? 0
+  const safety = useTelemetryStore((state) => state.config.safety)
+  const voltage = useTelemetryStore((state) => isForceVoltage(state.config.force, state.frame.forceStatus))
+  const live = useTelemetryStore(forceFeedbackLive)
+  const healthy = useTelemetryStore((state) => forceSampleReady(state.frame.forceStatus, side))
+  const available = live && healthy
+  const limits = forceChannels.map((_, index) => forceChannelLimits(safety, index))
+  const levels = force.map((value, index) => available && !voltage ? forceChannelLevel(value, limits[index]) : 'pending')
+  const valueAt = (index: number) => positions[axisOffset + index] ?? 0
   const poseValues = [
     valueAt(0),
     valueAt(1),
@@ -80,7 +69,8 @@ const ArmMonitor = memo(function ArmMonitor({
     valueAt(5),
   ]
   const yaw = valueAt(5)
-  const dangerTone = forcePeak >= 4 || Math.abs(yaw) >= 70 ? 'danger' : forcePeak >= 2 || Math.abs(yaw) >= 60 ? 'warn' : 'ok'
+  const dangerTone = !live ? 'pending' : levels.includes('error') || Math.abs(yaw) >= 70 ? 'danger'
+    : levels.includes('warn') || Math.abs(yaw) >= 60 ? 'warn' : levels.includes('pending') ? 'pending' : 'ok'
 
   return (
     <section className={`record-arm-monitor record-arm-monitor-${dangerTone}`}>
@@ -89,8 +79,8 @@ const ArmMonitor = memo(function ArmMonitor({
           <b>{title}</b>
           <span>运动轨迹 / 力觉实时趋势</span>
         </div>
-        <UiTag tone={dangerTone === 'danger' ? 'error' : dangerTone === 'warn' ? 'warning' : 'success'}>
-          {dangerTone === 'danger' ? '风险' : dangerTone === 'warn' ? '注意' : '平稳'}
+        <UiTag tone={dangerTone === 'danger' ? 'error' : dangerTone === 'warn' ? 'warning' : dangerTone === 'ok' ? 'success' : 'muted'}>
+          {dangerTone === 'danger' ? '风险' : dangerTone === 'warn' ? '注意' : dangerTone === 'ok' ? '平稳' : '待确认'}
         </UiTag>
       </div>
 
@@ -134,19 +124,20 @@ const ArmMonitor = memo(function ArmMonitor({
 
         <div className="record-force-monitor">
           <div className="record-force-meter-grid">
-            {forceLabels.map((label, index) => {
-              const value = force[index] ?? 0
+            {forceChannels.map((label, index) => {
+              const value = force[index]
+              const unit = voltage ? 'V' : index < 3 ? 'N' : 'N·m'
               return (
-                <div className={`record-force-meter record-force-meter-${forceTone(value, index)}`} key={label}>
-                  <span>{label}</span>
-                  <b>{value >= 0 ? '+' : ''}{value.toFixed(index < 3 ? 2 : 3)}</b>
-                  <div><i style={{ width: `${forceRatio(value, index)}%` }} /></div>
+                <div className={`record-force-meter record-force-meter-${levels[index]}`} key={label}>
+                  <span>{label} · {unit}</span>
+                  <b>{available ? `${value >= 0 ? '+' : ''}${value.toFixed(voltage || index >= 3 ? 3 : 2)}` : '—'}</b>
+                  {levels[index] !== 'pending' && <div><i style={{ width: `${Math.min(100, Math.abs(value) / limits[index].stop * 100)}%` }} /></div>}
                 </div>
               )
             })}
           </div>
           <div className="record-force-chart">
-            <ForceChart history={history} side={side} height={126} />
+            <ForceChart history={history} side={side} height={126} voltage={voltage} />
           </div>
         </div>
       </div>
