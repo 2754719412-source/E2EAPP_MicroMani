@@ -275,3 +275,35 @@ export const QueueChart = memo(function QueueChart({ history, height = 160 }: Hi
   )
   return <LiveLineChart series={series} height={height} yMin={0} yMax={100} />
 })
+
+/** 夹爪 gCU 电流原码曲线（0–255），可叠加标定得到的空载阈值参考线。 */
+export const GripperCurrentChart = memo(function GripperCurrentChart({
+  values,
+  thresholdRaw,
+  height = 150,
+  side,
+}: {
+  values: number[]
+  thresholdRaw?: number | null
+  height?: number
+  side: 'left' | 'right'
+}) {
+  const series = useMemo(() => {
+    // 固定 0–255 量程时左上角单位会与顶部刻度重叠，单位写进序列名。
+    const items: SeriesSpec[] = [{ name: 'gCU 原码', color: palette[0], values }]
+    if (typeof thresholdRaw === 'number') {
+      items.push({ name: '空载阈值', color: palette[3], values: values.map(() => thresholdRaw) })
+    }
+    return items
+  }, [values, thresholdRaw])
+  return (
+    <LiveLineChart
+      series={series}
+      height={height}
+      yMin={0}
+      yMax={255}
+      testId="gripper-current-chart"
+      dataAttrs={{ 'data-side': side, 'data-points': String(values.length) }}
+    />
+  )
+})

@@ -171,10 +171,18 @@ def native_status_to_gripper_status(config: dict[str, Any], mapper_status: dict[
             "positionMm": position_mm,
             "targetMm": detail.get("targetMm", positions[side]),
             "lastCommandTs": command_ts,
+            # HAL 结构化读数（gCU/gOBJ/gGTO/故障/有效标志）与采样统计，供界面显示夹爪力感知；旧 HAL 没有时为 None。
+            "sample": detail.get("sample") if isinstance(detail.get("sample"), dict) else None,
+            "sampleStats": detail.get("sampleStats") if isinstance(detail.get("sampleStats"), dict) else None,
         }
+    command = native_status.get("gripperCommand") if isinstance(native_status, dict) else None
     return {
         "ok": overall_ok,
         "message": "; ".join(messages) if messages else "managed by HAL-native teleop",
+        # HAL 实际生效的夹持力原码、worker 传输方式和读取间隔。
+        "command": {
+            key: command.get(key) for key in ("torque", "speed", "transport", "sampleIntervalMs")
+        } if isinstance(command, dict) else None,
         "nativeManaged": True,
         "running": (
             requested_running and bool(native_status.get("running", False))

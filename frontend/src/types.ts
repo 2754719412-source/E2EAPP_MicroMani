@@ -150,12 +150,61 @@ export interface ForceStatus {
   }
 }
 
+/** HAL 结构化夹爪读数：同一次读取的位置、状态与 gCU 电流原码；各字段只在对应有效标志为 true 时可信。 */
+export interface GripperFeedbackSample {
+  seq: number
+  monotonicUs: number
+  timestampSource?: 'worker' | 'hal_midpoint'
+  transport?: string
+  positionValid: boolean
+  statusValid: boolean
+  currentValid: boolean
+  positionRaw: number
+  currentRaw: number
+  gACT: number
+  gGTO: number
+  gSTA: number
+  gOBJ: number
+  fault: number
+}
+
+/** HAL 自上次重置以来的真实读数统计。 */
+export interface GripperSampleStats {
+  samples: number
+  spanMs: number
+  effectiveHz: number
+  maxGapMs: number
+}
+
+/** scripts/calibrate_gripper_force.py 生成的单侧夹持力标定（硬件侧）。 */
+export interface GripperForceCalibration {
+  version: number
+  port: string
+  slaveId: number
+  calibratedAtUnixMs?: number
+  reference?: string
+  baseline: { currentMeanRaw: number; currentStdRaw: number; currentMaxRaw: number; contactThresholdRaw: number }
+  rfcToForceN: {
+    slope: number
+    intercept: number
+    rmsResidualN: number
+    hysteresisN?: number
+    rfcMin: number
+    rfcMax: number
+    forceMinN?: number
+    forceMaxN?: number
+  }
+  holdCurrentRaw: { slope: number; intercept: number; rmsResidualRaw?: number }
+}
+
 export interface GripperSideStatus {
   ok?: boolean | null
   message?: string
   positionMm?: number | null
   targetMm?: number | null
   lastCommandTs?: number
+  sample?: GripperFeedbackSample | null
+  sampleStats?: GripperSampleStats | null
   serial?: {
     port?: string
     slaveId?: number
@@ -167,6 +216,8 @@ export interface GripperStatus {
   nativeManaged?: boolean
   running?: boolean
   requestedRunning?: boolean
+  /** HAL 实际生效的夹持力原码、worker 传输方式与读取间隔。 */
+  command?: { torque?: number; speed?: number; transport?: string; sampleIntervalMs?: number } | null
   sides?: {
     left?: GripperSideStatus
     right?: GripperSideStatus
@@ -681,6 +732,13 @@ export interface AppConfig {
     sampleEnableOnNegative: boolean
     workerCommandTimeoutSec: number
     forceFeedbackAvailable: boolean
+    /** worker 访问夹爪的方式；modbus 需现场验收后启用。 */
+    workerTransport?: 'dll' | 'modbus'
+    forceCalibration?: {
+      applyCommandForceLimit: boolean
+      left: GripperForceCalibration | null
+      right: GripperForceCalibration | null
+    }
   }
   safety: {
     fxyWarnN: number

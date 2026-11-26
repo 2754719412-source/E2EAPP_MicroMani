@@ -41,12 +41,13 @@
 | [frontend/src/views/RecordPage.tsx](../frontend/src/views/RecordPage.tsx) | 装配录制页面：相机、控制、遥测、预检查、质量报告和历史记录。 | `RecordPage` |
 | [frontend/src/views/SettingsView.tsx](../frontend/src/views/SettingsView.tsx) | 按硬件模块组织配置与手动操作；包含原点、主手、力标定、相机和 PICO 设置。 | `CameraKey`、`GripperPortHint`、`InlineStatusTone`、`PendingComparison`、`tabForHardwareHash` |
 
-## 02 前端契约与状态（10 个文件）
+## 02 前端契约与状态（11 个文件）
 
 | 文件 | 职责 / 阅读重点 | 定位符号 |
 | --- | --- | --- |
 | [frontend/src/api/index.ts](../frontend/src/api/index.ts) | 封装后端 HTTP 请求、错误信息、相机 URL 与页面生命周期命令。 | `sendRuntimeLifecycleCommand`、`installRuntimeLifecycleOnClose`、`installRuntimeReleaseOnClose`、`installAutoShutdownOnClose`、`ApiErrorPayload` |
 | [frontend/src/data.ts](../frontend/src/data.ts) | 提供前端默认配置、诊断初值与显示标签；包含操作者侧和硬件侧的转换函数。 | `RobotSide`、`hardwareSideForOperatorSide`、`operatorSideForHardwareSide`、`operatorSideLabel`、`hardwareChannelLabel` |
+| [frontend/src/gripperForce.ts](../frontend/src/gripperForce.ts) | Jodell 夹爪力感知显示逻辑：gOBJ/状态文字、标定是否匹配当前接线、由稳态 gCU 估算夹持力、读数健康度。 | `gripperObjectState`、`matchingCalibration`、`estimateHoldForceN`、`gripperSenseHealth` |
 | [frontend/src/hardwareStatus.ts](../frontend/src/hardwareStatus.ts) | 从当前配置和遥测推导硬件状态行；遥测过期后撤销实时成功状态。 | `HardwareStatusTone`、`HardwareStatusRow`、`telemetryLinkIsLive`、`telemetryLinkLabel`、`configuredHalPort` |
 | [frontend/src/hooks/useLiveCameraSnapshot.ts](../frontend/src/hooks/useLiveCameraSnapshot.ts) | 管理相机预览流 URL 及刷新事件；名称保留 Snapshot，但当前预览使用流接口。 | `CameraRefreshEventDetail`、`useLiveCameraSnapshot`、`refreshCameraStream` |
 | [frontend/src/manualMotionLimits.ts](../frontend/src/manualMotionLimits.ts) | 把脉冲标定与 HAL 单步上限组合为界面手动步长限制。 | `manualAxisStepLimitFromPulse`、`manualAxisStepLimitPulse` |

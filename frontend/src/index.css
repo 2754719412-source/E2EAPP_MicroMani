@@ -5733,3 +5733,21 @@ select {
 .participation-selector > div { display: flex; gap: 12px; }
 .participation-selector label { display: inline-flex; align-items: center; gap: 5px; }
 .participation-selector input { accent-color: var(--color-primary); }
+
+/* Jodell 夹爪力感知卡：沿用六维力读数网格，接触状态用强调色提示。 */
+.gripper-sense-grid span {
+  font-size: 13px;
+}
+
+.force-current-grid .gripper-sense-object-warn {
+  background: var(--color-warning-light);
+  box-shadow: inset 0 0 0 1px var(--color-warning-border);
+  color: var(--color-warning);
+}
+
+.gripper-sense-note {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}

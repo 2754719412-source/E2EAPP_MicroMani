@@ -35,6 +35,7 @@ import { MicroscopeCameraCard } from './settings/MicroscopeCameraCard'
 import { CameraCard } from './settings/CameraCard'
 import { WristCameraIdentification } from '../components/WristCameraIdentification'
 import { ForceSensorCard } from './settings/ForceSensorCard'
+import { GripperForceCard } from './settings/GripperForceCard'
 import { ManualControlPanel } from './settings/ManualControlPanel'
 import { HalCard } from './settings/HalCard'
 import { SafetyCard } from './settings/SafetyCard'
@@ -112,6 +113,7 @@ export function SettingsView() {
   const gripperPositions = useFrameField((frame) => activeTab === 'motion' || activeTab === 'teleop' ? frame.gripperPositions : emptyValues, numberArrayEqual)
   const cameras = useTelemetryStore((state) => activeTab === 'vision' ? state.frame.cameras : emptyCameras)
   const forceStatus = useTelemetryStore((state) => activeTab === 'force' ? state.frame.forceStatus : undefined)
+  const gripperStatus = useTelemetryStore((state) => activeTab === 'force' ? state.frame.gripperStatus : undefined)
   const teleopFrame = useFrameField(
     (frame) => activeTab === 'teleop' ? teleopHandFrameSlice(frame) : null,
     (a, b) => a === b || (a !== null && b !== null && teleopHandFrameEqual(a, b)),
@@ -292,6 +294,24 @@ export function SettingsView() {
                   values={hardwareSideForOperatorSide(side) === 'left' ? forceLeft : forceRight}
                   forceStatus={forceStatus}
                   injectLog={injectLog}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="module-group">
+            <div className="module-group-head">
+              夹爪力感知
+              <small>Jodell EPG26-006 · gCU 电流 · 夹持力标定</small>
+            </div>
+            <div className="hardware-settings-grid">
+              {sideOrder.map((side) => (
+                <GripperForceCard
+                  key={side}
+                  side={side}
+                  config={config}
+                  updateConfig={updateConfig}
+                  focusHash={focusHash}
+                  gripperStatus={gripperStatus}
                 />
               ))}
             </div>
