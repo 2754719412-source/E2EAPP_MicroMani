@@ -93,13 +93,17 @@ def detect_contact_events(
     current_threshold_raw: float | None = None,
     fps: float | None = None,
     debounce_frames: int = RELEASE_DEBOUNCE_FRAMES,
+    sample_limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    """返回接触片段列表：起止帧（含）、证据类型、最小开口、峰值电流。"""
+    """检测前 sample_limit 条读数内的接触；窗口外的读数仅用于标记片段是否被裁剪。"""
     events: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
     misses = 0
-    evidences = frame_evidences(frames, min_gap_mm=min_gap_mm, current_threshold_raw=current_threshold_raw)
-    for index, (frame, evidence) in enumerate(zip(frames, evidences, strict=True)):
+    limit = len(frames) if sample_limit is None else sample_limit
+    evidences = frame_evidences(frames[:limit + 1], min_gap_mm=min_gap_mm,
+                                current_threshold_raw=current_threshold_raw)
+    for index, evidence in enumerate(evidences[:limit]):
+        frame = frames[index]
         if evidence is None:
             if current is not None:
                 misses += 1
@@ -121,6 +125,10 @@ def detect_contact_events(
             current["peakCurrentRaw"] = float(value)
             current["peakCurrentFrame"] = index
     if current is not None:
+        if sample_limit is not None:
+            # 只有窗内末条和窗外首条都有接触证据时，才标记接触连续跨越录像边界。
+            current["clippedToLastFrame"] = (misses == 0 and limit < len(evidences)
+                                             and evidences[limit] is not None)
         events.append(current)
     for event in events:
         event["evidence"], event["candidate"] = evidence_summary(event["evidence"])

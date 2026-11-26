@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
-from backend.core.gripper_contact import ContactFrame, detect_contact_events, frame_evidences
+from backend.core.gripper_contact import ContactFrame, detect_contact_events
 from backend.core.jodell_modbus import GOBJ_CONTACT_CLOSING, GOBJ_CONTACT_OPENING, gap_mm_for_position_raw
 
 GRIPPER_SAMPLE_HISTORY_FORMAT = "seq_monotonicUs_halTs_pv_sv_cv_pos_cur_act_gto_sta_obj_fault_v1"
@@ -85,7 +85,7 @@ def parse_sample_history(native_status: Any) -> dict[str, list[GripperRawSample]
     return parsed
 
 
-def history_reply_error(reply: Any) -> str:
+def history_reply_error(reply: Any, *, request: Mapping[str, Any] | None = None) -> str:
     """校验 gripper.samples 应答结构；空增量（各侧空列表）合法，格式不认识或行结构不对返回错误原因。
 
     parse_sample_history 会静默跳过坏行，不能用“解析出 0 条”判断应答是否可用。
@@ -97,14 +97,32 @@ def history_reply_error(reply: Any) -> str:
     history = reply.get("gripperSampleHistory")
     if not isinstance(history, Mapping):
         return "gripperSampleHistory missing"
-    for side in HARDWARE_SIDES:
-        rows = history.get(side, [])
+    instance = reply.get("gripperSampleInstanceId")
+    latest = reply.get("latestSeq")
+    if request is not None and (
+        not isinstance(instance, str) or not instance.strip()
+        or not isinstance(latest, list) or len(latest) != 2
+        or not all(type(seq) is int and seq >= 0 for seq in latest)
+    ):
+        return "invalid gripper.samples cursor"
+    for index, side in enumerate(HARDWARE_SIDES):
+        rows = history.get(side)
         if not isinstance(rows, list):
             return f"{side} history is not a list"
         for row in rows:
-            if (not isinstance(row, list) or len(row) != 13
-                    or not all(isinstance(value, int) and not isinstance(value, bool) for value in row)):
-                return f"{side} history row malformed: {row!r}"
+            if (not isinstance(row, list) or len(row) != 13 or not all(type(value) is int for value in row)
+                    or row[0] <= 0 or row[1] <= 0):
+                return f"{side} history row malformed"
+        if request is not None:
+            cursor_key = "afterSeqLeft" if side == "left" else "afterSeqRight"
+            after = request[cursor_key] if instance == request["instanceId"] else 0
+            # 同一实例从请求游标往后读。合法空增量要与 HAL 声明的最新序号一致。
+            for row in rows:
+                if row[0] <= after:
+                    return f"{side} history sequence does not advance"
+                after = row[0]
+            if after != latest[index]:
+                return f"{side} history does not reach latestSeq"
     return ""
 
 
@@ -392,7 +410,7 @@ def _contiguous_segments(samples: Sequence[GripperRawSample]) -> list[list[Gripp
     segments: list[list[GripperRawSample]] = []
     for sample in samples:
         if (segments and sample.seq == segments[-1][-1].seq + 1
-                and sample.monotonic_s - segments[-1][-1].monotonic_s <= CONTACT_MAX_GAP_S):
+                and 0 <= sample.monotonic_s - segments[-1][-1].monotonic_s <= CONTACT_MAX_GAP_S):
             segments[-1].append(sample)
         else:
             segments.append([sample])
@@ -405,24 +423,21 @@ def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_
                    frame_count: int | None = None) -> list[dict[str, Any]]:
     """按读数检测接触片段并换算成训练帧区间；仅凭位置推断的片段标为候选。
 
-    片段只在连续观测内成立，不跨越缺样或 HAL 重启。frame_count 为实际写入的帧数：片段边界、证据、
-    峰值都只由录像时间窗内（帧号不超过最后一帧）的读数决定，录像结束后（停止录制、排空写队列期间）
-    的读数不会延长或改写录像内的片段；它们只用于判断接触是否延续到窗外（clippedToLastFrame）。
+    片段只在连续观测内成立，不跨越缺样或 HAL 重启。frame_count 为实际写入的帧数：完全落在最后一帧之后
+    （停止录制、排空写队列期间）的片段丢弃，跨过末尾的片段截到最后一帧并标记 clippedToLastFrame。
     """
     start_s = snapshot.get("startS") or 0.0
     targets = snapshot["targets"]
     stamps = [stamp for stamp, _ in targets]
-    last_frame = frame_count - 1 if frame_count is not None else None
     events: list[dict[str, Any]] = []
-
-    def in_window(sample: GripperRawSample) -> bool:
-        return last_frame is None or math.floor((sample.monotonic_s - start_s) * fps) <= last_frame
-
     for side in sides:
         index = HARDWARE_SIDES.index(side)
-        threshold = thresholds_raw.get(side)
         valid = [s for s in snapshot["samples"].get(side, []) if s.position_valid]
         for samples in _contiguous_segments(valid):
+            limit = None if frame_count is None else bisect.bisect_left(
+                samples, frame_count, key=lambda s: math.floor((s.monotonic_s - start_s) * fps))
+            if limit == 0:
+                continue
             frames = [
                 ContactFrame(
                     gap_mm=gap_mm_for_position_raw(sample.position_raw, stroke_mm),
@@ -433,14 +448,9 @@ def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_
                 )
                 for sample in samples
             ]
-            # 连续段内读数按时间递增，窗内读数是一段前缀。
-            inside = 0
-            while inside < len(samples) and in_window(samples[inside]):
-                inside += 1
-            if inside == 0:
-                continue
-            full_evidences = frame_evidences(frames, min_gap_mm=min_gap_mm, current_threshold_raw=threshold)
-            detected = detect_contact_events(frames[:inside], min_gap_mm=min_gap_mm, current_threshold_raw=threshold)
+            threshold = thresholds_raw.get(side)
+            detected = detect_contact_events(frames, min_gap_mm=min_gap_mm, current_threshold_raw=threshold,
+                                             sample_limit=limit)
             for event in detected:
                 kept = samples[event["startFrame"]:event["endFrame"] + 1]
                 first, last = kept[0], kept[-1]
@@ -448,9 +458,6 @@ def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_
                 peak = max(currents, key=lambda sample: sample.current_raw) if currents else None
                 start_t = first.monotonic_s - start_s
                 end_t = last.monotonic_s - start_s
-                # 片段结束在窗内最后一条读数、且紧随其后的窗外读数仍有接触证据：接触延续到录像之外。
-                clipped = (event["endFrame"] == inside - 1 and inside < len(samples)
-                           and full_evidences[inside] is not None)
                 events.append({
                     "hardwareSide": side,
                     "datasetSide": dataset_side_for_hardware[side],
@@ -458,7 +465,7 @@ def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_
                     "endS": round(end_t, 4),
                     "startFrame": max(0, int(math.floor(start_t * fps))),
                     "endFrame": max(0, int(math.floor(end_t * fps))),
-                    "clippedToLastFrame": clipped,
+                    "clippedToLastFrame": event.get("clippedToLastFrame", False),
                     "startSeq": first.seq,
                     "endSeq": last.seq,
                     "evidence": event["evidence"],

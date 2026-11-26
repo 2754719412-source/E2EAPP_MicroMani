@@ -54,6 +54,7 @@ from backend.core.force_config import hal_force_config_payload
 from backend.core.logging import LogService, now_ms, stable_config_hash
 from backend.core.motion_safety import MotionSafetyGate, motion_operation
 from backend.core.units import lerobot_to_ui_state, motion_pulse_per_unit, pulses_to_ui_state
+from backend.hal_client.bounded_lane import ChannelBusyError
 from backend.hal_client.client import HalClient
 from backend.services.hardware_service import HardwareService
 from backend.services.gripper_backend import hal_gripper_sampling_fields, native_teleop_enabled
@@ -2331,18 +2332,24 @@ class DatasetRecorderService:
         会话核对与入库、失败计数在收集器同一把锁内完成，已结束会话的迟到应答（成功或失败）都不改动状态。
         """
         try:
-            command = self.hal.command("gripper.samples", collector.fetch_payload())
+            payload = collector.fetch_payload()
+            command = self.hal.command("gripper.samples", payload)
             result = await (asyncio.wait_for(command, timeout_s) if timeout_s is not None else command)
             response = result.get("response") if isinstance(result, dict) else None
-            reason = gripper_raw_samples.history_reply_error(response)
+            reason = gripper_raw_samples.history_reply_error(response, request=payload)
             if reason:
                 raise RuntimeError(f"gripper.samples reply rejected: {reason}")
             return "ok" if collector.ingest(response, session=generation) >= 0 else "stale"
         except Exception as exc:  # noqa: BLE001
+            busy = isinstance(exc, ChannelBusyError)
+            if busy and timeout_s is not None:
+                # 请求尚未发出，封存补读可以在同一预算内重试。
+                return "busy"
             if not collector.note_fetch_error(session=generation):
                 return "stale"
-            self._gripper_fetch_last_error = f"{type(exc).__name__}: {exc}"
-            return "busy" if "channel is busy" in str(exc) else "error"
+            if timeout_s is not None:
+                self._gripper_fetch_last_error = f"{type(exc).__name__}: {exc}"
+            return "busy" if busy else "error"
 
     def _gripper_fetch_lock(self) -> Lock:
         """单飞锁：同一时刻只允许一次 gripper.samples 在途，封存补读须先等在途读取入库。"""
@@ -2398,20 +2405,25 @@ class DatasetRecorderService:
         超限或失败记 failed 后照常保存训练数据，不能让保存请求拖到前端超时。
         """
         collector = self._gripper_raw_collector()
+        generation = getattr(self, "_gripper_samples_generation", 0)
         deadline = time.monotonic() + GRIPPER_TAIL_FETCH_BUDGET_S
         lock = self._gripper_fetch_lock()
-        if not lock.acquire(timeout=GRIPPER_TAIL_FETCH_BUDGET_S):
+        if not lock.acquire(timeout=max(0.0, deadline - time.monotonic())):
+            collector.note_fetch_error(session=generation)
             self._gripper_fetch_last_error = "in-flight gripper.samples did not finish within tail budget"
             return "failed"
         try:
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
+                    collector.note_fetch_error(session=generation)
                     self._gripper_fetch_last_error = "tail fetch budget exhausted"
                     return "failed"
-                status = asyncio.run(self._fetch_gripper_samples(collector, timeout_s=remaining))
+                status = asyncio.run(self._fetch_gripper_samples(collector, generation, timeout_s=remaining))
                 if status == "ok":
                     return "ok"
+                if status == "stale":
+                    self._gripper_fetch_last_error = "gripper.samples session ended"
                 if status != "busy":
                     return "failed"
                 time.sleep(min(GRIPPER_TAIL_FETCH_RETRY_S, max(0.0, deadline - time.monotonic())))
