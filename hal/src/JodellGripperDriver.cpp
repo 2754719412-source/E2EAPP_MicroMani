@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <iterator>
 #include <sstream>
 #include <thread>
 #include <vector>
@@ -25,6 +26,17 @@
 namespace appstation::hal {
 
 namespace {
+
+// 在驱动锁释放之前把该侧待记录读数交给调用方；须声明在锁之后，析构顺序保证仍在锁内。
+struct PendingSampleHandoff {
+  std::vector<jodell::GripperFeedbackSample>& pending;
+  std::vector<jodell::GripperFeedbackSample>* out;
+  ~PendingSampleHandoff() {
+    if (!out) return;
+    out->insert(out->end(), std::make_move_iterator(pending.begin()), std::make_move_iterator(pending.end()));
+    pending.clear();
+  }
+};
 
 // 现场默认接线：左夹爪 COM8、右夹爪 COM9。配置可覆盖，常量只作为兜底。
 constexpr const char* kDefaultLeftPort = "COM8";
@@ -190,13 +202,15 @@ bool JodellGripperDriver::commandTarget(
     int torque,
     std::string* message,
     bool readPosition,
-    const std::function<bool()>& commandAllowed) {
+    const std::function<bool()>& commandAllowed,
+    std::vector<jodell::GripperFeedbackSample>* samples) {
   pendingCommands_.fetch_add(1);
   struct CommandCompletion {
     std::atomic_uint& pending;
     ~CommandCompletion() { pending.fetch_sub(1); }
   } completion{pendingCommands_};
   std::scoped_lock lock(mutex_);
+  PendingSampleHandoff handoff{pendingSamples_[sideIndex(side)], samples};
   const auto cancelled = [&]() {
     if (!commandAllowed || commandAllowed()) return false;
     if (message) *message = "gripper command cancelled by emergency stop";
@@ -321,16 +335,19 @@ bool JodellGripperDriver::commandTarget(
 #endif
 }
 
-bool JodellGripperDriver::readPositionMm(Side side, std::string* message, bool withStatus) {
+bool JodellGripperDriver::readPositionMm(
+    Side side, std::string* message, bool withStatus, std::vector<jodell::GripperFeedbackSample>* samples) {
   std::scoped_lock lock(mutex_);
+  PendingSampleHandoff handoff{pendingSamples_[sideIndex(side)], samples};
   return readPositionMmUnlocked(side, message, 0.0, withStatus);
 }
 
 std::optional<bool> JodellGripperDriver::readPositionMmIfIdle(
-    Side side, double timeoutMs, std::string* message) {
+    Side side, double timeoutMs, std::string* message, std::vector<jodell::GripperFeedbackSample>* samples) {
   if (pendingCommands_.load() != 0) return std::nullopt;
   std::unique_lock lock(mutex_, std::try_to_lock);
   if (!lock.owns_lock() || pendingCommands_.load() != 0) return std::nullopt;
+  PendingSampleHandoff handoff{pendingSamples_[sideIndex(side)], samples};
   if (!config_.processWorkersEnabled) {
     if (message) *message = "bounded feedback READ requires isolated worker";
     return false;

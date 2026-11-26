@@ -809,13 +809,15 @@ void NativeTeleopController::gripperLoop(int targetIndex) {
         || !motion_.commandEpochAllowed(command.motionEpoch)) continue;
     std::string message;
     const auto commandStarted = std::chrono::steady_clock::now();
+    // 命令期间（运动前读取、使能等待）的读数随命令结果一起交回，不再事后争驱动锁。
+    std::vector<jodell::GripperFeedbackSample> commandSamples;
     const bool ok = gripperDriver(command.side).commandTarget(
         command.side, command.targetMm, command.speed, command.torque, &message, false,
-        [&]() { return gripperWorkerRunning_.load() && motion_.commandEpochAllowed(command.motionEpoch); });
+        [&]() { return gripperWorkerRunning_.load() && motion_.commandEpochAllowed(command.motionEpoch); },
+        &commandSamples);
     const auto commandFinished = std::chrono::steady_clock::now();
     const double commandMs = std::chrono::duration<double, std::milli>(commandFinished - commandStarted).count();
-    // 命令期间（运动前读取、使能等待）的每次成功读数都记录，与命令成败无关；在取控制器锁之前从驱动取出。
-    const auto commandSamples = gripperDriver(command.side).takeSamples(command.side);
+    // 每次成功读数都记录，与命令成败无关。
     {
       std::scoped_lock lock(mutex_);
       recordGripperSamplesUnlocked(
@@ -839,9 +841,11 @@ void NativeTeleopController::sampleGripperPosition(Side side, bool feedbackOnly)
   // 周期性采样供状态显示及回放到位判断；失败不能刷新成功采样时间。
   std::string message;
   const auto readStarted = std::chrono::steady_clock::now();
+  // 读数在驱动锁内随读取结果一起交回；读完后不再争锁，命令进行中采样线程不会阻塞等待。
+  std::vector<jodell::GripperFeedbackSample> samples;
   const auto attempted = feedbackOnly
-      ? gripperDriver(side).readPositionMmIfIdle(side, kPolicyGripperReadTimeoutMs, &message)
-      : std::optional<bool>(gripperDriver(side).readPositionMm(side, &message, gripperReadStatus_.load()));
+      ? gripperDriver(side).readPositionMmIfIdle(side, kPolicyGripperReadTimeoutMs, &message, &samples)
+      : std::optional<bool>(gripperDriver(side).readPositionMm(side, &message, gripperReadStatus_.load(), &samples));
   if (!attempted) {
     std::scoped_lock lock(mutex_);
     ++gripperReadSkippedBusy_[sideIndex(side)];
@@ -855,7 +859,6 @@ void NativeTeleopController::sampleGripperPosition(Side side, bool feedbackOnly)
       sampleMidpoint.time_since_epoch()).count();
   const auto readFinishedUnixMs = unixTimeMs();
   const int index = sideIndex(side);
-  const auto samples = gripperDriver(side).takeSamples(side);
   std::scoped_lock lock(mutex_);
   // 读数先入历史再判断采样是否已停止：真实读数不能因为停止时序而无 seq 地消失。
   const bool recorded = recordGripperSamplesUnlocked(index, samples, steadyUs(readStarted), steadyUs(readFinished));
@@ -987,9 +990,9 @@ bool NativeTeleopController::commandGripperTarget(
   std::string driverMessage;
   // worker 未运行时退回同步调用，主要用于禁用 worker 的调试场景。
   const auto commandStarted = std::chrono::steady_clock::now();
+  std::vector<jodell::GripperFeedbackSample> commandSamples;
   const bool ok = gripperDriver(side).commandTarget(side, bounded, speed, torque, &driverMessage, true,
-      [&]() { return motion_.commandEpochAllowed(motionEpoch); });
-  const auto commandSamples = gripperDriver(side).takeSamples(side);
+      [&]() { return motion_.commandEpochAllowed(motionEpoch); }, &commandSamples);
   {
     std::scoped_lock lock(mutex_);
     recordGripperSamplesUnlocked(

@@ -2128,7 +2128,7 @@ def test_hal_native_gripper_worker_samples_positions_without_commands() -> None:
     gripper_header = (REPO_ROOT / "hal" / "include" / "JodellGripperDriver.h").read_text(encoding="utf-8")
     gripper_source = (REPO_ROOT / "hal" / "src" / "JodellGripperDriver.cpp").read_text(encoding="utf-8")
 
-    assert "bool readPositionMm(Side side, std::string* message = nullptr, bool withStatus = true);" in gripper_header
+    assert "bool readPositionMm(Side side, std::string* message = nullptr, bool withStatus = true," in gripper_header
     assert "bool JodellGripperDriver::readPositionMm(" in gripper_source
 
 
@@ -2215,8 +2215,8 @@ def test_hal_native_gripper_uses_isolated_jodell_worker_processes() -> None:
     assert "sampleGripperPosition(sideFromIndex(sampleIndex));" not in normalized_loop
     assert normalized_loop.index("if (shouldSample)") < normalized_loop.index("gripperDriver(command.side).commandTarget")
     assert "command = pendingGripperCommands_[targetIndex];" in normalized_loop
-    assert "gripperDriver(side).readPositionMm(side, &message, gripperReadStatus_.load())" in normalized_sample
-    assert "gripperDriver(side).readPositionMmIfIdle(side, kPolicyGripperReadTimeoutMs, &message)" in normalized_sample
+    assert "gripperDriver(side).readPositionMm(side, &message, gripperReadStatus_.load(), &samples)" in normalized_sample
+    assert "gripperDriver(side).readPositionMmIfIdle(side, kPolicyGripperReadTimeoutMs, &message, &samples)" in normalized_sample
     assert "const auto sampleMidpoint = readStarted + (readFinished - readStarted) / 2;" in normalized_sample
     # 有可信 worker 时间戳时用它，否则回落到 HAL 侧读取中点。
     assert "gripperPositionSampleMonotonicMs_[index] = ok && recorded && latest.sample.positionValid" in normalized_sample
@@ -2706,6 +2706,10 @@ def test_gripper_structured_sampling_contract() -> None:
     controller = (REPO_ROOT / "hal" / "src" / "NativeTeleopController.cpp").read_text(encoding="utf-8")
     # 读数记录与命令成败无关：命令路径不再以 if (ok) 包住记录。
     assert "recordGripperSamplesUnlocked(\n          command.targetIndex, commandSamples" in controller
+    # 读数在驱动锁内随读取/命令结果交回；控制器不再事后调用 takeSamples 争同一把锁（采样线程会因此阻塞等命令）。
+    assert "takeSamples(" not in controller
+    assert "&message, &samples)" in controller and "&commandSamples);" in controller
+    assert "PendingSampleHandoff handoff{" in driver
     dispatcher = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
     assert 'name == "gripper.samples"' in dispatcher
     dds_server = (REPO_ROOT / "hal" / "src" / "HalDdsControlServer.cpp").read_text(encoding="utf-8")

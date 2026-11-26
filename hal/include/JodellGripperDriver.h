@@ -56,12 +56,17 @@ class JodellGripperDriver {
       int torque,
       std::string* message = nullptr,
       bool readPosition = true,
-      const std::function<bool()>& commandAllowed = {});
+      const std::function<bool()>& commandAllowed = {},
+      std::vector<jodell::GripperFeedbackSample>* samples = nullptr);
   // 主动读取某侧当前位置，成功后刷新 positionMm_ 缓存。
   // withStatus=false 只读位置寄存器（遥操作采集用，约 16 ms）；true 另读夹持状态与力矩（推理判空用，约 45~60 ms）。
-  bool readPositionMm(Side side, std::string* message = nullptr, bool withStatus = true);
+  // samples 非空时，在仍持有驱动锁时交回本次调用期间的全部成功读数（见 takeSamples），
+  // 调用方无需事后再争同一把锁，避免采样线程在命令进行中阻塞等待。
+  bool readPositionMm(Side side, std::string* message = nullptr, bool withStatus = true,
+      std::vector<jodell::GripperFeedbackSample>* samples = nullptr);
   // 只读采样让等待中的命令优先；nullopt 表示忙时跳过，并非一次失败的测量。
-  std::optional<bool> readPositionMmIfIdle(Side side, double timeoutMs, std::string* message = nullptr);
+  std::optional<bool> readPositionMmIfIdle(Side side, double timeoutMs, std::string* message = nullptr,
+      std::vector<jodell::GripperFeedbackSample>* samples = nullptr);
   // 以下快照接口供 teleop 状态 JSON 使用，调用方不需要直接持有 mutex_。
   std::array<double, 2> targetMm() const;
   std::array<double, 2> positionMm() const;
