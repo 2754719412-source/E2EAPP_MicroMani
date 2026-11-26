@@ -73,6 +73,8 @@ class DatasetReplayService:
         self._feedback_samples: dict[str, Any] = {}
         self._started_at = None
         self._stop = asyncio.Event()
+        self._stop_acknowledged = asyncio.Event()
+        self._stop_decel_s = 0.
         self._status: dict[str, Any] = {"phase": "idle", "active": False, "frame": 0, "totalFrames": 0, "error": ""}
 
     @property
@@ -156,6 +158,7 @@ class DatasetReplayService:
         self.safety.check(token)
         self._started_at = None
         self._stop = asyncio.Event()
+        self._stop_acknowledged = asyncio.Event()
         self._status = {"phase": "loading", "frame": 0, "totalFrames": 0, "error": "",
                         "datasetId": dataset_id, "episodeId": episode_id, "speed": speed}
         self._feedback_samples = {}
@@ -452,6 +455,7 @@ class DatasetReplayService:
             await self.svc.commands.enable_motion_side(side)
             self._check(token)
         self._controlled_stop_available = supports_controlled_stop and not self._participation["grippers"]
+        self._stop_decel_s = float(replay_motion_profile(config)["decTimeSec"])
         self._status.update(phase="aligning", totalFrames=len(data["rows"]))
         await self._settle(initial, config, token)
         self._status["phase"] = "running"
@@ -491,6 +495,7 @@ class DatasetReplayService:
             return
         self.safety.check(token)
         if self._stop.is_set():
+            self._stop_acknowledged.set()
             indices = [i for side in sides for i in (range(6) if side == "left" else range(6, 12))]
             while self._emergency_task is None:
                 self.safety.check(token)
@@ -594,6 +599,9 @@ class DatasetReplayService:
     async def _wait_for_stop(self, task):
         # 不取消在途 DDS 调用，也不让它拖住独立急停通道。
         done, _ = await asyncio.wait({task}, timeout=CONTROLLED_STOP_TIMEOUT_S)
+        if not done and self._emergency_task is None and self._stop_acknowledged.is_set():
+            # 停轴已全部应答，按本次回放的减速时间再等静止反馈；命令未应答时不延长。
+            done, _ = await asyncio.wait({task}, timeout=self._stop_decel_s)
         timed_out = not done and self._emergency_task is None
         if timed_out:
             self._status.update(phase="failed", error="受控停止超时，目标或停车反馈未确认，已请求急停")

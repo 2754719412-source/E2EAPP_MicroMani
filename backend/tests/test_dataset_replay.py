@@ -271,6 +271,31 @@ def test_blocked_target_triggers_independent_emergency_even_if_stop_caller_disco
     asyncio.run(asyncio.wait_for(run(), 4))
 
 
+@pytest.mark.parametrize("acknowledged", [True, False])
+def test_deceleration_extends_only_acknowledged_controlled_stop(in_flight_replay, monkeypatch, acknowledged):
+    replay, case, start, release, events, _ = in_flight_replay
+    monkeypatch.setattr("backend.services.dataset_replay.CONTROLLED_STOP_TIMEOUT_S", .1)
+    read = replay.svc.settings.get_config
+    monkeypatch.setattr(replay.svc.settings, "get_config", lambda: {**read(), "teleop": {**read()["teleop"], "motionProfileDecSec": .5}})
+    async def run():
+        await start()
+        stopping = asyncio.create_task(replay.stop())
+        await replay._stop.wait()
+        if not acknowledged:  # 目标一直未应答：减速时间不延长，基础时限到即急停。
+            assert (await asyncio.wait_for(stopping, 1))["stopMode"] == "emergency"
+            release.set()
+            return await replay.task
+        case.stationary = False
+        release.set()
+        await asyncio.wait_for(replay._stop_acknowledged.wait(), 1)
+        await asyncio.sleep(.2)  # 已过基础时限，仍在减速时间内。
+        case.stationary = True
+        result = await stopping
+        assert result["phase"] == "stopped" and result["stopMode"] == "controlled"
+        assert "emergency" not in [name for name, _ in events]
+    asyncio.run(asyncio.wait_for(run(), 4))
+
+
 @pytest.mark.parametrize("reason", ["gripper", "legacy_hal", "shutdown"])
 def test_stop_requiring_emergency_does_not_wait_for_in_flight_arm(in_flight_replay, reason):
     replay, _, start, release, events, selection = in_flight_replay
