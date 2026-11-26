@@ -26,6 +26,7 @@ from importlib import import_module
 from threading import Event, Lock, Thread, current_thread
 from typing import Any, cast
 
+from backend.core.camera_roles import MICROSCOPE_FPS, MICROSCOPE_SIZE, active_camera_keys, microscope_mode_matches
 from backend.core.schemas import CameraTelemetry, ConnectionState
 
 # CAMERA_CAPTURE_SIZES: dict[str, tuple[int, int]] = {
@@ -39,12 +40,14 @@ CAMERA_CAPTURE_SIZES: dict[str, tuple[int, int]] = {
     "global": (640, 480),
     "wrist_left": (640, 480),
     "wrist_right": (640, 480),
+    "microscope": MICROSCOPE_SIZE,
 }
 
 CAMERA_IDENTITY_KEYS = {
     "global": "globalIdentity",
     "wrist_left": "wristLeftIdentity",
     "wrist_right": "wristRightIdentity",
+    "microscope": "microscopeIdentity",
 }
 CAMERA_DESCRIPTOR_KEYS = {
     "global": "global",
@@ -555,6 +558,8 @@ class OpenCVCameraDriver:
 
     def __init__(self, logs: Any | None = None) -> None:
         self._logs = logs
+        self._microscope_index = -1
+        self._probe_microscope_identity = ""
         self._last_probe = 0.0
         self._cached: CameraProbeResult | None = None
         self._capture_lock = Lock()
@@ -612,13 +617,17 @@ class OpenCVCameraDriver:
 
     def probe(self, config: dict[str, Any]) -> CameraProbeResult:
         now = time.monotonic()
-        if self._cached is not None and now - self._last_probe < 5.0:
+        roles = active_camera_keys(config)
+        if (self._cached is not None and now - self._last_probe < 5.0
+                and tuple(camera.key for camera in self._cached.cameras) == roles
+                and self._probe_microscope_identity == config["cameras"].get("microscopeIdentity", "")):
             return self._cached
+        self._probe_microscope_identity = config["cameras"].get("microscopeIdentity", "")
         self._last_probe = now
         try:
             cv2 = import_module("cv2")
         except Exception as exc:
-            return self._store(False, f"OpenCV import failed: {exc}", self._offline_cameras("error"))
+            return self._store(False, f"OpenCV import failed: {exc}", self._offline_cameras("error", config))
 
         cameras: list[CameraTelemetry] = []
         errors: list[str] = []
@@ -629,6 +638,8 @@ class OpenCVCameraDriver:
             ("wrist_left", "Left Wrist Camera", resolved["wrist_left"]),
             ("wrist_right", "Right Wrist Camera", resolved["wrist_right"]),
         ]
+        if "microscope" in resolved:
+            definitions.append(("microscope", "显微相机", resolved["microscope"]))
         for key, label, index in definitions:
             width, height = self._capture_size(config, key)
             with self._capture_lock:
@@ -649,7 +660,9 @@ class OpenCVCameraDriver:
                     )
                     continue
                 fps = self._latest_fps.get(index)
-                if fps is None or fps <= 0:
+                if key == "microscope":
+                    fps = fps or 0.0
+                elif fps is None or fps <= 0:
                     fps = float(capture.get(getattr(cv2, "CAP_PROP_FPS", 5)) or fps_config)
                 latest_at = self._latest_at.get(index)
                 frame_age = 0 if latest_at is None else round((time.monotonic() - latest_at) * 1000)
@@ -786,7 +799,7 @@ class OpenCVCameraDriver:
         raise RuntimeError(f"{camera} index {index} frame read failed")
 
     def apply_tuning(self, config: dict[str, Any], camera: str) -> dict[str, Any]:
-        if camera not in {"global", "wrist_left", "wrist_right"}:
+        if camera not in CAMERA_TUNING_DEFAULTS:
             raise RuntimeError(f"unknown camera: {camera}")
         try:
             cv2 = import_module("cv2")
@@ -828,12 +841,12 @@ class OpenCVCameraDriver:
         }
 
     def reconnect(self, config: dict[str, Any], camera: str | None = None) -> CameraProbeResult:
-        if camera is not None and camera not in {"global", "wrist_left", "wrist_right"}:
-            return self._store(False, f"unknown camera: {camera}", self._offline_cameras("error"))
+        if camera is not None and camera not in active_camera_keys(config):
+            return self._store(False, f"unknown camera: {camera}", self._offline_cameras("error", config))
         try:
             cv2 = import_module("cv2")
         except Exception as exc:
-            return self._store(False, f"OpenCV import failed: {exc}", self._offline_cameras("error"))
+            return self._store(False, f"OpenCV import failed: {exc}", self._offline_cameras("error", config))
 
         if camera is None:
             with self._capture_lock:
@@ -841,7 +854,7 @@ class OpenCVCameraDriver:
         else:
             fps_config = float(config["cameras"].get("fps", 30))
             resolved = self._resolved_indices(cv2, config, fps_config)
-            indices = {resolved[camera]}
+            indices = {resolved.get(camera, -1)}
 
         with self._capture_lock:
             for index in indices:
@@ -855,6 +868,29 @@ class OpenCVCameraDriver:
             for index in list(indices):
                 self._drop_capture(index)
             self._clear_probe_cache()
+
+    def microscope_candidates(self, config: dict[str, Any]) -> list[dict[str, str]]:
+        """仅枚举稳定的设备身份，不打开视频流。"""
+        self._identity_cache = None
+        devices = self._camera_identities_by_index()
+        cameras = config["cameras"]
+        result = []
+        for index, device in devices.items():
+            if self._is_directshow_software_source(device):
+                continue
+            if any(
+                _identity_matches(str(cameras.get(CAMERA_IDENTITY_KEYS[role], "")), device)
+                if cameras.get(CAMERA_IDENTITY_KEYS[role])
+                else self._parse_index(str(cameras.get(key, "")), -1) == index
+                for role, key in CAMERA_DESCRIPTOR_KEYS.items()
+            ):
+                continue
+            parent = device.get("parentId", "")
+            serial = parent.rsplit("\\", 1)[-1]
+            identity = parent if serial and "&" not in serial else device.get("locationPath", "")
+            if identity and sum(_identity_matches(identity, entry) for entry in devices.values()) == 1:
+                result.append({"identity": identity, "name": device.get("name") or "USB Camera"})
+        return result
 
     def wrist_candidates(self, config: dict[str, Any]) -> list[dict[str, Any]]:
         self._identity_cache = None
@@ -873,6 +909,9 @@ class OpenCVCameraDriver:
             if self._is_directshow_software_source(device) or not device.get("devicePath"):
                 continue
             if _identity_matches(global_identity, device):
+                continue
+            microscope_identity = str(config["cameras"].get("microscopeIdentity", "")).strip()
+            if microscope_identity and _identity_matches(microscope_identity, device):
                 continue
             parent = device.get("parentId", "")
             serial = parent.rsplit("\\", 1)[-1]
@@ -974,7 +1013,7 @@ class OpenCVCameraDriver:
         self._resolved_cache_at = 0.0
         self._resolved_cache = None
 
-    def _offline_cameras(self, health: ConnectionState) -> list[CameraTelemetry]:
+    def _offline_cameras(self, health: ConnectionState, config: dict[str, Any]) -> list[CameraTelemetry]:
         return [
             CameraTelemetry(
                 key="global",
@@ -1000,7 +1039,8 @@ class OpenCVCameraDriver:
                 frameAgeMs=9999,
                 health=health,
             ),
-        ]
+        ] + ([CameraTelemetry(key="microscope", label="显微相机", fps=0, timestampSkewMs=0,
+                              frameAgeMs=9999, health=health)] if "microscope" in active_camera_keys(config) else [])
 
     def _parse_index(self, descriptor: str, fallback: int) -> int:
         for token in descriptor.replace("/", " ").split():
@@ -1042,7 +1082,9 @@ class OpenCVCameraDriver:
         max_index: int,
     ) -> dict[str, int]:
         cameras = config["cameras"]
+        roles = active_camera_keys(config)
         cache_key = (
+            roles,
             *(str(cameras.get(key, "index -1")) for key in CAMERA_DESCRIPTOR_KEYS.values()),
             *(str(cameras.get(key, "")) for key in CAMERA_IDENTITY_KEYS.values()),
             str(cameras.get("globalResolution", cameras.get("previewResolution", "native"))),
@@ -1072,16 +1114,28 @@ class OpenCVCameraDriver:
         }
         identity_resolved = self._resolve_indices_by_identity(cameras)
         for role, identity_key in CAMERA_IDENTITY_KEYS.items():
-            if str(cameras.get(identity_key, "")).strip():
+            if role in roles and str(cameras.get(identity_key, "")).strip():
                 resolved[role] = identity_resolved.get(role, -1)
         resolved = self._remap_software_sources(resolved, max_index)
         wrist_indices = {resolved["wrist_left"], resolved["wrist_right"]}
         global_has_identity = bool(str(cameras.get(CAMERA_IDENTITY_KEYS["global"], "")).strip())
+        if resolved.get("microscope", -1) >= 0:
+            wrist_indices.add(resolved["microscope"])
         if not global_has_identity and (resolved["global"] < 0 or resolved["global"] in wrist_indices):
             readable = self._discover_readable_indices(cv2, *CAMERA_CAPTURE_SIZES["global"], fps, max_index)
             remaining = [index for index in readable if index not in wrist_indices]
             if remaining:
                 resolved["global"] = remaining[0]
+        if "microscope" in roles:
+            microscope = resolved.get("microscope", -1)
+            if microscope in (resolved[key] for key in roles if key != "microscope"):
+                microscope = -1
+            resolved["microscope"] = microscope
+        next_index = resolved.get("microscope", -1)
+        if self._microscope_index >= 0 and self._microscope_index != next_index:
+            with self._capture_lock:
+                self._drop_capture(self._microscope_index)
+        self._microscope_index = next_index
         self._resolved_cache_key = cache_key
         self._resolved_cache_at = now
         self._resolved_cache = dict(resolved)
@@ -1098,7 +1152,7 @@ class OpenCVCameraDriver:
             fields = dict(
                 role=role,
                 logicalIndex=role,
-                preferredIndex=str(cameras.get(CAMERA_DESCRIPTOR_KEYS[role], "")),
+                preferredIndex=str(cameras.get(CAMERA_DESCRIPTOR_KEYS.get(role, "microscopeIdentity"), "")),
                 resolvedIndex=resolved_index,
                 deviceName=identity.get("name", ""),
                 devicePath=identity.get("devicePath", ""),
@@ -1117,6 +1171,7 @@ class OpenCVCameraDriver:
         configured = {
             role: str(cameras.get(config_key, "")).strip()
             for role, config_key in CAMERA_IDENTITY_KEYS.items()
+            if role != "microscope" or cameras.get("microscopeEnabled")
         }
         if not any(configured.values()):
             return {}
@@ -1126,6 +1181,8 @@ class OpenCVCameraDriver:
         used_indices: set[int] = set()
         for role, expected in configured.items():
             if not expected:
+                continue
+            if role == "microscope" and sum(_identity_matches(expected, device) for device in identities.values()) != 1:
                 continue
             for index, identity in identities.items():
                 if index in used_indices:
@@ -1243,6 +1300,8 @@ class OpenCVCameraDriver:
     ) -> Any | None:
         if index < 0:
             return None
+        if camera == "microscope":
+            fps = MICROSCOPE_FPS
         capture = self._captures.get(index)
         if capture is not None and self._capture_usable(capture, index, (width, height, fps)):
             return capture
@@ -1254,7 +1313,7 @@ class OpenCVCameraDriver:
         capture = None
         backend_label = ""
         worker_fallback = False
-        profile = self._camera_tuning(config, camera) if config is not None and camera is not None else None
+        profile = self._camera_tuning(config, camera) if config is not None and camera in CAMERA_TUNING_DEFAULTS else None
         if camera in {"wrist_left", "wrist_right"} and profile and profile["autoExposure"]:
             self._disable_low_light_compensation(index)
         backend_candidates = _backend_candidates(cv2)
@@ -1332,6 +1391,7 @@ class OpenCVCameraDriver:
                 )
                 return capture
 
+        fourcc = "MJPG" if camera == "microscope" else CAMERA_CAPTURE_FOURCC
         attempt_no = 0
         for backend, label in backend_candidates:
             attempt_no += 1
@@ -1345,7 +1405,7 @@ class OpenCVCameraDriver:
                     device=index,
                     backend=label,
                     attemptNo=attempt_no,
-                    fourcc=CAMERA_CAPTURE_FOURCC,
+                    fourcc=fourcc,
                     width=width,
                     height=height,
                     fps=fps,
@@ -1361,7 +1421,13 @@ class OpenCVCameraDriver:
                 )
                 candidate.release()
                 continue
-            self._configure_capture(cv2, candidate, width, height, fps, profile)
+            self._configure_capture(cv2, candidate, width, height, fps, profile, fourcc=fourcc)
+            if camera == "microscope" and not microscope_mode_matches(
+                candidate.get(cv2.CAP_PROP_FRAME_WIDTH), candidate.get(cv2.CAP_PROP_FRAME_HEIGHT),
+                candidate.get(cv2.CAP_PROP_FPS),
+            ):
+                candidate.release()
+                continue
             self._event(
                 "info",
                 "camera_open_attempt",
@@ -1369,7 +1435,7 @@ class OpenCVCameraDriver:
                 device=index,
                 backend=label,
                 attemptNo=attempt_no,
-                fourcc=CAMERA_CAPTURE_FOURCC,
+                fourcc=fourcc,
                 width=width,
                 height=height,
                 fps=fps,
@@ -1475,6 +1541,7 @@ class OpenCVCameraDriver:
             "height": height,
             "fps": fps,
             "profile": profile,
+            "fourcc": "MJPG" if camera == "microscope" else CAMERA_CAPTURE_FOURCC,
             "backendCandidates": backend_candidates,
             "parentPid": os.getpid(),
             "shmName": shm.name,
@@ -1633,7 +1700,6 @@ class OpenCVCameraDriver:
         profile: dict[str, float | bool] | None,
         backend_candidates: list[tuple[int, str]],
     ) -> _ProcessCameraCapture | None:
-        _ = camera
         status_queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=5)
         startup = {
             "index": index,
@@ -1641,6 +1707,7 @@ class OpenCVCameraDriver:
             "height": height,
             "fps": fps,
             "profile": profile,
+            "fourcc": "MJPG" if camera == "microscope" else CAMERA_CAPTURE_FOURCC,
             "backendCandidates": backend_candidates,
             "parentPid": os.getpid(),
         }
@@ -1768,11 +1835,12 @@ class OpenCVCameraDriver:
         height: int,
         fps: float,
         profile: dict[str, float | bool] | None = None,
+        fourcc: str = CAMERA_CAPTURE_FOURCC,
     ) -> None:
         # The order matters on Windows: FOURCC must be set before width/height/fps.
         if hasattr(cv2, "CAP_PROP_FOURCC") and hasattr(cv2, "VideoWriter_fourcc"):
             try:
-                capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*CAMERA_CAPTURE_FOURCC))
+                capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fourcc))
             except Exception:
                 pass
         if hasattr(cv2, "CAP_PROP_BUFFERSIZE"):
@@ -2044,9 +2112,7 @@ class OpenCVCameraDriver:
         thread.start()
 
     def _start_encoder(self, cv2: Any, index: int) -> None:
-        # JPEG encode runs on its own thread so a slow encode never throttles
-        # capture FPS. The UI fetches at most every 120ms anyway, so we encode
-        # at ~30Hz and the snapshot endpoint just hands back the latest bytes.
+        # 预览编码使用独立线程，采集与录制可以直接读取原始帧。
         if index in self._encode_threads:
             return
         stop = Event()
@@ -2055,7 +2121,8 @@ class OpenCVCameraDriver:
         frame_event = self._frame_events[index]
         # 1/60 s only guards bursts: a 1/30 s gap against a ~30 fps camera skipped every frame that came a little
         # early and published only ~18 JPEG/s (11-04 measurement); now every camera frame is encoded.
-        target_period = 1.0 / 60.0
+        microscope = self._capture_roles.get(index) == "microscope"
+        target_period = 0.0 if microscope else 1.0 / 60.0
         encode_quality = int(os.environ.get("APPSTATION_JPEG_QUALITY", "78"))
 
         def encode_loop() -> None:
@@ -2066,7 +2133,6 @@ class OpenCVCameraDriver:
                 frame_event.clear()
                 now = time.monotonic()
                 if now - last_encoded_at < target_period:
-                    # Skip — we only need ~30 jpegs/sec for the preview.
                     continue
                 with frame_lock:
                     frame = self._latest_frames.get(index)
@@ -2086,7 +2152,8 @@ class OpenCVCameraDriver:
                 last_encoded_at = now
                 if hasattr(frame, "mean"):
                     try:
-                        self._latest_mean[index] = [round(float(value), 2) for value in frame.mean(axis=(0, 1))]
+                        sample = frame[::16, ::16] if microscope else frame
+                        self._latest_mean[index] = [round(float(value), 2) for value in sample.mean(axis=(0, 1))]
                     except Exception:
                         pass
             if self._encode_threads.get(index) is current_thread():
@@ -2098,6 +2165,8 @@ class OpenCVCameraDriver:
         thread.start()
 
     def _capture_size(self, config: dict[str, Any], camera: str) -> tuple[int, int]:
+        if camera == "microscope":
+            return MICROSCOPE_SIZE
         cameras = config.get("cameras", {})
         key = f"{camera}Resolution"
         if camera == "wrist_left":

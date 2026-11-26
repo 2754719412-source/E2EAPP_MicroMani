@@ -19,6 +19,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { axisHues } from '../data'
 import { CameraPreview } from '../components/CameraPreview'
 import { DatasetReplayPanel } from '../components/DatasetReplayPanel'
 import {
@@ -44,7 +45,7 @@ import { camerasEqual, useFrameField } from '../stores/frameSelectors'
 import { useTelemetryStore } from '../stores/telemetry'
 import type { EpisodeRecord } from '../types'
 
-type CameraKey = 'global' | 'wrist_left' | 'wrist_right'
+type CameraKey = 'global' | 'wrist_left' | 'wrist_right' | 'microscope'
 type EpisodeStatus = DatasetEpisodeStatusApi
 
 interface EpisodeSample {
@@ -100,6 +101,7 @@ const cameras: ReviewCamera[] = [
   { key: 'global', label: '全局相机', model: 'IMX335', resolution: '1920x1080', aspectRatio: '16 / 9' },
   { key: 'wrist_left', label: '左腕相机', model: 'IMX335', resolution: '1920x1080', aspectRatio: '16 / 9' },
   { key: 'wrist_right', label: '右腕相机', model: 'IMX335', resolution: '1920x1080', aspectRatio: '16 / 9' },
+  { key: 'microscope', label: '显微相机', model: '4K UHD', resolution: '3840x2160', aspectRatio: '16 / 9' },
 ]
 
 const axisLabels = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw']
@@ -152,7 +154,7 @@ function makeEpisode(id: string, index: number, quality: number, status: Episode
 /** 将后端或录制数据转换为复核页可用的数据模型。 */
 function episodeFromRecord(record: EpisodeRecord, datasetName: string): ReviewEpisode {
   const frames = Math.max(90, record.frameCount || 150)
-  const quality = Math.max(60, Math.min(99, 96 - record.lateFrames * 3 - Math.max(record.cameraDrops.global, record.cameraDrops.wristLeft, record.cameraDrops.wristRight) * 4))
+  const quality = Math.max(60, Math.min(99, 96 - record.lateFrames * 3 - Math.max(record.cameraDrops.global, record.cameraDrops.wristLeft, record.cameraDrops.wristRight, record.cameraDrops.microscope ?? 0) * 4))
   return {
     id: `${datasetName}-${record.index}`,
     name: `episode_${String(record.index).padStart(4, '0')}`,
@@ -215,7 +217,7 @@ function datasetFromApi(dataset: DatasetApi): ReviewDataset {
 /** 选择当前复核流程需要的数据。 */
 function camerasForReview(dataset: ReviewDataset, episode: ReviewEpisode): ReviewCamera[] {
   const resolutions = episode.cameraResolutions ?? dataset.cameraResolutions ?? {}
-  return cameras.map((camera) => {
+  return cameras.filter(({ key }) => key !== 'microscope' || resolutions.microscope).map((camera) => {
     const resolution = resolutions[camera.key]
     const saved = resolution?.saved || camera.resolution
     const capture = resolution?.capture || 'native'
@@ -401,9 +403,9 @@ function TrajectoryPanel({
     <UiCard title={title}>
       <svg className="dataset-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
         <line x1="0" y1={height / 2} x2={width} y2={height / 2} className="dataset-chart-axis" />
-        <polyline points={linePoints(episode.samples, side, 0, width, height)} className="dataset-line dataset-line-x" />
-        <polyline points={linePoints(episode.samples, side, 1, width, height)} className="dataset-line dataset-line-y" />
-        <polyline points={linePoints(episode.samples, side, 2, width, height)} className="dataset-line dataset-line-z" />
+        <polyline points={linePoints(episode.samples, side, 0, width, height)} className="dataset-line" stroke={axisHues[0]} />
+        <polyline points={linePoints(episode.samples, side, 1, width, height)} className="dataset-line" stroke={axisHues[1]} />
+        <polyline points={linePoints(episode.samples, side, 2, width, height)} className="dataset-line" stroke={axisHues[2]} />
         <line x1={currentX} y1="0" x2={currentX} y2={height} className="dataset-chart-cursor" />
       </svg>
       <div className="dataset-chart-readout">
@@ -444,9 +446,9 @@ function ForcePanel({
     <UiCard title={title}>
       <svg className="dataset-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
         <line x1="0" y1={height / 2} x2={width} y2={height / 2} className="dataset-chart-axis" />
-        <polyline points={forcePoints(episode.samples, side, 0, width, height)} className="dataset-line dataset-line-x" />
-        <polyline points={forcePoints(episode.samples, side, 1, width, height)} className="dataset-line dataset-line-y" />
-        <polyline points={forcePoints(episode.samples, side, 2, width, height)} className="dataset-line dataset-line-z" />
+        <polyline points={forcePoints(episode.samples, side, 0, width, height)} className="dataset-line" stroke={axisHues[0]} />
+        <polyline points={forcePoints(episode.samples, side, 1, width, height)} className="dataset-line" stroke={axisHues[1]} />
+        <polyline points={forcePoints(episode.samples, side, 2, width, height)} className="dataset-line" stroke={axisHues[2]} />
         <line x1={currentX} y1="0" x2={currentX} y2={height} className="dataset-chart-cursor" />
       </svg>
       <div className="dataset-chart-readout">
@@ -1027,7 +1029,7 @@ const openHubUpload = () => {
             <header className="ui-modal-head"><strong>Hugging Face Hub 上传</strong></header>
             <div className="ui-modal-body">
               <label style={{ display: 'block', marginBottom: 10 }}>
-                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7a8b9c', marginBottom: 4 }}>上传开关</span>
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4 }}>上传开关</span>
                 <label className="ui-switch">
                   <input
                     aria-label="Hub 上传开关"
@@ -1039,7 +1041,7 @@ const openHubUpload = () => {
                 </label>
               </label>
               <label style={{ display: 'block', marginBottom: 10 }}>
-                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7a8b9c', marginBottom: 4 }}>Repo ID</span>
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4 }}>Repo ID</span>
                 <input
                   className="ui-input"
                   style={{ width: '100%' }}
@@ -1049,7 +1051,7 @@ const openHubUpload = () => {
                 />
               </label>
               <label style={{ display: 'block', marginBottom: 10 }}>
-                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7a8b9c', marginBottom: 4 }}>Local path</span>
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4 }}>Local path</span>
                 <input
                   className="ui-input"
                   style={{ width: '100%' }}
@@ -1060,7 +1062,7 @@ const openHubUpload = () => {
                 />
               </label>
               <label style={{ display: 'block', marginBottom: 10 }}>
-                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7a8b9c', marginBottom: 4 }}>HF Token</span>
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4 }}>HF Token</span>
                 <input
                   type="password"
                   className="ui-input"

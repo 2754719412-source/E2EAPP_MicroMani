@@ -26,6 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.websockets import WebSocketState
 
 from backend.app_factory import create_services
+from backend.core.camera_roles import CAMERA_KEYS, MICROSCOPE_FPS, STANDARD_CAMERA_KEYS, active_camera_keys
 from backend.core.participation import participation, hardware_sides, source_sides
 from backend.core.config import SettingsService
 from backend.core.work_origin import require_current_work_origin
@@ -1027,6 +1028,9 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
 
     @contextlib.asynccontextmanager
     async def configuration_change(current, candidate, *, force_apply=False):
+        if any(current.get("cameras", {}).get(key) != candidate.get("cameras", {}).get(key)
+               for key in ("microscopeEnabled", "microscopeIdentity")) and recorder.camera_configuration_busy():
+            raise HTTPException(status_code=409, detail={"message": "请先结束录制会话再修改显微相机"})
         force_only = all(current.get(key) == candidate.get(key)
                          for key in current.keys() | candidate.keys() if key != "force")
         recovering_force = commands.safety.latched and force_only
@@ -2098,7 +2102,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
     # 应用指定相机调参配置。
     @app.post("/api/cameras/{camera}/tuning/apply")
     async def camera_tuning_apply(camera: str, config: AppConfig | None = None) -> ApiEnvelope:
-        if camera not in {"global", "wrist_left", "wrist_right"}:
+        if camera not in STANDARD_CAMERA_KEYS:
             raise HTTPException(
                 status_code=400,
                 detail={"code": "BAD_CAMERA", "message": "camera must be global, wrist_left, or wrist_right"},
@@ -2120,13 +2124,15 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
     # 获取指定相机 JPEG 快照。
     @app.get("/api/cameras/{camera}/snapshot")
     async def camera_snapshot(camera: str) -> Response:
-        if camera not in {"global", "wrist_left", "wrist_right"}:
+        if camera not in CAMERA_KEYS:
             raise HTTPException(
                 status_code=400,
-                detail={"code": "BAD_CAMERA", "message": "camera must be global, wrist_left, or wrist_right"},
+                detail={"code": "BAD_CAMERA", "message": "unknown camera role"},
             )
         try:
             config = await get_config_async()
+            if camera == "microscope" and camera not in active_camera_keys(config):
+                raise HTTPException(status_code=409, detail={"code": "CAMERA_DISABLED", "message": "显微通道未启用"})
             jpeg = await asyncio.to_thread(hardware.cameras.snapshot, config, camera)
         except ControlLeaseUnavailable as exc:
             raise HTTPException(status_code=409, detail={"code": "CONTROL_LEASE_UNAVAILABLE", "message": str(exc)}) from exc
@@ -2137,19 +2143,24 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
     # 获取指定相机 MJPEG 视频流。
     @app.get("/api/cameras/{camera}/stream")
     async def camera_stream(camera: str) -> StreamingResponse:
-        if camera not in {"global", "wrist_left", "wrist_right"}:
+        if camera not in CAMERA_KEYS:
             raise HTTPException(
                 status_code=400,
-                detail={"code": "BAD_CAMERA", "message": "camera must be global, wrist_left, or wrist_right"},
+                detail={"code": "BAD_CAMERA", "message": "unknown camera role"},
             )
 
+        if camera == "microscope" and camera not in active_camera_keys(await get_config_async()):
+            raise HTTPException(status_code=409, detail={"code": "CAMERA_DISABLED", "message": "显微通道未启用"})
+
         async def frames() -> AsyncIterator[bytes]:
-            period = 1.0 / 30.0
+            period = 1.0 / (MICROSCOPE_FPS if camera == "microscope" else 30)
             last_sequence = -1
             while True:
                 started = time.monotonic()
                 try:
                     config = await get_config_async()
+                    if camera not in active_camera_keys(config):
+                        return
                     last_sequence, jpeg = await asyncio.to_thread(
                         hardware.cameras.wait_for_frame,
                         config,
@@ -2174,6 +2185,12 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             media_type="multipart/x-mixed-replace; boundary=frame",
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.get("/api/cameras/microscope/candidates")
+    async def microscope_candidates() -> ApiEnvelope:
+        config = await get_config_async()
+        devices = await asyncio.to_thread(hardware.cameras.microscope_candidates, config)
+        return envelope({"devices": devices})
 
     @app.post("/api/cameras/wrists/identify")
     async def identify_wrist_cameras() -> ApiEnvelope:

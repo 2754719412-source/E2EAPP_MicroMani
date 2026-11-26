@@ -1,4 +1,5 @@
 import { FolderOpen } from 'lucide-react'
+import { microscopeFps } from '../../data'
 import { UiField, UiInput, UiNumber, UiSwitch, UiTag } from '../../components/ui'
 import type { AppConfig } from '../../types'
 import { HardwareConfigCard, MetricBox } from './shared'
@@ -9,7 +10,7 @@ export function StorageCard({ config, updateConfig, focusHash }: {
   updateConfig: (patch: Partial<AppConfig>) => void
   focusHash: string
 }) {
-  const recordFps = config.storage.recordFps ?? config.cameras.fps
+  const recordFps = config.cameras.microscopeEnabled ? microscopeFps : config.storage.recordFps ?? config.cameras.fps
   const updateStorage = (patch: Partial<AppConfig['storage']>) =>
     updateConfig({ storage: { ...config.storage, ...patch } })
 
@@ -35,8 +36,8 @@ export function StorageCard({ config, updateConfig, focusHash }: {
         <UiField label="数据集根目录">
           <UiInput value={config.storage.datasetRoot} onChange={(event) => updateStorage({ datasetRoot: event.target.value })} />
         </UiField>
-        <UiField label="录制 FPS" tooltip="数据集保存帧率；与相机采集目标 FPS 分开设置。">
-          <UiNumber min={1} max={60} step={1} value={recordFps} onChange={(value) => updateStorage({ recordFps: Math.max(1, Math.min(60, Math.round(value ?? 30))) })} />
+        <UiField label="录制 FPS" tooltip={config.cameras.microscopeEnabled ? `显微通道启用时，数据集同步以 ${microscopeFps} fps 录制。` : '数据集保存帧率；与相机采集目标 FPS 分开设置。'}>
+          <UiNumber disabled={config.cameras.microscopeEnabled} min={1} max={60} step={1} value={recordFps} onChange={(value) => updateStorage({ recordFps: Math.max(1, Math.min(60, Math.round(value ?? 30))) })} />
         </UiField>
         <UiField label="录制力反馈" tooltip="关闭后不采样、不等待力反馈，也不把力反馈作为录制质量门槛。">
           <UiSwitch checked={config.storage.recordForce} checkedChildren="启用" unCheckedChildren="关闭" onChange={(value) => updateStorage({ recordForce: value })} />

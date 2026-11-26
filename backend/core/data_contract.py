@@ -65,6 +65,33 @@ DATASET_CONTRACT_METADATA: dict[str, Any] = {
 }
 
 
+# 录制格式版本：只描述数据集里额外的 feature 与旁路文件，不改变上面的数值侧序契约。
+# Policy API 仍只校验 DATA_CONTRACT_VERSION（v2），旧数据集缺少本字段时按 v2 读取与回放。
+RECORDING_FORMAT_VERSION = "appstation.recording.gripper_current.v1"
+RECORDING_FORMAT_METADATA: dict[str, Any] = {
+    "version": RECORDING_FORMAT_VERSION,
+    "baseDataContract": DATA_CONTRACT_VERSION,
+    "extraFeatures": {
+        "observation.gripper_current_raw": {
+            "order": ["operator_left", "operator_right"],
+            "unit": "jodell_gcu_raw_0_255",
+            "meaning": "钧舵 gCU 电流标幺值原码，未换算为牛顿；对应侧无有效读数时为 0",
+        },
+        "observation.gripper_current_valid": {
+            "order": ["operator_left", "operator_right"],
+            "meaning": "1 表示该帧对齐到的读数电流有效，0 表示无读数、读数无效或该侧未参与",
+        },
+    },
+    "sidecars": {
+        "gripper_raw/episode_XXXXXX.parquet": "每个 HAL 夹爪真实读数一行（按 seq 去重），硬件侧与数据集侧均标注",
+    },
+}
+
+
+def recording_format_metadata() -> dict[str, Any]:
+    return deepcopy(RECORDING_FORMAT_METADATA)
+
+
 def data_contract_metadata() -> dict[str, Any]:
     return deepcopy(DATASET_CONTRACT_METADATA)
 

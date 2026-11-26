@@ -918,6 +918,10 @@ appstation::hal::NativeTeleopConfig jsonNativeTeleopConfig(const std::string& bo
   config.gripper.workerExePath = jsonStringValueOr(body, "jodellWorkerExePath", config.gripper.workerExePath);
   config.gripper.workerCommandTimeoutMs =
       jsonNumberValue(body, "gripperWorkerCommandTimeoutMs", config.gripper.workerCommandTimeoutMs);
+  // 只认 "modbus"，其他值一律回落到 vendor DLL，避免拼写错误让 worker 走未验收的路径之外的分支。
+  config.gripper.transport =
+      jsonStringValueOr(body, "gripperWorkerTransport", config.gripper.transport) == "modbus" ? "modbus" : "dll";
+  config.gripper.sampleIntervalMs = jsonNumberValue(body, "gripperSampleIntervalMs", config.gripper.sampleIntervalMs);
   config.gripperGapMinMm[0] = jsonNumberValue(body, "leftGapMinMm", config.gripperGapMinMm[0]);
   config.gripperGapMaxMm[0] = jsonNumberValue(body, "leftGapMaxMm", config.gripperGapMaxMm[0]);
   config.gripperGapMinMm[1] = jsonNumberValue(body, "rightGapMinMm", config.gripperGapMinMm[1]);

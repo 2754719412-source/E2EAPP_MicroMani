@@ -5,6 +5,7 @@
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 import type { CSSProperties } from 'react'
+import { microscopeFps } from '../../data'
 import type { RecordQualityAssessment, RecordQualityReport } from '../../types'
 import { UiButton, UiText } from '../ui'
 
@@ -12,9 +13,9 @@ type Recommendation = 'accept' | 'review' | 'rerecord'
 type MetricTone = 'good' | 'warn' | 'bad'
 
 const toneStyle: Record<MetricTone, CSSProperties> = {
-  good: { borderColor: '#9fdcc4', background: '#f1fbf5', color: '#16794c' },
-  warn: { borderColor: '#f0d09a', background: '#fff9ed', color: '#98651b' },
-  bad: { borderColor: '#f5b4bc', background: '#fff3f4', color: '#b42332' },
+  good: { borderColor: 'var(--color-success-border)', background: 'var(--color-success-light)', color: 'var(--color-success-text)' },
+  warn: { borderColor: 'var(--color-warning-border)', background: 'var(--color-warning-light)', color: 'var(--color-warning-text)' },
+  bad: { borderColor: 'var(--color-danger-border)', background: 'var(--color-danger-light)', color: 'var(--color-danger-text)' },
 }
 
 function metricTone(value: number, reviewAt: number, rerecordAt: number): MetricTone {
@@ -38,6 +39,7 @@ function recommendationFor(report: RecordQualityReport): Recommendation {
     report.cameraDrops.global,
     report.cameraDrops.wristLeft,
     report.cameraDrops.wristRight,
+    report.cameraDrops.microscope ?? 0,
   ) / Math.max(1, report.frameCount)
   const feedback = feedbackLevel(report.warnings, report.qualityAssessment)
   if (report.status === 'emergency' || feedback === 'bad' || lateRate >= 0.1 || cameraRate >= 0.05) return 'rerecord'
@@ -82,13 +84,18 @@ export default function QualityReportModal({
     global: report.cameraDrops.global / Math.max(1, report.frameCount),
     wrist_left: report.cameraDrops.wristLeft / Math.max(1, report.frameCount),
     wrist_right: report.cameraDrops.wristRight / Math.max(1, report.frameCount),
+    microscope: (report.cameraDrops.microscope ?? 0) / Math.max(1, report.frameCount),
   }
-  const maxCameraRate = Math.max(cameraRates.global ?? 0, cameraRates.wrist_left ?? 0, cameraRates.wrist_right ?? 0)
+  const maxCameraRate = Math.max(cameraRates.global ?? 0, cameraRates.wrist_left ?? 0, cameraRates.wrist_right ?? 0, cameraRates.microscope ?? 0)
   const feedbackTone = feedbackLevel(report.warnings, report.qualityAssessment)
   const maxSkew = report.maxSkewMs ?? 0
-  const cameraFps = Object.values(report.cameraMinFps ?? {}).filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
+  const { microscope, ...standardFps } = report.cameraMinFps ?? {}
+  const cameraFps = Object.values(standardFps).filter((value): value is number => typeof value === 'number' && Number.isFinite(value))
   const minFps = cameraFps.length ? Math.min(...cameraFps) : null
-  const fpsDetail = minFps === null ? '帧率未提供' : `最低 ${minFps.toFixed(1)} FPS（${minFps < 20 ? '低于20，需重录' : minFps < 25 ? '低于25，需复核' : '正常'}）`
+  const standardDetail = minFps === null ? '帧率未提供' : `最低 ${minFps.toFixed(1)} FPS（${minFps < 20 ? '低于20，需重录' : minFps < 25 ? '低于25，需复核' : '正常'}）`
+  const fpsDetail = typeof microscope === 'number'
+    ? `${standardDetail}；显微最低 ${microscope.toFixed(1)} FPS（目标 ${microscopeFps}）`
+    : standardDetail
   const reasons = report.qualityAssessment?.reasons?.map((reason) => reason.message) ?? []
   const rawWarnings = report.warnings.filter((warning) => !reasons.includes(warning))
   return (
@@ -128,7 +135,7 @@ export default function QualityReportModal({
             <QualityMetric
               label="相机异常率"
               value={`${(maxCameraRate * 100).toFixed(1)}%`}
-              detail={`全局 ${report.cameraDrops.global} / 左腕 ${report.cameraDrops.wristLeft} / 右腕 ${report.cameraDrops.wristRight}；≥5% 重录；${fpsDetail}`}
+              detail={`全局 ${report.cameraDrops.global} / 左腕 ${report.cameraDrops.wristLeft} / 右腕 ${report.cameraDrops.wristRight}${report.cameraDrops.microscope == null ? '' : ` / 显微 ${report.cameraDrops.microscope}`}；≥5% 重录；${fpsDetail}`}
               tone={metricTone(maxCameraRate, 0.02, 0.05)}
             />
             <QualityMetric
@@ -144,7 +151,7 @@ export default function QualityReportModal({
               <tr><th>帧数</th><td>{report.frameCount}</td><th>时长</th><td>{report.durationS.toFixed(1)}s</td></tr>
               <tr><th>迟帧</th><td>{report.lateFrames}</td>
                 <th>相机掉帧</th>
-                <td>全局 {report.cameraDrops.global} / 左腕 {report.cameraDrops.wristLeft} / 右腕 {report.cameraDrops.wristRight}</td></tr>
+                <td>全局 {report.cameraDrops.global} / 左腕 {report.cameraDrops.wristLeft} / 右腕 {report.cameraDrops.wristRight}{report.cameraDrops.microscope != null && ` / 显微 ${report.cameraDrops.microscope}`}</td></tr>
               <tr><th>左臂峰值力</th><td>{report.maxForceLeft.toFixed(2)}N</td>
                 <th>右臂峰值力</th><td>{report.maxForceRight.toFixed(2)}N</td></tr>
             </tbody>

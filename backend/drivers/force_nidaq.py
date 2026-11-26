@@ -51,6 +51,16 @@ class ForceProbeResult:
     calibration: dict[str, Any] = field(default_factory=dict)
     sample_monotonic_s: float = 0.0
 
+    @property
+    def sample_voltage(self) -> bool | None:
+        """按采样时使用的标定矩阵标记单位，缓存读数沿用原单位。"""
+        sources = [self.calibration.get(side, {}).get("source") for side in ("left", "right")]
+        if all(source == "identity-disabled" for source in sources):
+            return True
+        if all(isinstance(source, str) and source.startswith(("file:", "embedded-reference:")) for source in sources):
+            return False
+        return None
+
 
 class _PersistentTask:
     """Holds a long-lived nidaqmx Task so we don't pay 200-500ms on every sample.

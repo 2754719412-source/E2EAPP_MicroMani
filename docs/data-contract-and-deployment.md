@@ -27,6 +27,8 @@
 
 本轮按用户指定范围迁入远端已有实现：native 续录、Policy action 和归一化有契约检查。legacy 数值预览、上传等入口的额外检查，以及部分读取拒绝的 API 错误提示，未作为本轮新增修复。上传契约中的要求是后续提交约束，不代表这些历史入口已经全部覆盖。
 
+新录制的数据集另带录制格式 `appstation.recording.gripper_current.v1`（`recordingFormat`），在上述数值契约之外增加 `observation.gripper_current_raw/valid` 两个 2 维 feature 和 `gripper_raw/` 旁路文件；数值契约版本和 Policy API 校验不变。缺少或不同录制格式的旧数据集照常读取和回放，但拒绝续录。详见 `docs/gripper-structured-feedback.md`。
+
 ## HKVL 与能力诊断
 
 默认来源继续为 `hkvl_serial`，保留用户显式选择的 `nidaq` 和 NI 通道/标定参数，不做自动故障切换。源码默认不覆盖其他机器的已保存配置。

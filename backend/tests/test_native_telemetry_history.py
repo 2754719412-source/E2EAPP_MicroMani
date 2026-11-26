@@ -36,7 +36,10 @@ def test_all_history_actions_and_measurement_timestamps_are_preserved(payloads):
     for original, live in zip(full["actionHistory"], compact["actionHistory"], strict=True):
         assert live == {key: original[key] for key in (
             "ts", "monotonicMs", "monotonic_s", "side", "sourceSide", "deltaVector")}
-    for key in full.keys() - {"actionHistory", "actionHistoryFormat"}:
+    # 夹爪逐读数历史及其 HAL 实例 ID 只在完整状态中提供，实时遥测不带。
+    sample_history = {"gripperSampleHistory", "gripperSampleHistoryFormat", "gripperSampleInstanceId"}
+    assert sample_history <= full.keys() and not sample_history & compact.keys()
+    for key in full.keys() - {"actionHistory", "actionHistoryFormat"} - sample_history:
         assert compact[key] == full[key], key
     assert compact["grippers"]["left"]["positionSampleTs"] == 12345
     assert compact["grippers"]["left"]["positionSampleMonotonicMs"] == 23456

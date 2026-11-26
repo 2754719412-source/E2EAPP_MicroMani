@@ -5,6 +5,7 @@
 import { Crosshair, Download, RotateCcw, Waves } from 'lucide-react'
 import { useState } from 'react'
 import { mockMode, tareForceSensor } from '../../api'
+import { forceChannelLevel, forceChannelLimits, forceFeedbackLive, forceSampleReady, formatForceReadout, isForceVoltage, recentForceHistory } from '../../forceDisplay'
 import { ForceChart } from '../../components/Charts'
 import {
   UiButton,
@@ -46,26 +47,6 @@ const fallbackForceAxisSigns: Record<RobotSide, number[]> = {
   right: [1, -1, 1, -1, 1, -1],
 }
 
-function formatForceValue(value: number, index: number) {
-  return index < 3 ? `${(value * 1000).toFixed(0)} mN` : `${(value * 1000).toFixed(1)} mN·m`
-}
-
-/** 格式化对应数值用于界面展示。 */
-function forceState(values: number[], config: AppConfig) {
-  const danger = Math.max(
-    Math.abs(values[0]) / config.safety.fxyStopN,
-    Math.abs(values[1]) / config.safety.fxyStopN,
-    Math.abs(values[2]) / config.safety.fzStopN,
-    Math.abs(values[3]) / config.safety.momentStopNm,
-    Math.abs(values[4]) / config.safety.momentStopNm,
-    Math.abs(values[5]) / config.safety.momentStopNm,
-  )
-  if (danger >= 1) return 'error'
-  if (danger >= 0.65) return 'warn'
-  return 'ok'
-}
-/** Send a command event into the shared UI log stream. */
-
 export function ForceSensorCard({
   side,
   config,
@@ -92,7 +73,12 @@ export function ForceSensorCard({
   const isHkvl = config.force.source === 'hkvl_serial'
   const sideStatus = forceStatus?.sides?.[hardwareSide]
   const calibration = forceStatus?.calibration?.sides?.[hardwareSide]
-  const state = isHkvl && !sideStatus?.healthy ? 'error' : forceState(values, config)
+  const voltage = isForceVoltage(config.force, forceStatus)
+  const levels = values.map((value, index) => forceChannelLevel(value, forceChannelLimits(config.safety, index)))
+  const live = useTelemetryStore(forceFeedbackLive)
+  const ready = live && forceSampleReady(forceStatus, hardwareSide)
+  const state = !live ? 'pending' : sideStatus?.healthy === false ? 'error' : !ready || voltage ? 'pending'
+    : levels.includes('error') ? 'error' : levels.includes('warn') ? 'warn' : levels.includes('pending') ? 'pending' : 'ok'
   const id = `force-${side}`
   const serialPortKey = hardwareSide === 'left' ? 'leftPort' : 'rightPort'
   const compliance = config.force.compliance[hardwareSide]
@@ -122,6 +108,21 @@ export function ForceSensorCard({
     const next = [...compliance[key]]
     next[index] = Number(value ?? 0)
     updateCompliance({ ...compliance, [key]: next })
+  }
+  const exportForceHistory = () => {
+    const samples = recentForceHistory(history, voltage, hardwareSide)
+    const headers = forceChannels.map((channel, i) => `${channel} (${voltage ? 'V' : i < 3 ? 'N' : 'N·m'})`)
+    const rows = samples.map((sample) => [sample.time, ...(hardwareSide === 'left' ? sample.forceLeft : sample.forceRight)])
+    const csv = [['elapsed_s', ...headers], ...rows].map((row) => row.join(',')).join('\r\n')
+    const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `force-hardware-${hardwareSide}-${Date.now()}.csv`
+    try {
+      link.click()
+    } finally {
+      window.setTimeout(() => URL.revokeObjectURL(url), 0)
+    }
   }
   const openAxisCalibration = () => {
     setAxisSignDraft([...axisSigns])
@@ -156,7 +157,7 @@ export function ForceSensorCard({
       focusHash={focusHash}
       icon={<Waves size={20} />}
       title={`${operatorLabel} ${isHkvl ? 'HKVL-36A' : 'Nano-17'} 六维力`}
-      subtitle={isHkvl ? 'HAL 原生串口 · N / Nm · 只读主动帧' : `${nano17Spec.model} · Fx/Fy/Fz=mN · Mx/My/Mz=mN·m`}
+      subtitle={voltage ? 'NI-DAQ 未标定 · 六通道电压 V' : isHkvl ? 'HAL 原生串口 · 力 mN / 力矩 mN·m' : `${nano17Spec.model} · Fx/Fy/Fz=mN · Mx/My/Mz=mN·m`}
       state={state}
       actions={
         <UiSpace wrap>
@@ -174,7 +175,7 @@ export function ForceSensorCard({
           >
             Tare
           </UiButton>}
-          <UiButton icon={<Download size={15} />} onClick={() => commandLog(injectLog, '[FORCE]', `${operatorLabel} 力数据导出`)}>
+          <UiButton icon={<Download size={15} />} title="下载当前力觉曲线的遥测样本" disabled={!history.length || history.at(-1)?.forceHealthy?.[hardwareSide] === false || Boolean(history.at(-1)?.forceVoltage) !== voltage} onClick={exportForceHistory}>
             CSV
           </UiButton>
         </UiSpace>
@@ -183,12 +184,12 @@ export function ForceSensorCard({
     >
       <div className={`force-settings-layout${isHkvl ? ' force-settings-layout-hkvl' : ''}`}>
         <div className="force-visual-area">
-          <ForceChart history={history} side={hardwareSide} height={170} />
+          <ForceChart history={history} side={hardwareSide} height={170} voltage={voltage} />
           <div className="force-current-grid force-current-grid-settings">
             {forceChannels.map((channel, index) => (
               <span key={channel}>
                 <b>{channel}</b>
-                {formatForceValue(values[index] ?? 0, index)}
+                {ready ? formatForceReadout(values[index], index, voltage) : '—'} {voltage ? 'V' : index < 3 ? 'mN' : 'mN·m'}
               </span>
             ))}
           </div>
@@ -252,6 +253,7 @@ export function ForceSensorCard({
             <UiField label="低通截止 Hz"><UiNumber min={0} value={config.force.lowpassCutoffHz} onChange={(value) => updateConfig({ force: { ...config.force, lowpassCutoffHz: Number(value ?? 10) } })} /></UiField>
             {!isHkvl && <UiField label="标定证书">
               <UiSwitch
+                aria-label="标定证书"
                 checked={config.force.certificateConfirmed}
                 checkedChildren="已确认"
                 unCheckedChildren="待确认"

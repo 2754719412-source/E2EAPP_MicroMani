@@ -17,6 +17,8 @@ from collections import deque
 from multiprocessing.queues import Queue
 from typing import Any, cast
 
+from backend.core.camera_roles import MICROSCOPE_FPS, microscope_mode_matches
+
 CAMERA_CAPTURE_FOURCC = "YUYV"
 
 
@@ -67,6 +69,7 @@ def run_camera_capture_worker_stdio(startup: dict[str, Any]) -> None:
         status_queue,
         command_queue,
         int(cast(Any, parent_pid_value)) if parent_pid_value is not None else None,
+        str(startup.get("fourcc", CAMERA_CAPTURE_FOURCC)),
     )
     worker.run()
 
@@ -82,6 +85,8 @@ class _StdoutStatusQueue:
 
 
 class _CameraCaptureWorker:
+    fourcc = CAMERA_CAPTURE_FOURCC
+
     def __init__(
         self,
         index: int,
@@ -93,7 +98,9 @@ class _CameraCaptureWorker:
         status_queue: Any,
         command_queue: Any,
         parent_pid: int | None,
+        fourcc: str = CAMERA_CAPTURE_FOURCC,
     ) -> None:
+        self.fourcc = fourcc
         self.index = int(index)
         self.width = int(width)
         self.height = int(height)
@@ -168,6 +175,14 @@ class _CameraCaptureWorker:
             self.capture = capture
             self.backend_label = label
             self._configure_capture(capture)
+            if self.fourcc == "MJPG" and not microscope_mode_matches(
+                self._safe_get("CAP_PROP_FRAME_WIDTH"), self._safe_get("CAP_PROP_FRAME_HEIGHT"),
+                self._safe_get("CAP_PROP_FPS"),
+            ):
+                last_error = f"{label} 未能协商显微相机 3840×2160 / {MICROSCOPE_FPS} fps"
+                capture.release()
+                self.capture = None
+                continue
             self._publish(
                 {
                     "type": "status",
@@ -192,7 +207,7 @@ class _CameraCaptureWorker:
         assert self.cv2 is not None
         if hasattr(self.cv2, "CAP_PROP_FOURCC") and hasattr(self.cv2, "VideoWriter_fourcc"):
             try:
-                capture.set(self.cv2.CAP_PROP_FOURCC, self.cv2.VideoWriter_fourcc(*CAMERA_CAPTURE_FOURCC))
+                capture.set(self.cv2.CAP_PROP_FOURCC, self.cv2.VideoWriter_fourcc(*self.fourcc))
             except Exception:
                 pass
         if hasattr(self.cv2, "CAP_PROP_BUFFERSIZE"):

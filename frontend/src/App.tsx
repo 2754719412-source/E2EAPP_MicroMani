@@ -29,7 +29,7 @@ function RouteFallback() {
         display: 'grid',
         placeItems: 'center',
         minHeight: 240,
-        color: '#7a8b9c',
+        color: 'var(--color-text-muted)',
         fontSize: 13,
       }}
     >

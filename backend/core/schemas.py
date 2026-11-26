@@ -73,7 +73,7 @@ class ProcessStatus(BaseModel):
 
 
 class CameraTelemetry(BaseModel):
-    key: Literal["global", "wrist_left", "wrist_right"]
+    key: Literal["global", "wrist_left", "wrist_right", "microscope"]
     label: str
     fps: float
     timestampSkewMs: float

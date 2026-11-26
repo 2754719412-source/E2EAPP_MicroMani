@@ -137,8 +137,9 @@ describe('设置迁移回归', () => {
   it('六维力数值、危险色、图表和 Tare 使用相同的硬件侧', async () => {
     const tare = vi.spyOn(api, 'tareForceSensor').mockResolvedValue({ ok: true })
     useTelemetryStore.setState((state) => ({
-      config: { ...state.config, force: { ...state.config.force, source: 'nidaq' }, safety: { ...state.config.safety, fxyStopN: 1 } },
-      frame: { ...state.frame, forceLeft: [0.014, 0, 0, 0, 0, 0], forceRight: [1.527, 0, 0, 0, 0, 0] },
+      config: { ...state.config, force: { ...state.config.force, source: 'nidaq' }, safety: { ...state.config.safety, fxyWarnN: 0.5, fxyStopN: 1 } },
+      frame: { ...state.frame, forceStatus: { source: 'nidaq', sampleVoltage: false, sides: { left: { healthy: true }, right: { healthy: true } } },
+        forceLeft: [0.014, 0, 0, 0, 0, 0], forceRight: [1.527, 0, 0, 0, 0, 0] },
       history: [{ time: 1, joints: Array(12).fill(0), forceLeft: [0.014, 0, 0, 0, 0, 0], forceRight: [1.527, 0, 0, 0, 0, 0], danger: 0, queueLeft: 0, queueRight: 0 }],
     }))
     await show('force-left')

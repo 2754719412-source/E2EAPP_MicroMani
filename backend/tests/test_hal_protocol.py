@@ -44,6 +44,7 @@ def test_shared_hal_command_protocol_covers_existing_real_hal_commands() -> None
         "gripper.prepare_replay": ("POST", "/gripper/prepare_replay"),
         "gripper.feedback.configure": ("POST", "/gripper/feedback/configure"),
         "gripper.replay_target": ("POST", "/gripper/replay_target"),
+        "gripper.samples": ("POST", "/gripper/samples"),
     }
 
     assert set(HAL_COMMANDS) == set(expected_paths)
@@ -87,3 +88,11 @@ def test_hal_command_request_policy_keeps_home_commands_long_running() -> None:
 def test_unknown_hal_command_has_clear_error() -> None:
     with pytest.raises(RuntimeError, match="HAL command is not mapped: missing.command"):
         command_spec("missing.command")
+
+
+def test_gripper_samples_fail_fast_without_retry() -> None:
+    """夹爪读数增量拉取只读、下一轮会补上；默认 5 s 超时下也只等 0.5 s、不重试，避免拖住保存。"""
+    from backend.hal_client.protocol import command_request_policy
+
+    assert command_request_policy("gripper.samples", 5.0) == (0.5, 1)
+    assert command_request_policy("gripper.samples", 0.2) == (0.2, 1)

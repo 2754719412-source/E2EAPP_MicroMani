@@ -12,7 +12,7 @@ beforeEach(() => {
     ...initialState,
     controlSafety: initialControlSafety(),
     telemetryLink: { state: 'live', lastFrameReceivedAt: Date.now() },
-    frame: { ...initialState.frame, halOk: true, wsOk: true, dangerIndex: 0, forceStatus: { safety: { latched: false } } },
+    frame: { ...initialState.frame, halOk: true, wsOk: true, dangerIndex: 0, forceStatus: { safety: { latched: false }, sides: { left: { healthy: true }, right: { healthy: true } } } },
     logs: [],
   })
 })

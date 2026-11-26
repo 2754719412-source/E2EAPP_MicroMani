@@ -20,15 +20,15 @@ const PRESET_TASKS = [
 ]
 
 const phaseConfig = {
-  interrupted: { label: '采集中断，待核验；未保存片段可保存或丢弃', color: '#fa8c16', barColor: '#fa8c16' },
-  idle: { label: '就绪', color: '#8c8c8c', barColor: '#d9d9d9' },
-  starting: { label: '准备中，请等待“录制中”后再操作', color: '#1677ff', barColor: '#1677ff' },
-  recording: { label: '录制中', color: '#cf1322', barColor: '#cf1322' },
-  reviewing: { label: '质检中', color: '#fa8c16', barColor: '#fa8c16' },
-  resetting: { label: '复位中', color: '#722ed1', barColor: '#722ed1' },
-  saving: { label: '保存中', color: '#1677ff', barColor: '#1677ff' },
-  discarding: { label: '丢弃中，等待遥操作停止', color: '#1677ff', barColor: '#1677ff' },
-  finishing: { label: '结束中', color: '#52c41a', barColor: '#52c41a' },
+  interrupted: { label: '采集中断，待核验；未保存片段可保存或丢弃', color: 'var(--color-warning-text)', barColor: 'var(--color-warning)' },
+  idle: { label: '就绪', color: 'var(--color-text-muted)', barColor: 'var(--color-border)' },
+  starting: { label: '准备中，请等待“录制中”后再操作', color: 'var(--color-primary)', barColor: 'var(--color-primary)' },
+  recording: { label: '录制中', color: 'var(--color-danger-text)', barColor: 'var(--color-danger)' },
+  reviewing: { label: '质检中', color: 'var(--color-warning-text)', barColor: 'var(--color-warning)' },
+  resetting: { label: '复位中', color: 'var(--color-info-text)', barColor: 'var(--color-info)' },
+  saving: { label: '保存中', color: 'var(--color-primary)', barColor: 'var(--color-primary)' },
+  discarding: { label: '丢弃中，等待遥操作停止', color: 'var(--color-primary)', barColor: 'var(--color-primary)' },
+  finishing: { label: '结束中', color: 'var(--color-success-text)', barColor: 'var(--color-success)' },
 }
 
 const kbdStyle: React.CSSProperties = {
@@ -41,10 +41,9 @@ const kbdStyle: React.CSSProperties = {
 }
 
 const HINTS = [
-  { key: 'Ctrl', desc: '离合器切换' },
+  { key: 'Ctrl', desc: '单独按下并松开以切换离合器' },
   { key: '1/2/3', desc: '速度粗/中/细' },
   { key: 'R', desc: '回工作原点' },
-  { key: 'P', desc: '暂停遥操作' },
 ]
 /** 格式化对应数值用于界面展示。 */
 const formatTime = (s: number) =>
@@ -106,7 +105,7 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
 
   // 开始会话和跳过复位共用：后端起点检查拒绝时显示原因；遥操作此时未接管夹爪，界面上直接张开。
   const startErrorAlert = (title: string) => (
-    <div role="alert" style={{ color: '#cf1322', background: '#fff1f0', border: '1px solid #ffa39e', borderRadius: 4, padding: 8, overflowWrap: 'anywhere' }}>
+    <div role="alert" style={{ color: 'var(--color-danger-text)', background: 'var(--color-danger-light)', border: '1px solid var(--color-danger-border)', borderRadius: 4, padding: 8, overflowWrap: 'anywhere' }}>
       <strong>{title}</strong>
       <div>{startError}</div>
       {participation.grippers.length > 0 && (
@@ -146,7 +145,7 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
   return (
     <UiCard title="录制控制" bodyStyle={{ padding: '10px 12px' }}>
       <label style={{ display: 'block', marginBottom: 8 }}>
-        <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7a8b9c', marginBottom: 4 }}>任务描述</span>
+        <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4 }}>任务描述</span>
         <select
           className="ui-select"
           style={{ width: '100%' }}
@@ -160,7 +159,7 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
         </select>
       </label>
       <label style={{ display: 'block' }}>
-        <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7a8b9c', marginBottom: 4 }}>数据集名称</span>
+        <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4 }}>数据集名称</span>
         <input
           className="ui-input"
           style={{ width: '100%' }}
@@ -190,7 +189,7 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
           <div className="record-phase-time">{formatTime(elapsedS)}</div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 10, color: '#8c8c8c' }}>剩余</div>
+          <div style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>剩余</div>
           <div className="record-phase-remaining">
             {progressTotalS >= 0 ? formatTime(Math.max(0, progressTotalS - elapsedS)) : '--:--.-'}
           </div>
@@ -202,7 +201,7 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={phasePercent}
-        style={{ background: '#e8eef5', height: 6, borderRadius: 99, overflow: 'hidden', marginTop: 4 }}
+        style={{ background: 'var(--color-bg-app)', height: 6, borderRadius: 99, overflow: 'hidden', marginTop: 4 }}
       >
         <div style={{ width: `${phasePercent}%`, height: '100%', background: cfg.barColor }} />
       </div>
@@ -212,7 +211,7 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
       {busy && (
         <div style={{ textAlign: 'center', padding: '8px 0' }}>
           <UiSpin />
-          <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 4 }}>{cfg.label}</div>
+          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>{cfg.label}</div>
         </div>
       )}
 
@@ -228,14 +227,14 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
       {(phase === 'recording' || phase === 'interrupted') && (
         <div className="record-action-stack">
           <div className="record-action-grid">
-            <UiButton variant="primary" onClick={saveRecordEpisode} block disabled={busy}>
+            <UiButton data-record-action="advance" variant="primary" onClick={saveRecordEpisode} block disabled={busy}>
               保存 <kbd style={kbdStyle}>Space</kbd>
             </UiButton>
-            <UiButton onClick={discardRecordEpisode} block disabled={busy}>
+            <UiButton data-record-action="discard" onClick={discardRecordEpisode} block disabled={busy}>
               丢弃重录
             </UiButton>
           </div>
-          <UiButton danger block onClick={finishRecordSession} disabled={busy}>
+          <UiButton data-record-action="finish" danger block onClick={finishRecordSession} disabled={busy}>
             ESC - 结束采集会话并 finalize()
           </UiButton>
         </div>
@@ -244,10 +243,10 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
       {phase === 'resetting' && (
         <div className="record-action-stack">
           {startError && startErrorAlert('未能开始下一条')}
-          <UiButton variant="primary" block onClick={() => guardGripperOpen('skip')} disabled={busy || returnOriginInFlight || !resetReady}>
+          <UiButton data-record-action="advance" variant="primary" block onClick={() => guardGripperOpen('skip')} disabled={busy || returnOriginInFlight || !resetReady}>
             跳过复位，立即开始
           </UiButton>
-          <UiButton danger block onClick={finishRecordSession} disabled={busy}>
+          <UiButton data-record-action="finish" danger block onClick={finishRecordSession} disabled={busy}>
             ESC - 结束采集会话并 finalize()
           </UiButton>
         </div>
@@ -257,7 +256,7 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
         <div className="record-shortcut-grid">
           {HINTS.map(({ key, desc }) => (
             <div key={key}>
-              <kbd style={{ ...kbdStyle, background: 'rgba(0,0,0,0.12)', border: '1px solid rgba(0,0,0,0.2)', color: '#595959' }}>
+              <kbd style={{ ...kbdStyle, background: 'rgba(0,0,0,0.12)', border: '1px solid rgba(0,0,0,0.2)', color: 'var(--color-text-secondary)' }}>
                 {key}
               </kbd>
               <span>{desc}</span>
@@ -297,7 +296,7 @@ export default function EpisodeControlPanel({ onStartSession }: EpisodeControlPa
 
       {gripperPrompt && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div role="dialog" aria-modal="true" aria-label="夹爪未张开" style={{ background: '#fff', borderRadius: 8, padding: 16, width: 320, boxShadow: '0 6px 24px rgba(0,0,0,0.2)' }}>
+          <div role="dialog" aria-modal="true" aria-label="夹爪未张开" style={{ background: 'var(--color-bg-card)', borderRadius: 8, padding: 16, width: 320, boxShadow: '0 6px 24px rgba(0,0,0,0.2)' }}>
             <strong style={{ display: 'block', marginBottom: 8 }}>夹爪未张开</strong>
             <div style={{ fontSize: 12, marginBottom: 12 }}>
               录制起点要求夹爪张开到 26 mm：

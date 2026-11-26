@@ -4,6 +4,7 @@
  * 先看：StatusBar。
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
+import { reportedForceDanger } from '../forceDisplay'
 import { useTelemetryStore } from '../stores/telemetry'
 import { telemetryStaleAfterMs } from '../hardwareStatus'
 import { MetricPill } from './MetricPill'
@@ -16,7 +17,7 @@ export function StatusBar() {
   const cameras = useTelemetryStore((state) => state.frame.cameras)
   const picoVision = useTelemetryStore((state) => state.config.picoVision)
   const picoConnection = useTelemetryStore((state) => state.picoConnection)
-  const dangerIndex = useTelemetryStore((state) => state.frame.dangerIndex)
+  const dangerIndex = useTelemetryStore(reportedForceDanger)
   const safetyLatched = useTelemetryStore((state) => Boolean(state.frame.forceStatus?.safety?.latched))
   const emergencyRequested = useTelemetryStore((state) => state.controlSafety.emergencyRequested)
   const leaseBlocked = useTelemetryStore((state) => Boolean(controlLeaseBlockReason(state.controlLease)))
@@ -30,7 +31,7 @@ export function StatusBar() {
   const recorderFps = useTelemetryStore((state) => state.recordSession.recorderFps)
   const recorderLateFrames = useTelemetryStore((state) => state.recordSession.recorderLateFrames)
   const safetyLocked = emergencyRequested || safetyLatched
-  const safetyAvailable = telemetryLive && halOk && !leaseBlocked
+  const safetyAvailable = dangerIndex !== null && !leaseBlocked
   const dangerState = safetyLocked ? 'error' : !safetyAvailable ? 'pending' : dangerIndex >= 1 ? 'error' : dangerIndex > 0.7 ? 'warn' : 'ok'
   const recordingFpsState = recorderFps >= 28 ? 'ok' : recorderFps >= 20 ? 'warn' : 'error'
   const cameraTotal = cameras.length || 3

@@ -22,6 +22,7 @@ from typing import Any, cast
 
 from backend.core.config import SettingsService, reanchor_motion_soft_limits_to_current_origin
 from backend.core.force_config import hkvl_tare_sample_count
+from backend.core.gripper_force import effective_grip_torque
 from backend.core.gripper_protection import (
     icf_target_min_gap_mm,
     icf_target_protection_enabled,
@@ -1423,7 +1424,7 @@ class CommandService:
             minTargetMm=icf_target_min_gap_mm(config),
             minTargetEnabled=icf_target_protection_enabled(config),
             speed=gripper_teleop.get("gripSpeed", gripper.get("speed", "")),
-            torque=gripper_teleop.get("gripTorque", gripper.get("commandTorque", 1)),
+            torque=effective_grip_torque(config)["rfcRaw"],
             runRet=run_ret,
             ipcOk=ipc_ok,
             error=error,

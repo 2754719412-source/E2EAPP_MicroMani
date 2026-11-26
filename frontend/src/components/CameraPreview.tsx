@@ -25,6 +25,7 @@ const cameraResolution: Record<CameraTelemetry['key'], string> = {
   global: '640x480',
   wrist_left: '640x480',
   wrist_right: '640x480',
+  microscope: '3840x2160',
 }
 /** 渲染当前界面单元，并连接所需数据。 */
 export function CameraPreview({

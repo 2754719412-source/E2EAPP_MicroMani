@@ -1131,7 +1131,7 @@ class SettingsService:
                 or has_previous_imx335_camera_defaults
             ):
                 for key, value in ICF_CAMERA_DEFAULTS.items():
-                    if key == "tuning":
+                    if key in {"tuning", "microscopeEnabled", "microscopeIdentity"}:
                         continue
                     cameras[key] = json.loads(json.dumps(value))
             _normalize_camera_tuning_defaults(config, has_current_camera_tuning_defaults)

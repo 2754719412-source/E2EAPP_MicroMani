@@ -3,6 +3,7 @@
  * 先看：SafetyCard。
  */
 import { ShieldAlert } from 'lucide-react'
+import { forceFeedbackLive, reportedForceDanger } from '../../forceDisplay'
 import { ForceStartupSelfCheck } from '../../components/ForceStartupSelfCheck'
 import { UiButton, UiField, UiNumber, UiSpace, UiSwitch, UiTag } from '../../components/ui'
 import { useTelemetryStore } from '../../stores/telemetry'
@@ -23,8 +24,9 @@ export function SafetyCard({
   triggerEmergencyStop: () => void
   acknowledgeSafety: () => void
 }) {
-  const dangerIndex = useTelemetryStore((state) => state.frame.dangerIndex)
-  const safetyLatched = useTelemetryStore((state) => Boolean(state.frame.forceStatus?.safety?.latched))
+  const dangerIndex = useTelemetryStore(reportedForceDanger)
+  const live = useTelemetryStore(forceFeedbackLive)
+  const safetyLatched = useTelemetryStore((state) => state.frame.forceStatus?.safety?.latched)
   const latchReason = useTelemetryStore((state) => state.frame.forceStatus?.safety?.reason ?? '')
   const canAck = useTelemetryStore(canAcknowledgeControlSafety)
   const emergencyRequested = useTelemetryStore((state) => state.controlSafety.emergencyRequested)
@@ -33,7 +35,10 @@ export function SafetyCard({
   const rightConfirmed = config.force.compliance.right.mappingConfirmed
   const mappingsConfirmed = leftConfirmed && rightConfirmed
 
-  const state = emergencyRequested || safetyLatched || dangerIndex >= 1 ? 'error' : dangerIndex > 0.7 ? 'warn' : 'ok'
+  const state = emergencyRequested || safetyLatched ? 'error' : dangerIndex === null ? 'pending'
+    : dangerIndex >= 1 ? 'error' : dangerIndex > 0.7 ? 'warn' : 'ok'
+  const latchLabel = safetyLatched ? (live ? '已锁存' : '上次反馈已锁存')
+    : emergencyRequested ? '已请求急停，等待反馈' : live && safetyLatched === false ? '未锁存' : '未知'
   const updateSafety = (patch: Partial<AppConfig['safety']>) =>
     updateConfig({ safety: { ...config.safety, ...patch } })
 
@@ -47,10 +52,10 @@ export function SafetyCard({
       state={state}
       badges={
         <>
-          <UiTag tone={dangerIndex >= 1 ? 'error' : dangerIndex > 0.7 ? 'warning' : 'success'}>
-            danger {dangerIndex.toFixed(2)}
+          <UiTag tone={dangerIndex === null ? 'muted' : dangerIndex >= 1 ? 'error' : dangerIndex > 0.7 ? 'warning' : 'success'}>
+            danger {dangerIndex?.toFixed(2) ?? '不可用'}
           </UiTag>
-          <UiTag tone={safetyLatched || emergencyRequested ? 'error' : 'muted'}>{safetyLatched || emergencyRequested ? 'LOCK' : '未锁存'}</UiTag>
+          <UiTag tone={safetyLatched || emergencyRequested ? 'error' : 'muted'}>{latchLabel}</UiTag>
           {complianceEnabled && (
             <UiTag tone="processing">位置导纳开</UiTag>
           )}
@@ -70,8 +75,8 @@ export function SafetyCard({
     >
       {config.force.source === 'hkvl_serial' && <ForceStartupSelfCheck />}
       <div className="hardware-metric-grid">
-        <MetricBox label="danger_index" value={dangerIndex.toFixed(3)} tone={dangerIndex > 0.7 ? 'warn' : 'ok'} />
-        <MetricBox label="安全锁存" value={safetyLatched ? '已锁存' : '未锁存'} tone={safetyLatched ? 'warn' : 'ok'} />
+        <MetricBox label="danger_index" value={dangerIndex?.toFixed(3) ?? '不可用'} tone={dangerIndex === null ? 'neutral' : dangerIndex > 0.7 ? 'warn' : 'ok'} />
+        <MetricBox label="安全锁存" value={latchLabel} tone={safetyLatched || emergencyRequested ? 'warn' : live && safetyLatched === false ? 'ok' : 'neutral'} />
         <MetricBox label="锁存原因" value={latchReason || '—'} hint={safetyLatched ? '需确认后才能恢复运动' : undefined} />
         <MetricBox label="Fx/Fy 警告 N" value={config.safety.fxyWarnN.toFixed(1)} />
         <MetricBox label="Fx/Fy 急停 N" value={config.safety.fxyStopN.toFixed(1)} hint="暂按量程" />

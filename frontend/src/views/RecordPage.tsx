@@ -4,7 +4,7 @@
  * 先看：RecordPage。
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import CameraPanel from '../components/record/CameraPanel'
 import EpisodeControlPanel from '../components/record/EpisodeControlPanel'
 import EpisodeHistoryCard from '../components/record/EpisodeHistoryCard'
@@ -15,18 +15,19 @@ import QualityReportModal from '../components/record/QualityReportModal'
 import RecordTelemetryPanel from '../components/record/RecordTelemetryPanel'
 import SafetyMonitorCard from '../components/record/SafetyMonitorCard'
 import { useTelemetryStore } from '../stores/telemetry'
+const recordActionKeys: Readonly<Record<string, string | undefined>> = {
+  ' ': 'advance', ArrowRight: 'advance', ArrowLeft: 'discard', Escape: 'finish',
+}
+
 /** 渲染当前界面单元，并连接所需数据。 */
 export default function RecordPage() {
+  const pageRef = useRef<HTMLDivElement>(null)
   const [preCheckVisible, setPreCheckVisible] = useState(false)
 
   const latestReport = useTelemetryStore((s) => s.recordSession.latestQualityReport)
   const datasetName = useTelemetryStore((s) => s.recordSession.datasetName)
   const task = useTelemetryStore((s) => s.recordSession.task)
   const startRecordSession = useTelemetryStore((s) => s.startRecordSession)
-  const saveRecordEpisode = useTelemetryStore((s) => s.saveRecordEpisode)
-  const discardRecordEpisode = useTelemetryStore((s) => s.discardRecordEpisode)
-  const finishRecordSession = useTelemetryStore((s) => s.finishRecordSession)
-  const skipRecordReset = useTelemetryStore((s) => s.skipRecordReset)
   const toggleRecordClutch = useTelemetryStore((s) => s.toggleRecordClutch)
   const setRecordSpeedMode = useTelemetryStore((s) => s.setRecordSpeedMode)
   const homeRecordArms = useTelemetryStore((s) => s.homeRecordArms)
@@ -34,44 +35,37 @@ export default function RecordPage() {
   const rejectRecordQualityReport = useTelemetryStore((s) => s.rejectRecordQualityReport)
 
   const handleCreateSession = useCallback(() => startRecordSession(datasetName, task), [datasetName, task, startRecordSession])
-  const handleSave = useCallback(() => saveRecordEpisode(), [saveRecordEpisode])
-  const handleDiscard = useCallback(() => discardRecordEpisode(), [discardRecordEpisode])
-  const handleStopSession = useCallback(() => finishRecordSession(), [finishRecordSession])
-  const handleSkipReset = useCallback(() => skipRecordReset(), [skipRecordReset])
 
   useEffect(() => {
-   /** 处理对应的用户交互。 */
-   const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement
-      const tag = target.tagName
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || target.isContentEditable) return
-      if (e.repeat) return
-      if (preCheckVisible || latestReport) return
+    let controlAlone = false
+    const cancelControl = () => { controlAlone = false }
+    const acceptsShortcut = (e: KeyboardEvent) => {
+      if (preCheckVisible || latestReport || e.defaultPrevented || e.isComposing || pageRef.current?.querySelector('[aria-modal="true"]')) return false
+      if (!(e.target instanceof Element)) return true
+      if (e.target instanceof HTMLElement && e.target.isContentEditable) return false
+      return !e.target.closest('button, a, input, textarea, select, [role="button"], [role="dialog"], [role="separator"]')
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Control') cancelControl()
+      if (e.repeat || !acceptsShortcut(e) || e.metaKey || e.altKey || (e.shiftKey && e.key !== 'R')) return
+      if (e.key === 'Control') {
+        controlAlone = true
+        return
+      }
+      if (e.ctrlKey) return
 
+      // 快捷键激活当前可用的按钮，沿用按钮的复位检查及夹爪确认。
+      const action = recordActionKeys[e.key]
+      if (action) {
+        const button = pageRef.current?.querySelector<HTMLButtonElement>(`button[data-record-action="${action}"]`)
+        if (button && !button.disabled) {
+          e.preventDefault()
+          button.click()
+        }
+        return
+      }
       const phase = useTelemetryStore.getState().recordSession.phase
-
       switch (e.key) {
-        case ' ':
-        case 'ArrowRight':
-          e.preventDefault()
-          if (phase === 'recording' || phase === 'interrupted') handleSave()
-          if (phase === 'resetting') handleSkipReset()
-          break
-
-        case 'ArrowLeft':
-          e.preventDefault()
-          if (phase === 'recording' || phase === 'interrupted') handleDiscard()
-          break
-
-        case 'Escape':
-          e.preventDefault()
-          if (phase === 'recording' || phase === 'interrupted' || phase === 'resetting') handleStopSession()
-          break
-
-        case 'Control':
-          toggleRecordClutch()
-          break
-
         case '1':
           setRecordSpeedMode('coarse')
           break
@@ -92,22 +86,31 @@ export default function RecordPage() {
       }
     }
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key !== 'Control') return
+      if (controlAlone && acceptsShortcut(e)) toggleRecordClutch()
+      cancelControl()
+    }
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('pointerdown', cancelControl)
+    window.addEventListener('blur', cancelControl)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('pointerdown', cancelControl)
+      window.removeEventListener('blur', cancelControl)
+    }
   }, [
     preCheckVisible,
     latestReport,
-    handleSave,
-    handleDiscard,
-    handleStopSession,
-    handleSkipReset,
     homeRecordArms,
     setRecordSpeedMode,
     toggleRecordClutch,
   ])
 
   return (
-    <div className="record-page">
+    <div className="record-page" ref={pageRef}>
       <div className="record-page-layout">
         <div className="record-page-main">
           <CameraPanel />

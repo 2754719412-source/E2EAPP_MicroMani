@@ -77,6 +77,7 @@ def test_record_gripper_samples_dds_without_waiting_for_ui_cache(monkeypatch, re
         aligned = recorder._aligned_sample("gripper", target)
         assert aligned.ok and not aligned.stale
         assert aligned.monotonic_s == fresh["monotonic_s"]
+    # 位置采样只读状态；逐读数历史由独立线程拉取，不在这里等待。
     recorder.hal.command.assert_awaited_once_with("teleop.native.status", {})
 
 

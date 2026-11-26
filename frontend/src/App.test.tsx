@@ -510,13 +510,52 @@ describe('AppStation M0 frontend', () => {
   it('navigates to the record workflow', async () => {
     await renderApp()
     fireEvent.click(screen.getByRole('link', { name: '录制' }))
-    expect(await screen.findByText('相机预览', {}, { timeout: 5000 })).toBeInTheDocument()
+    await act(async () => { await vi.dynamicImportSettled() })
+    expect(within(screen.getByRole('main')).getByText('相机预览')).toBeInTheDocument()
     expect(screen.getByText('运动与力觉监看')).toBeInTheDocument()
     expect(screen.getByText('录制控制')).toBeInTheDocument()
     expect(screen.getByText('开始采集会话')).toBeInTheDocument()
     expect(screen.getByText('力觉安全监控')).toBeInTheDocument()
     expect(document.querySelector('.record-camera-placeholder-wrist_left')).toBeTruthy()
     expect(document.querySelector('.record-camera-placeholder-wrist_right')).toBeTruthy()
+  })
+
+  it('录制快捷键保留按钮的空格操作，组合键不会回原点或切换离合器', async () => {
+    window.history.pushState({}, '', '/record')
+    await renderApp()
+    const original = useTelemetryStore.getState()
+    const saveRecordEpisode = vi.fn(), homeRecordArms = vi.fn(), toggleRecordClutch = vi.fn()
+    try {
+      act(() => useTelemetryStore.setState({ saveRecordEpisode, homeRecordArms, toggleRecordClutch,
+        recordSession: { ...original.recordSession, phase: 'recording' } }))
+      const stop = screen.getByRole('button', { name: '全局急停' })
+      expect(fireEvent.keyDown(stop, { key: ' ' })).toBe(true)
+      expect(saveRecordEpisode).not.toHaveBeenCalled()
+      expect(fireEvent.keyDown(document.body, { key: ' ' })).toBe(false)
+      expect(saveRecordEpisode).toHaveBeenCalledOnce()
+      act(() => useTelemetryStore.setState({ recordSession: { ...original.recordSession, phase: 'idle' } }))
+      fireEvent.keyDown(document.body, { key: 'Control', ctrlKey: true })
+      fireEvent.keyDown(document.body, { key: 'r', ctrlKey: true })
+      fireEvent.keyUp(document.body, { key: 'Control' })
+      expect(homeRecordArms).not.toHaveBeenCalled()
+      expect(toggleRecordClutch).not.toHaveBeenCalled()
+      fireEvent.keyDown(document.body, { key: 'Control', ctrlKey: true })
+      fireEvent.keyUp(document.body, { key: 'Control' })
+      expect(toggleRecordClutch).toHaveBeenCalledOnce()
+      act(() => {
+        useTelemetryStore.getState().stopMock()
+        useTelemetryStore.setState({ frame: { ...original.frame, gripperPositions: [1, 1] },
+          recordSession: { ...original.recordSession, phase: 'resetting', resetReady: true, returnOriginInFlight: false,
+            participation: { version: 'appstation.participation.v1', arms: ['left'], grippers: ['left'] } } })
+      })
+      fireEvent.keyDown(document.body, { key: 'ArrowRight' })
+      expect(screen.getByRole('dialog', { name: '夹爪未张开' })).toBeInTheDocument()
+      fireEvent.keyDown(document.body, { key: 'r' })
+      expect(homeRecordArms).not.toHaveBeenCalled()
+    } finally {
+      act(() => useTelemetryStore.setState({ saveRecordEpisode: original.saveRecordEpisode,
+        homeRecordArms: original.homeRecordArms, toggleRecordClutch: original.toggleRecordClutch, recordSession: original.recordSession }))
+    }
   })
 
   it('exposes Kalman filter controls on the record page', async () => {
@@ -2157,11 +2196,10 @@ describe('AppStation M0 frontend', () => {
     fireEvent.change(within(forceCard!).getByLabelText('数据源'), { target: { value: 'nidaq' } })
     expect(within(forceCard!).queryByText('标定证书待确认')).not.toBeInTheDocument()
     expect(within(forceCard!).getByText('标定证书')).toBeInTheDocument()
-    expect(within(forceCard!).getByText('待确认')).toBeInTheDocument()
-
-    const switches = within(forceCard!).getAllByRole('checkbox')
-    fireEvent.click(switches.at(-1)!)
-
+    const certificate = within(forceCard!).getByRole('checkbox', { name: '标定证书' })
+    expect(certificate).not.toBeChecked()
+    fireEvent.click(certificate)
+    expect(certificate).toBeChecked()
     expect(within(forceCard!).getByText('已确认')).toBeInTheDocument()
   })
 

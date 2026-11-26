@@ -56,7 +56,7 @@ export interface DiagnosticItem {
 }
 
 export interface CameraTelemetry {
-  key: 'global' | 'wrist_left' | 'wrist_right'
+  key: DatasetCameraKeyApi
   label: string
   fps: number
   timestampSkewMs: number
@@ -118,6 +118,7 @@ export interface ForceCalibrationSideStatus {
 }
 
 export interface ForceStatus {
+  sampleVoltage?: boolean | null
   source?: 'nidaq' | 'hkvl_serial' | 'test' | string
   protocol?: string
   sensorRawLeft?: number[]
@@ -150,12 +151,61 @@ export interface ForceStatus {
   }
 }
 
+/** HAL 结构化夹爪读数：同一次读取的位置、状态与 gCU 电流原码；各字段只在对应有效标志为 true 时可信。 */
+export interface GripperFeedbackSample {
+  seq: number
+  monotonicUs: number
+  timestampSource?: 'worker' | 'hal_midpoint'
+  transport?: string
+  positionValid: boolean
+  statusValid: boolean
+  currentValid: boolean
+  positionRaw: number
+  currentRaw: number
+  gACT: number
+  gGTO: number
+  gSTA: number
+  gOBJ: number
+  fault: number
+}
+
+/** HAL 自上次重置以来的真实读数统计。 */
+export interface GripperSampleStats {
+  samples: number
+  spanMs: number
+  effectiveHz: number
+  maxGapMs: number
+}
+
+/** scripts/calibrate_gripper_force.py 生成的单侧夹持力标定（硬件侧）。 */
+export interface GripperForceCalibration {
+  version: number
+  port: string
+  slaveId: number
+  calibratedAtUnixMs?: number
+  reference?: string
+  baseline: { currentMeanRaw: number; currentStdRaw: number; currentMaxRaw: number; contactThresholdRaw: number }
+  rfcToForceN: {
+    slope: number
+    intercept: number
+    rmsResidualN: number
+    hysteresisN?: number
+    rfcMin: number
+    rfcMax: number
+    forceMinN?: number
+    forceMaxN?: number
+  }
+  holdCurrentRaw: { slope: number; intercept: number; rmsResidualRaw?: number }
+}
+
 export interface GripperSideStatus {
   ok?: boolean | null
   message?: string
   positionMm?: number | null
   targetMm?: number | null
   lastCommandTs?: number
+  sample?: GripperFeedbackSample | null
+  sampleStats?: GripperSampleStats | null
   serial?: {
     port?: string
     slaveId?: number
@@ -167,6 +217,8 @@ export interface GripperStatus {
   nativeManaged?: boolean
   running?: boolean
   requestedRunning?: boolean
+  /** HAL 实际生效的夹持力原码、worker 传输方式与读取间隔。 */
+  command?: { torque?: number; speed?: number; transport?: string; sampleIntervalMs?: number } | null
   sides?: {
     left?: GripperSideStatus
     right?: GripperSideStatus
@@ -200,6 +252,9 @@ export interface TelemetryFrame {
 
 export interface TelemetrySample {
   time: number
+  /** 未标定 NI-DAQ 历史使用电压；旧样本沿用 SI 约定。 */
+  forceVoltage?: boolean
+  forceHealthy?: { left: boolean; right: boolean }
   joints: number[]
   forceLeft: number[]
   forceRight: number[]
@@ -341,7 +396,7 @@ export interface EpisodeRecord {
   maxForceLeft: number
   maxForceRight: number
   lateFrames: number
-  cameraDrops: { global: number; wristLeft: number; wristRight: number }
+  cameraDrops: { global: number; wristLeft: number; wristRight: number; microscope?: number }
 }
 
 export interface RecordTrainingQualitySide {
@@ -376,14 +431,14 @@ export interface RecordQualityAssessment {
   recommendation: 'accept' | 'review' | 'rerecord'
   reasons: RecordQualityReason[]
   lateRate?: number
-  cameraDropRates?: Partial<Record<'global' | 'wrist_left' | 'wrist_right', number>>
+  cameraDropRates?: Partial<Record<DatasetCameraKeyApi, number>>
 }
 
 export interface RecordQualityReport extends EpisodeRecord {
   warnings: string[]
   passed: boolean
   maxSkewMs?: number
-  cameraMinFps?: Partial<Record<'global' | 'wrist_left' | 'wrist_right', number>>
+  cameraMinFps?: Partial<Record<DatasetCameraKeyApi, number>>
   cameraWorkerFallbacks?: string[]
   trainingQuality?: RecordTrainingQuality
   qualityAssessment?: RecordQualityAssessment
@@ -425,7 +480,7 @@ export interface RecordSessionState {
 }
 
 export type DatasetEpisodeStatusApi = 'valid' | 'review' | 'invalid'
-export type DatasetCameraKeyApi = 'global' | 'wrist_left' | 'wrist_right'
+export type DatasetCameraKeyApi = 'global' | 'wrist_left' | 'wrist_right' | 'microscope'
 
 export interface DatasetFeatureApi {
   dtype?: string
@@ -593,13 +648,15 @@ export interface AppConfig {
     wristLeftIdentity?: string
     wristRight: string
     wristRightIdentity?: string
+    microscopeEnabled?: boolean
+    microscopeIdentity?: string
     previewResolution: string
     globalResolution?: string
     wristLeftResolution?: string
     wristRightResolution?: string
     fps: number
     tuningDefaultsVersion?: string
-    tuning: Record<CameraTelemetry['key'], CameraTuningProfile>
+    tuning: Record<Exclude<DatasetCameraKeyApi, 'microscope'>, CameraTuningProfile>
   }
   force: {
     source: 'nidaq' | 'hkvl_serial'
@@ -679,6 +736,13 @@ export interface AppConfig {
     sampleEnableOnNegative: boolean
     workerCommandTimeoutSec: number
     forceFeedbackAvailable: boolean
+    /** worker 访问夹爪的方式；modbus 需现场验收后启用。 */
+    workerTransport?: 'dll' | 'modbus'
+    forceCalibration?: {
+      applyCommandForceLimit: boolean
+      left: GripperForceCalibration | null
+      right: GripperForceCalibration | null
+    }
   }
   safety: {
     fxyWarnN: number

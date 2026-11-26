@@ -26,14 +26,17 @@ import {
   type RobotSide,
 } from '../data'
 import { numberArrayEqual, teleopHandFrameEqual, teleopHandFrameSlice, useFrameField } from '../stores/frameSelectors'
+import { reportedForceDanger } from '../forceDisplay'
 import { useTelemetryStore } from '../stores/telemetry'
 import { canAcknowledgeControlSafety } from '../utils/controlSafety'
 import { GripperCard } from './settings/GripperCards'
 import { MotionCard } from './settings/MotionCards'
 import { TeleopHandCard } from './settings/TeleopHandCard'
+import { MicroscopeCameraCard } from './settings/MicroscopeCameraCard'
 import { CameraCard } from './settings/CameraCard'
 import { WristCameraIdentification } from '../components/WristCameraIdentification'
 import { ForceSensorCard } from './settings/ForceSensorCard'
+import { GripperForceCard } from './settings/GripperForceCard'
 import { ManualControlPanel } from './settings/ManualControlPanel'
 import { HalCard } from './settings/HalCard'
 import { SafetyCard } from './settings/SafetyCard'
@@ -60,6 +63,7 @@ const hashLabels: Record<string, string> = {
   teleop: 'PICO-4 视觉推流',
   'motion-left': '左运动控制卡',
   'motion-right': '右运动控制卡',
+  'camera-microscope': '显微成像单元',
   'camera-global': '全局相机',
   'camera-left': '左腕相机',
   'camera-right': '右腕相机',
@@ -103,13 +107,14 @@ export function SettingsView() {
   const activeTab = tabSelection.focusHash === focusHash ? tabSelection.tab : tabForHardwareHash(focusHash)
   if (tabSelection.focusHash !== focusHash) setTabSelection({ focusHash, tab: activeTab })
   const config = useTelemetryStore((state) => state.config)
-  const dangerIndex = useTelemetryStore((state) => activeTab === 'force' ? state.frame.dangerIndex : 0)
+  const dangerIndex = useTelemetryStore((state) => activeTab === 'force' ? reportedForceDanger(state) : null)
   const forceLeft = useFrameField((frame) => activeTab === 'force' ? frame.forceLeft : emptyValues, numberArrayEqual)
   const forceRight = useFrameField((frame) => activeTab === 'force' ? frame.forceRight : emptyValues, numberArrayEqual)
   const jointPositions = useFrameField((frame) => activeTab === 'motion' ? frame.jointPositions : emptyValues, numberArrayEqual)
   const gripperPositions = useFrameField((frame) => activeTab === 'motion' || activeTab === 'teleop' ? frame.gripperPositions : emptyValues, numberArrayEqual)
   const cameras = useTelemetryStore((state) => activeTab === 'vision' ? state.frame.cameras : emptyCameras)
   const forceStatus = useTelemetryStore((state) => activeTab === 'force' ? state.frame.forceStatus : undefined)
+  const gripperStatus = useTelemetryStore((state) => activeTab === 'force' ? state.frame.gripperStatus : undefined)
   const teleopFrame = useFrameField(
     (frame) => activeTab === 'teleop' ? teleopHandFrameSlice(frame) : null,
     (a, b) => a === b || (a !== null && b !== null && teleopHandFrameEqual(a, b)),
@@ -264,7 +269,7 @@ export function SettingsView() {
           <div className="module-group">
             <div className="module-group-head">
               安全链路 / 急停 / 软限位
-              <small>danger_index {dangerIndex.toFixed(2)}</small>
+              <small>danger_index {dangerIndex?.toFixed(2) ?? '不可用'}</small>
             </div>
             <SafetyCard
               config={config}
@@ -290,6 +295,24 @@ export function SettingsView() {
                   values={hardwareSideForOperatorSide(side) === 'left' ? forceLeft : forceRight}
                   forceStatus={forceStatus}
                   injectLog={injectLog}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="module-group">
+            <div className="module-group-head">
+              夹爪力感知
+              <small>Jodell EPG26-006 · gCU 电流 · 夹持力标定</small>
+            </div>
+            <div className="hardware-settings-grid">
+              {sideOrder.map((side) => (
+                <GripperForceCard
+                  key={side}
+                  side={side}
+                  config={config}
+                  updateConfig={updateConfig}
+                  focusHash={focusHash}
+                  gripperStatus={gripperStatus}
                 />
               ))}
             </div>
@@ -424,6 +447,8 @@ export function SettingsView() {
               config: { ...state.config, cameras: savedCameras },
             }))} />
             <div className="hardware-settings-grid">
+              <MicroscopeCameraCard config={config} camera={cameras.find((item) => item.key === 'microscope')}
+                updateConfig={updateConfig} focusHash={focusHash} />
               {cameraOrder.map((key) => (
                 <CameraCard
                   key={key}

@@ -81,6 +81,8 @@ def resume_metadata_error(
     old_features = info.get("features")
     if not isinstance(old_features, dict):
         return "缺少已有数据的字段格式"
+    if ("observation.images.microscope" in features) != ("observation.images.microscope" in old_features):
+        return "显微相机参与状态与原数据集不一致"
     for name, expected in features.items():
         actual = old_features.get(name)
         if not isinstance(actual, dict) or any(
@@ -99,7 +101,10 @@ def resume_metadata_error(
             or old_cameras["fps"] != cameras["fps"]):
         return "相机采集帧率不一致或原记录无效"
     identities = []
-    for role, key in (("global", "globalIdentity"), ("wrist_left", "wristLeftIdentity"), ("wrist_right", "wristRightIdentity")):
+    bindings = [("global", "globalIdentity"), ("wrist_left", "wristLeftIdentity"), ("wrist_right", "wristRightIdentity")]
+    if "observation.images.microscope" in features:
+        bindings.append(("microscope", "microscopeIdentity"))
+    for role, key in bindings:
         before, after = old_cameras.get(key), cameras.get(key)
         if not isinstance(before, str) or not isinstance(after, str) or not before.strip() or not after.strip():
             return f"相机 {role} 缺少稳定身份，请先确认绑定；无法凭设备序号认定同一相机"

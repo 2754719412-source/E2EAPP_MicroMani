@@ -8,10 +8,12 @@
 #include <string>
 #include <thread>
 #include "HalJson.h"
+#include "JodellModbusClient.h"
 #include "NativeTeleopController.h"
 #include "OfflineMotion.h"
 
 using namespace appstation::hal;
+namespace jodell = appstation::hal::jodell;
 using namespace std::chrono_literals;
 namespace {
 void require(bool value, const char* text) { if (!value) throw std::runtime_error(text); }
@@ -31,6 +33,15 @@ int worker(int argc, char** argv) {
         Sleep(1000);
       }
       else Sleep(15);
+      if (port == "SAMPLE" || port == "STALE") {
+        // 结构化样本：SAMPLE 每次新时间戳；STALE 恒定时间戳，模拟同一读数被重复上报。
+        static int counter = 0;
+        jodell::StatusRegisters registers{1, 0, 1, 3, 2, 0, 200, 0, 100 + (counter++ % 50)};
+        const auto stamp = port == "STALE" ? std::int64_t{1} : jodell::steadyNowUs() - 7000;
+        std::cout << "OK\t12\tmeasured\t" << jodell::formatSampleFields(jodell::sampleFromStatus(registers, stamp))
+            << std::endl;
+        continue;
+      }
       std::cout << (port == "ERROR" || std::filesystem::exists(path + ".fail")
           ? "ERR\t-1\tread_failed" : "OK\t12\tmeasured") << std::endl;
     } else if (line.rfind("COMMAND", 0) == 0) {
@@ -172,6 +183,28 @@ void testFailedReadPreservesLastSuccessTime(const char* exe) {
   require(jsonNumberValue(f.status(), "positionSampleTs", 0) > lastSuccess, "recovery reused old timestamp");
   require(!std::filesystem::exists(f.log), "read recovery sent a command");
 }
+
+void testStructuredSamplesGetSequenceAndHistory(const char* exe) {
+  Fixture f(exe, "_samples");
+  f.config.ports = {"SAMPLE", "STALE"};
+  f.teleop.configureGripperFeedback(f.config, {true, true});
+  // 第一个 "seq" 属于左侧最新样本。
+  await([&] { return jsonNumberValue(f.status(), "seq", 0) >= 3; }, "structured samples missing");
+  const auto status = f.status();
+  require(status.find("\"timestampSource\":\"worker\"") != std::string::npos, "worker timestamp rejected");
+  require(status.find("\"currentValid\":true") != std::string::npos, "current not reported");
+  require(jsonNumberValue(status, "gOBJ", -1) == 2, "gOBJ missing");
+  const auto history = status.substr(status.find("\"gripperSampleHistory\":{"));
+  require(history.find("\"left\":[[1,") != std::string::npos && history.find("],[3,") != std::string::npos,
+      "left history not sequential");
+  // 恒定时间戳的右侧只能记一次；该时间戳不在请求窗口内，退回 HAL 中点。
+  const auto rightStart = history.find("\"right\":[");
+  const auto right = history.substr(rightStart, history.find("]]", rightStart) + 2 - rightStart);
+  require(right.rfind("\"right\":[[1,", 0) == 0 && right.find("],[") == std::string::npos, "duplicate reading recorded");
+  require(status.find("\"timestampSource\":\"hal_midpoint\"") != std::string::npos, "out-of-window stamp trusted");
+  require(status.find("\"effectiveHz\":") != std::string::npos && status.find("\"maxGapMs\":") != std::string::npos,
+      "sample statistics missing");
+}
 }
 int main(int argc, char** argv) {
   if (argc > 1) return worker(argc, argv);
@@ -182,6 +215,7 @@ int main(int argc, char** argv) {
     testSameSideReadYieldsToSynchronousCommand(argv[0]);
     testFailedReadPreservesLastSuccessTime(argv[0]);
     testReadVerbFollowsScenario(argv[0]);
+    testStructuredSamplesGetSequenceAndHistory(argv[0]);
     std::cout << "GripperFeedbackTests passed\n";
     return 0;
   } catch (const std::exception& error) {
