@@ -89,17 +89,6 @@ export function ForceSensorCard({
   const axisSigns = axisSignConfig[hardwareSide] ?? fallbackForceAxisSigns[hardwareSide]
   const [axisCalibrationOpen, setAxisCalibrationOpen] = useState(false)
   const [axisSignDraft, setAxisSignDraft] = useState<number[]>(axisSigns)
-  const updateCompliance = (nextSide: typeof compliance) => {
-    updateConfig({
-      force: {
-        ...config.force,
-        compliance: {
-          ...config.force.compliance,
-          [hardwareSide]: nextSide,
-        },
-      },
-    })
-  }
   const updateComplianceArray = (
     key: 'matrix' | 'deadbandN' | 'gainUmPerNs' | 'maxStepUm' | 'maxOffsetUm',
     index: number,
@@ -107,7 +96,18 @@ export function ForceSensorCard({
   ) => {
     const next = [...compliance[key]]
     next[index] = Number(value ?? 0)
-    updateCompliance({ ...compliance, [key]: next })
+    if (next[index] === compliance[key][index]) return
+    const matrixChanged = key === 'matrix'
+    updateConfig({
+      force: {
+        ...config.force,
+        compliance: {
+          ...config.force.compliance,
+          ...(matrixChanged && { enabled: false }),
+          [hardwareSide]: { ...compliance, [key]: next, ...(matrixChanged && { mappingConfirmed: false }) },
+        },
+      },
+    })
   }
   const exportForceHistory = () => {
     const samples = recentForceHistory(history, voltage, hardwareSide)
@@ -135,13 +135,6 @@ export function ForceSensorCard({
         axisSign: {
           ...axisSignConfig,
           [hardwareSide]: axisSignDraft,
-        },
-        compliance: {
-          ...config.force.compliance,
-          [hardwareSide]: {
-            ...compliance,
-            mappingConfirmed: true,
-          },
         },
       },
     })
@@ -308,7 +301,7 @@ export function ForceSensorCard({
                       <span>操作者视角 · 传感器原始坐标到滑轨坐标</span>
                     </div>
                     <UiTag tone={compliance.mappingConfirmed ? 'success' : 'warning'}>
-                      {compliance.mappingConfirmed ? '已验证' : '待标定'}
+                      {compliance.mappingConfirmed ? 'X/Z 映射已确认' : 'X/Z 映射待确认'}
                     </UiTag>
                   </div>
                   <UiButton

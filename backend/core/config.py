@@ -39,7 +39,7 @@ from backend.core.defaults import (
     default_config,
     rotation_work_limits_from_soft_limits,
 )
-from backend.core.force_config import hkvl_tare_sample_count, validate_force_config
+from backend.core.force_config import hkvl_tare_sample_count, invalidate_changed_force_mappings, validate_force_config
 from backend.core.logging import LogService, now_ms, stable_config_hash
 from backend.core.work_origin import axis_instance_ids, offset_reference_kinds
 from backend.core.motion_limits import (
@@ -543,7 +543,7 @@ class SettingsService:
                     self.logs.warning("[FORCE]", f"旧 HKVL Tare 样本数 {old_samples!r} 不再支持，已改为默认 200")
             validated = AppConfig.model_validate(merged).model_dump(mode="json")
             if merged != data:
-                self.save_config(validated, emit_log=False, source="startup")
+                return self.save_config(validated, emit_log=False, source="startup")
             elif key is not None:
                 # 读取期间若有 save_config，本次结果可能是旧内容，不存缓存。
                 with self._cache_lock:
@@ -569,6 +569,7 @@ class SettingsService:
         before_commit: Callable[[], None] | None = None,
         home_reference_update: bool = False,
         work_origin_update: bool = False,
+        confirm_mapping_side: str | None = None,
     ) -> dict[str, Any]:
         old_config: dict[str, Any] = {}
         if self.config_path.exists():
@@ -640,6 +641,7 @@ class SettingsService:
                             and index < len(old_limits) and old_limits[index] is True
                             for index in range(6)
                         ]
+        invalidate_changed_force_mappings(old_config, config, confirm_side=confirm_mapping_side)
         validate_force_config(config)
         validated = AppConfig.model_validate(config).model_dump(mode="json")
         old_hash = stable_config_hash(old_config) if old_config else "-"
@@ -736,7 +738,9 @@ class SettingsService:
     def _snapshot_config_for_apply(self, snapshot: ParameterSnapshot) -> dict[str, Any]:
         active = self.get_config()
         if snapshot.scope == "all":
-            return AppConfig.model_validate(snapshot.config).model_dump(mode="json")
+            candidate = AppConfig.model_validate(snapshot.config).model_dump(mode="json")
+            invalidate_changed_force_mappings(active, candidate)
+            return candidate
         motion_config = MotionCardSnapshotConfig.model_validate(snapshot.config)
         return self._apply_motion_snapshot(active, snapshot.scope, motion_config)
 

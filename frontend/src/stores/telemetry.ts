@@ -146,8 +146,9 @@ function manualAxisBusyKey(side: ManualControlState['selectedSide'], axis: Manua
 }
 
 /** 按顺序保存配置，避免录制启动早于最近一次参数写入。 */
-function queueConfigSave(config: AppConfig) {
-  const nextSave = configSaveQueue.catch(() => undefined).then(() => putConfig(config))
+function queueConfigSave(config: AppConfig, confirmMappingSide?: 'left' | 'right') {
+  const nextSave = configSaveQueue.catch(() => undefined).then(() =>
+    confirmMappingSide ? putConfig(config, confirmMappingSide) : putConfig(config))
   configSaveQueue = nextSave.catch(() => undefined)
   return nextSave
 }
@@ -433,7 +434,7 @@ interface TelemetryStore {
   runDiagnostics: () => Promise<void>
   setPicoConnectionStatus: (state: ConnectionState, message: string) => void
   autoConfigurePicoNetwork: (picoIp?: string) => Promise<PicoNetworkInfo>
-  updateConfig: (patch: Partial<AppConfig>) => void
+  updateConfig: (patch: Partial<AppConfig>, confirmMappingSide?: 'left' | 'right') => void
   saveParameterSnapshot: (scope: ParameterSnapshotScope, name: string) => void
   applyParameterSnapshot: (id: string) => void
   deleteParameterSnapshot: (id: string) => void
@@ -2628,11 +2629,17 @@ autoConfigurePicoNetwork: async (picoIp) => {
   },
 
 /** 描述当前方法的功能边界。 */
-updateConfig: (patch) => {
+updateConfig: (patch, confirmMappingSide) => {
     const nextConfig = mergeConfig(get().config, patch)
     set({ config: nextConfig })
     if (!mockMode) {
-      void queueConfigSave(nextConfig).catch((error) => {
+      void queueConfigSave(nextConfig, confirmMappingSide).then((saved) => {
+        if (get().config !== nextConfig) return
+        const actual = saved.force.compliance
+        const draft = nextConfig.force.compliance
+        if (actual.enabled !== draft.enabled || actual.left.mappingConfirmed !== draft.left.mappingConfirmed
+          || actual.right.mappingConfirmed !== draft.right.mappingConfirmed) set({ config: normalizeConfig(saved) })
+      }).catch((error) => {
         set((state) => ({
           logs: appendLog(state.logs, makeLog('ERROR', `settings save failed: ${String(error)}`, '[BACKEND]')),
         }))
@@ -2696,6 +2703,7 @@ applyParameterSnapshot: (id) => {
             logs: appendLog(state.logs, makeLog('ERROR', `snapshot apply failed: ${String(error)}`, '[BACKEND]')),
           }))
         })
+      return
     }
     set((state) => {
       const snapshot = state.parameterSnapshots.find((item) => item.id === id)
@@ -2703,6 +2711,16 @@ applyParameterSnapshot: (id) => {
       const config = snapshot.scope === 'all'
         ? cloneConfig(snapshot.config)
         : applyMotionCardSnapshotConfig(state.config, snapshot.scope, snapshot.config)
+      if (snapshot.scope === 'all') {
+        for (const side of ['left', 'right'] as const) {
+          const previous = state.config.force.compliance[side]
+          const next = config.force.compliance[side]
+          if (!previous.mappingConfirmed || next.matrix.some((value, index) => value !== previous.matrix[index])) {
+            next.mappingConfirmed = false
+            config.force.compliance.enabled = false
+          }
+        }
+      }
       return {
         config,
         logs: appendLog(state.logs, makeLog('INFO', `${parameterSnapshotScopeLabel(snapshot.scope)}快照已应用：${snapshot.name}`, '[BACKEND]')),

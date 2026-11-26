@@ -366,9 +366,10 @@ export async function postCommand(path: string, body?: unknown) {
 }
 
 /** Persist the full settings tree through the backend validator. */
-export async function putConfig(config: AppConfig): Promise<AppConfig> {
+export async function putConfig(config: AppConfig, confirmMappingSide?: 'left' | 'right'): Promise<AppConfig> {
   if (mockMode) return structuredClone(config)
-  const response = await fetch(`${apiBase}/api/settings`, {
+  const query = confirmMappingSide ? `?confirmMappingSide=${confirmMappingSide}` : ''
+  const response = await fetch(`${apiBase}/api/settings${query}`, {
     method: 'PUT',
     headers: commandHeaders(),
     body: JSON.stringify(config),
@@ -385,7 +386,7 @@ export async function applyConfig(config?: AppConfig) {
     body: config ? JSON.stringify(config) : undefined,
   })
   if (!response.ok) throw await commandErrorFromResponse(response)
-  return response.json() as Promise<unknown>
+  return response.json() as Promise<{ ok: boolean; data: { config: AppConfig } }>
 }
 /** 从后端读取对应数据。 */
 export async function fetchParameterSnapshots(scope?: ParameterSnapshotScope): Promise<ParameterSnapshot[]> {

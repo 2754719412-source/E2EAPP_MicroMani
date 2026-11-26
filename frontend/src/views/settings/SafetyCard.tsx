@@ -2,6 +2,7 @@
  * 安全链路 / 急停 / 软限位设置卡；与其它硬件卡同等密度。
  * 先看：SafetyCard。
  */
+import { hardwareChannelLabel, hardwareSideForOperatorSide, operatorSideLabel, type RobotSide } from '../../data'
 import { ShieldAlert } from 'lucide-react'
 import { forceFeedbackLive, reportedForceDanger } from '../../forceDisplay'
 import { ForceStartupSelfCheck } from '../../components/ForceStartupSelfCheck'
@@ -19,7 +20,7 @@ export function SafetyCard({
   acknowledgeSafety,
 }: {
   config: AppConfig
-  updateConfig: (patch: Partial<AppConfig>) => void
+  updateConfig: (patch: Partial<AppConfig>, confirmMappingSide?: RobotSide) => void
   focusHash: string
   triggerEmergencyStop: () => void
   acknowledgeSafety: () => void
@@ -138,44 +139,23 @@ export function SafetyCard({
               }
             />
           </UiField>
-          <UiField label="左臂映射已确认">
-            <UiSwitch
-              checked={leftConfirmed}
-              checkedChildren="是"
-              unCheckedChildren="否"
-              disabled={complianceEnabled}
-              onChange={(checked) =>
-                updateConfig({
-                  force: {
-                    ...config.force,
-                    compliance: {
-                      ...config.force.compliance,
-                      left: { ...config.force.compliance.left, mappingConfirmed: checked },
-                    },
-                  },
-                })
-              }
-            />
-          </UiField>
-          <UiField label="右臂映射已确认">
-            <UiSwitch
-              checked={rightConfirmed}
-              checkedChildren="是"
-              unCheckedChildren="否"
-              disabled={complianceEnabled}
-              onChange={(checked) =>
-                updateConfig({
-                  force: {
-                    ...config.force,
-                    compliance: {
-                      ...config.force.compliance,
-                      right: { ...config.force.compliance.right, mappingConfirmed: checked },
-                    },
-                  },
-                })
-              }
-            />
-          </UiField>
+          {(['left', 'right'] as const).map((side) => {
+            const hardware = hardwareSideForOperatorSide(side)
+            const mapping = config.force.compliance[hardware]
+            const label = `${operatorSideLabel(side)}映射已确认（${hardwareChannelLabel(hardware)}）`
+            return (
+              <UiField label={label} key={side}>
+                <UiSwitch aria-label={label} checked={mapping.mappingConfirmed} checkedChildren="是" unCheckedChildren="否"
+                  disabled={complianceEnabled}
+                  onChange={(checked) => updateConfig({
+                    force: { ...config.force, compliance: {
+                      ...config.force.compliance, [hardware]: { ...mapping, mappingConfirmed: checked },
+                    } },
+                  }, checked ? hardware : undefined)}
+                />
+              </UiField>
+            )
+          })}
         </div>
         {complianceEnabled && (
           <UiTag tone="warning">位置导纳已开启；急停与软限位仍由 HAL 拦截</UiTag>

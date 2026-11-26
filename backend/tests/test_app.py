@@ -430,6 +430,93 @@ def test_apply_settings_reconfigures_changed_hkvl_force_payload(
     assert calls[0][1]["lowpassCutoffHz"] == 15.0
 
 
+@pytest.mark.parametrize("route, side", [("save", "left"), ("apply", "right"), ("snapshot", "left")])
+def test_matrix_edit_invalidates_only_edited_side_before_hal_and_on_disk(
+    tmp_path: Path, monkeypatch: MonkeyPatch, route: str, side: str,
+) -> None:
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+    client = TestClient(create_app(tmp_path))
+    _attach_mock_control_lease(client)
+    calls = []
+
+    async def capture(name, payload):
+        assert name == "force.configure"
+        calls.append(payload)
+        return {"ok": True}
+
+    monkeypatch.setattr(_app_state(client).hal, "command", capture)
+    config = client.get("/api/settings").json()
+    compliance = config["force"]["compliance"]
+    for hardware_side in ("left", "right"):
+        compliance[hardware_side]["mappingConfirmed"] = True
+        assert client.put(f"/api/settings?confirmMappingSide={hardware_side}", json=config).status_code == 200
+    compliance["enabled"] = True
+    compliance[side]["gainUmPerNs"][0] += 1
+    assert client.put("/api/settings", json=config).status_code == 200
+    assert calls[-1]["complianceEnabled"] is True
+
+    compliance[side]["matrix"][0] += 1
+    other = "right" if side == "left" else "left"
+    if route == "snapshot":
+        snapshot = client.post("/api/settings/snapshots", json={"scope": "all", "name": "旧标定", "config": config})
+        path = f"/api/settings/snapshots/{snapshot.json()['data']['snapshot']['id']}/apply"
+        method, body = "POST", None
+    else:
+        path, method = ("/api/settings", "PUT") if route == "save" else ("/api/settings/apply", "POST")
+        body = config
+    calls.clear()
+    for _ in range(2):
+        response = client.request(method, path, json=body)
+        assert response.status_code == 200, response.text
+        saved = client.get("/api/settings").json()["force"]["compliance"]
+        assert saved[side]["matrix"] == compliance[side]["matrix"]
+        assert saved[side]["mappingConfirmed"] is False and saved["enabled"] is False
+        assert saved[other]["mappingConfirmed"] is True
+    assert len(calls) == 1
+    assert calls[0][f"{side}MappingConfirmed"] is False and calls[0]["complianceEnabled"] is False
+    assert calls[0][f"{other}MappingConfirmed"] is True
+
+    compliance["enabled"] = False
+    assert client.put(f"/api/settings?confirmMappingSide={side}", json=config).status_code == 200
+    assert calls[-1][f"{side}MappingConfirmed"] is True
+    assert calls[-1]["complianceEnabled"] is False
+    compliance[side]["matrix"][0] += 1
+    assert client.put(f"/api/settings?confirmMappingSide={side}", json=config).status_code == 400
+    assert client.get("/api/settings").json()["force"]["compliance"][side] == {
+        **compliance[side], "matrix": saved[side]["matrix"],
+    }
+
+
+def test_concurrent_settings_write_cannot_restore_stale_force_mapping(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+    client = TestClient(create_app(tmp_path))
+    _attach_mock_control_lease(client)
+    old = client.get("/api/settings").json()
+    candidate = deepcopy(old)
+    candidate["force"]["compliance"]["left"]["matrix"][0] += 1
+    dispatched, release = Event(), Event()
+
+    async def wait_for_hal(name, payload):
+        assert name == "force.configure"
+        dispatched.set()
+        assert await asyncio.to_thread(release.wait, 5)
+        return {"ok": True}
+
+    monkeypatch.setattr(_app_state(client).hal, "command", wait_for_hal)
+    async def run():
+        first = asyncio.create_task(asyncio.to_thread(client.put, "/api/settings", json=candidate))
+        try:
+            assert await asyncio.to_thread(dispatched.wait, 5)
+            stale = await asyncio.to_thread(client.post, "/api/settings/apply", json=old)
+            assert stale.status_code == 409
+        finally:
+            release.set()
+            assert (await first).status_code == 200
+
+    asyncio.run(run())
+    assert client.get("/api/settings").json()["force"]["compliance"] == candidate["force"]["compliance"]
+
+
 def test_force_runtime_snapshot_is_not_applied_when_hal_rejects_it(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,

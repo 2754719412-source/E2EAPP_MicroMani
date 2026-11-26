@@ -15,9 +15,9 @@ import time
 import traceback
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Literal, cast
 
-from fastapi import Body, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,7 +36,7 @@ from backend.core.data_contract import (
     hardware_to_dataset_motion,
     validate_data_contract,
 )
-from backend.core.force_config import hal_force_config_payload
+from backend.core.force_config import hal_force_config_payload, invalidate_changed_force_mappings
 from backend.core.logging import LOG_SCHEMA_VERSION, LogService, PollingErrorLog, now_ms, stable_config_hash
 from backend.core.loop_watchdog import LoopStallWatchdog
 from backend.core.queued_log_handlers import install_queued_handlers, stop_queued_handlers
@@ -1026,8 +1026,18 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
     async def get_settings() -> dict[str, Any]:
         return await get_config_async()
 
+    settings_write_lock = asyncio.Lock()
+
+    async def single_settings_writer():
+        # 读取基线、下发 HAL 和保存必须是同一次设置操作，以免使用过期的矩阵标定。
+        if settings_write_lock.locked():
+            raise HTTPException(status_code=409, detail={"message": "已有配置正在应用，请稍后重试"})
+        async with settings_write_lock:
+            yield
+
     @contextlib.asynccontextmanager
-    async def configuration_change(current, candidate, *, force_apply=False):
+    async def configuration_change(current, candidate, *, force_apply=False, confirm_side=None):
+        invalidate_changed_force_mappings(current, candidate, confirm_side=confirm_side)
         if any(current.get("cameras", {}).get(key) != candidate.get("cameras", {}).get(key)
                for key in ("microscopeEnabled", "microscopeIdentity")) and recorder.camera_configuration_busy():
             raise HTTPException(status_code=409, detail={"message": "请先结束录制会话再修改显微相机"})
@@ -1072,16 +1082,18 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             check_configuration()
 
     # 保存新的应用配置。
-    @app.put("/api/settings")
-    async def put_settings(config: AppConfig) -> dict[str, Any]:
+    @app.put("/api/settings", dependencies=[Depends(single_settings_writer)])
+    async def put_settings(config: AppConfig, confirmMappingSide: Literal["left", "right"] | None = None) -> dict[str, Any]:
         try:
             current = await get_config_async()
             candidate = config.model_dump(mode="json")
-            async with configuration_change(current, candidate) as (check_configuration, before_commit):
+            async with configuration_change(current, candidate, confirm_side=confirmMappingSide) as (check_configuration, before_commit):
                 if before_commit is not None or hal_force_config_payload(current) != hal_force_config_payload(candidate):
                     await hal.command("force.configure", hal_force_config_payload(candidate))
                 check_configuration()
                 save_options = {"before_commit": before_commit} if before_commit is not None else {}
+                if confirmMappingSide is not None:
+                    save_options["confirm_mapping_side"] = confirmMappingSide
                 return await asyncio.to_thread(settings.save_config, candidate, **save_options)
         except ValueError as exc:
             raise HTTPException(
@@ -1097,7 +1109,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             ) from exc
 
     # 应用传入配置或重新应用当前配置。
-    @app.post("/api/settings/apply")
+    @app.post("/api/settings/apply", dependencies=[Depends(single_settings_writer)])
     async def apply_settings(config: AppConfig | None = None) -> ApiEnvelope:
         try:
             current = await get_config_async()
@@ -1139,7 +1151,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         return envelope({"snapshot": snapshot, "snapshots": snapshots})
 
     # 应用指定配置快照。
-    @app.post("/api/settings/snapshots/{snapshot_id}/apply")
+    @app.post("/api/settings/snapshots/{snapshot_id}/apply", dependencies=[Depends(single_settings_writer)])
     async def apply_snapshot(snapshot_id: str) -> ApiEnvelope:
         try:
             current = await get_config_async()

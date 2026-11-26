@@ -27,7 +27,7 @@ import {
 } from '../data'
 import { numberArrayEqual, teleopHandFrameEqual, teleopHandFrameSlice, useFrameField } from '../stores/frameSelectors'
 import { reportedForceDanger } from '../forceDisplay'
-import { useTelemetryStore } from '../stores/telemetry'
+import { normalizeConfig, useTelemetryStore } from '../stores/telemetry'
 import { canAcknowledgeControlSafety } from '../utils/controlSafety'
 import { GripperCard } from './settings/GripperCards'
 import { MotionCard } from './settings/MotionCards'
@@ -147,11 +147,12 @@ export function SettingsView() {
   const [pendingReturnOriginSide, setPendingReturnOriginSide] = useState<RobotSide | null>(null)
   const returnOriginLock = useRef<RobotSide | null>(null)
   const applyingConfigRef = useRef(false)
+  const appliedConfigRef = useRef<typeof config | null>(null)
   const [applyingConfig, setApplyingConfig] = useState(false)
   const [configApplyStatus, setConfigApplyStatus] = useState('')
 
   useEffect(() => {
-    if (!applyingConfigRef.current) setConfigApplyStatus('')
+    if (!applyingConfigRef.current && appliedConfigRef.current !== config) setConfigApplyStatus('')
   }, [config])
 
   // 锁保留在壳层，避免切换 Tab 后重新挂载的主手卡再次发送回原点请求。
@@ -168,8 +169,13 @@ export function SettingsView() {
     setApplyingConfig(true)
     setConfigApplyStatus('正在应用配置')
     try {
-      await applyConfig(config)
-      setConfigApplyStatus(useTelemetryStore.getState().config === config ? '配置已保存并应用' : '本次配置已应用；后续修改尚未应用')
+      const response = await applyConfig(config)
+      const current = useTelemetryStore.getState().config === config
+      if (current && response.data.config) {
+        appliedConfigRef.current = normalizeConfig(response.data.config)
+        useTelemetryStore.setState({ config: appliedConfigRef.current })
+      }
+      setConfigApplyStatus(current ? '配置已保存并应用' : '本次配置已应用；后续修改尚未应用')
       injectLog('INFO', '配置已保存并应用', '[HAL]')
     } catch (error) {
       const message = `配置应用失败：${commandErrorMessage(error)}`

@@ -419,6 +419,28 @@ describe('AppStation M0 frontend', () => {
     expect(screen.getAllByRole('checkbox', { name: '启用 X/Z 顺应' })[0]).toBeDisabled()
   }, 60000)
 
+  it('矩阵改动只撤销被改侧的标定，人工按操作者侧重新确认', async () => {
+    const config = structuredClone(defaultConfig)
+    config.force.compliance.left.mappingConfirmed = true
+    config.force.compliance.right.mappingConfirmed = true
+    config.force.compliance.enabled = true
+    useTelemetryStore.setState({ config })
+    render(<MemoryRouter initialEntries={['/settings#force-left']}><SettingsView /></MemoryRouter>)
+    const matrix = await screen.findByLabelText('左臂映射矩阵 1')
+    fireEvent.change(matrix, { target: { value: '-2' } })
+    const compliance = () => useTelemetryStore.getState().config.force.compliance
+    expect(compliance().right.matrix[0]).toBe(-2)
+    expect(compliance().right.mappingConfirmed).toBe(false)
+    expect(compliance().left.mappingConfirmed).toBe(true)
+    expect(compliance().enabled).toBe(false)
+    fireEvent.click(screen.getByLabelText('左臂六轴方向标定'))
+    fireEvent.click(screen.getByRole('button', { name: '保存标定' }))
+    expect(compliance().right.mappingConfirmed).toBe(false)
+    fireEvent.click(screen.getByRole('checkbox', { name: '左臂映射已确认（硬件右侧通道）' }))
+    expect(compliance().right.mappingConfirmed).toBe(true)
+    expect(compliance().enabled).toBe(false)
+  })
+
   it('opens the operator-side six-axis force direction calibration', async () => {
     window.history.pushState({}, '', '/settings#force-left')
     useTelemetryStore.setState((state) => ({

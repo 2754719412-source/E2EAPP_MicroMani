@@ -13,10 +13,10 @@ const snapshotActions = {
   deleteParameterSnapshot: useTelemetryStore.getState().deleteParameterSnapshot,
 }
 
-function deferred() {
-  let resolve!: (value: unknown) => void
+function deferred<T = unknown>() {
+  let resolve!: (value: T) => void
   let reject!: (error: Error) => void
-  const promise = new Promise((finish, fail) => { resolve = finish; reject = fail })
+  const promise = new Promise<T>((finish, fail) => { resolve = finish; reject = fail })
   return { promise, resolve, reject }
 }
 
@@ -209,8 +209,8 @@ describe('设置迁移回归', () => {
   })
 
   it('应用完整配置，等待期间防重复，拒绝后保留错误并允许重试', async () => {
-    const first = deferred()
-    const second = deferred()
+    const first = deferred<Awaited<ReturnType<typeof api.applyConfig>>>()
+    const second = deferred<Awaited<ReturnType<typeof api.applyConfig>>>()
     const apply = vi.spyOn(api, 'applyConfig').mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
     const reconnect = vi.spyOn(api, 'reconnectHal')
     await show('safety')
@@ -231,7 +231,7 @@ describe('设置迁移回归', () => {
     expect(status()).not.toHaveTextContent('已保存')
     fireEvent.click(button())
     expect(apply).toHaveBeenCalledTimes(2)
-    await act(async () => { second.resolve({ ok: true }) })
+    await act(async () => { second.resolve({ ok: true, data: { config: currentConfig } }) })
     expect(status()).toHaveTextContent('配置已保存并应用')
     expect(button()).toBeEnabled()
     expect(reconnect).not.toHaveBeenCalled()
