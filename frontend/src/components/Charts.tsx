@@ -12,7 +12,11 @@ const axisText = '#7a8b9c'
 const gridColor = '#e5e9f0'
 const axisFont = '11px ui-monospace, Consolas, monospace'
 const lineColor = '#d9e0e8'
-const palette = ['#1b6cf3', '#0b8a9b', '#d4870f', '#e03a4f', '#7353ba', '#0d9b6c', '#c86a12', '#7a8b9c']
+// 曲线配色避开状态色（红、橙、绿），这些颜色只用于正常/注意/风险。
+// X/Y/Z 与 Roll/Pitch/Yaw、Fx/Fy/Fz 与 Mx/My/Mz 按轴共用色相；力矩用虚线与力区分。
+const axisHues = ['#1f6fd1', '#c0399a', '#14919b']
+const palette = [...axisHues, '#6d4fc2', '#3d5a80', '#8a5a9e', '#5e7d8c', '#7a8b9c']
+const referenceColor = '#7a8b9c'
 const semanticAxes = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw']
 
 interface HistoryProps {
@@ -24,6 +28,7 @@ interface SeriesSpec {
   name: string
   color: string
   values: number[]
+  dashed?: boolean
 }
 
 interface LiveLineChartProps {
@@ -110,7 +115,7 @@ function LiveLineChart({
       const labelWidth = Math.max(...tickLabels.map((label) => ctx.measureText(label).width))
       const padLeft = Math.max(28, Math.ceil(labelWidth) + 8)
       const padRight = 8
-      const padTop = yUnit ? 16 : 6
+      const padTop = yUnit ? 20 : 6
       const padBottom = showXLabels ? 18 : 6
       const plotW = Math.max(1, width - padLeft - padRight)
       const plotH = Math.max(1, cssHeight - padTop - padBottom)
@@ -144,6 +149,7 @@ function LiveLineChart({
         ctx.strokeStyle = item.color
         ctx.lineWidth = 1.4
         ctx.lineJoin = 'round'
+        ctx.setLineDash(item.dashed ? [5, 3] : [])
         ctx.beginPath()
         for (let i = 0; i < n; i += 1) {
           const x = padLeft + (plotW * i) / (n - 1)
@@ -153,6 +159,7 @@ function LiveLineChart({
         }
         ctx.stroke()
       }
+      ctx.setLineDash([])
 
       if (yUnit) {
         ctx.fillStyle = axisText
@@ -176,20 +183,22 @@ function LiveLineChart({
       style={{ width: '100%', height, position: 'relative' }}
       {...dataAttrs}
     >
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 2, minHeight: 14 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 6, rowGap: 0, marginBottom: 2, minHeight: 14 }}>
         {series.map((item) => (
           <span
             key={item.name}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 4,
+              gap: 3,
               fontSize: 10,
-              color: '#41556b',
+              color: 'var(--color-text-secondary)',
               fontWeight: 600,
             }}
           >
-            <i style={{ width: 10, height: 2, background: item.color, display: 'inline-block' }} />
+            <i style={item.dashed
+              ? { width: 10, height: 2, background: `repeating-linear-gradient(90deg, ${item.color} 0 3px, transparent 3px 5px)`, display: 'inline-block' }
+              : { width: 10, height: 2, background: item.color, display: 'inline-block' }} />
             {item.name}
           </span>
         ))}
@@ -226,10 +235,9 @@ export const AxisGroupChart = memo(function AxisGroupChart({
   const series = useMemo(() => {
     const offset = side === 'left' ? 0 : 6
     const indexes = group === 'translation' ? [0, 1, 2] : [3, 4, 5]
-    const colors = group === 'translation' ? ['#1b6cf3', '#0b8a9b', '#d4870f'] : ['#e03a4f', '#7353ba', '#0d9b6c']
     return indexes.map((axisIndex, i) => ({
       name: `${side === 'left' ? 'L' : 'R'}-${semanticAxes[axisIndex]}`,
-      color: colors[i],
+      color: axisHues[i],
       values: history.map((sample) => sample.joints[offset + axisIndex] ?? 0),
     }))
   }, [history, side, group])
@@ -253,7 +261,8 @@ export const ForceChart = memo(function ForceChart({
     const scale = 1000
     return forceChannels.map((name, index) => ({
       name,
-      color: palette[index],
+      color: axisHues[index % 3],
+      dashed: index >= 3,
       values: history.map((sample) => (side === 'left' ? sample.forceLeft[index] : sample.forceRight[index]) * scale),
     }))
   }, [history, side])
@@ -272,8 +281,8 @@ export const ForceChart = memo(function ForceChart({
 export const QueueChart = memo(function QueueChart({ history, height = 160 }: HistoryProps) {
   const series = useMemo(
     () => [
-      { name: '左臂队列', color: '#1b6cf3', values: history.map((sample) => sample.queueLeft) },
-      { name: '右臂队列', color: '#d4870f', values: history.map((sample) => sample.queueRight) },
+      { name: '左臂队列', color: axisHues[0], values: history.map((sample) => sample.queueLeft) },
+      { name: '右臂队列', color: axisHues[1], values: history.map((sample) => sample.queueRight) },
     ],
     [history],
   )
@@ -296,7 +305,7 @@ export const GripperCurrentChart = memo(function GripperCurrentChart({
     // 固定 0–255 量程时左上角单位会与顶部刻度重叠，单位写进序列名。
     const items: SeriesSpec[] = [{ name: 'gCU 原码', color: palette[0], values }]
     if (typeof thresholdRaw === 'number') {
-      items.push({ name: '空载阈值', color: palette[3], values: values.map(() => thresholdRaw) })
+      items.push({ name: '空载阈值', color: referenceColor, dashed: true, values: values.map(() => thresholdRaw) })
     }
     return items
   }, [values, thresholdRaw])
