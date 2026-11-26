@@ -81,6 +81,7 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+  --ui: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", system-ui, sans-serif;
 }
 
 ::-webkit-scrollbar {
@@ -133,6 +134,7 @@ body,
 body {
   background: var(--color-bg-app);
   color: var(--color-text-primary);
+  font-family: var(--ui);
   overflow: hidden;
   font-variant-numeric: tabular-nums;
 }
@@ -141,6 +143,7 @@ button,
 input,
 textarea,
 select {
+  font-family: inherit;
   letter-spacing: 0;
 }
 
@@ -225,6 +228,7 @@ select {
   position: relative;
   display: grid;
   grid-template-columns: 68px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   min-height: 0;
   flex: 1;
 }
@@ -294,7 +298,7 @@ select {
 .main-content::after {
   content: '';
   display: block;
-  height: var(--emergency-scroll-clearance, 100px);
+  height: var(--emergency-scroll-clearance, 0px);
 }
 
 .right-panel {
@@ -617,6 +621,7 @@ select {
 }
 
 .arm-hardware-panel {
+  container-type: inline-size;
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -628,6 +633,17 @@ select {
   grid-template-columns: 1.05fr 1.25fr 0.8fr 0.8fr 1fr;
   gap: 6px;
   padding: 0 12px 8px;
+}
+
+/* 臂卡较窄时设备标签排成两行，避免名称和数值被截断。 */
+@container (max-width: 860px) {
+  .device-chip-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr);
+  }
+
+  .device-chip span {
+    font-size: 13px;
+  }
 }
 
 .device-chip {
@@ -844,6 +860,20 @@ select {
 
 .force-summary-card .force-readout-compact {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* 分量名称弱化、数值放大：操作时先读数值。 */
+.force-summary-card .force-readout-compact b {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.force-summary-card .force-readout-compact em {
+  color: var(--color-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .dashboard-page {
@@ -1395,6 +1425,7 @@ select {
 }
 
 .record-arm-monitor {
+  container-type: inline-size;
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -1620,8 +1651,8 @@ select {
 
 .record-force-meter {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 3px 6px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
   min-width: 0;
   padding: 5px;
   border-radius: 6px;
@@ -1630,14 +1661,14 @@ select {
 
 .record-force-meter span {
   color: #7a8b9c;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .record-force-meter b {
   overflow: hidden;
   color: #0d1b2a;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
+  font-size: 13px;
   text-align: right;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -1645,6 +1676,17 @@ select {
 
 .record-force-meter > div {
   grid-column: 1 / -1;
+}
+
+/* 按臂卡实际宽度换行：卡片窄于 700px 时力觉区移到下一行，保证 6 个读数完整显示。 */
+@container (max-width: 700px) {
+  .record-arm-monitor-body {
+    grid-template-columns: minmax(140px, 0.75fr) minmax(0, 1fr);
+  }
+
+  .record-force-monitor {
+    grid-column: 1 / -1;
+  }
 }
 
 .record-episode-progress-head,
@@ -4466,26 +4508,52 @@ select {
   z-index: 9998;
 }
 
+/* 桌面端急停区占用主内容下方的独立一行，不再浮在曲线和表单上方。 */
+.left-nav {
+  grid-row: 1 / -1;
+}
+
+.main-content {
+  grid-column: 2;
+  grid-row: 1;
+}
+
 .safety-dock {
-  position: absolute;
-  right: 16px;
-  bottom: 12px;
+  position: relative;
   z-index: 10020;
-  width: 160px;
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  justify-content: flex-end;
   min-width: 0;
-  padding: 6px;
-  border: 1px solid var(--color-danger-border);
-  border-radius: 14px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-danger-border);
   background: var(--color-bg-card);
-  box-shadow: 0 6px 24px rgba(13, 27, 42, 0.18);
 }
 
-.work-area:has(.safety-reset-button) .main-content {
-  --emergency-scroll-clearance: 150px;
+.safety-dock .emergency-stop-stack {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
 }
 
-.work-area:has(.safety-control-error) .main-content {
-  --emergency-scroll-clearance: 230px;
+.safety-dock .emergency-stop-stack > :first-child {
+  flex: 0 0 180px;
+}
+
+.safety-dock .emergency-stop-stack .safety-control-error {
+  flex: 0 1 auto;
+  max-height: 56px;
+}
+
+.safety-dock .emergency-stop-button.ui-btn {
+  height: 56px;
+}
+
+.safety-dock .safety-reset-button.ui-btn {
+  width: auto;
+  padding: 0 14px;
 }
 
 .emergency-stop-stack {
@@ -5032,10 +5100,42 @@ select {
     display: none;
   }
 
+  /* 窄屏仍使用浮动急停，主内容底部预留滚动空间。 */
+  .main-content {
+    --emergency-scroll-clearance: 100px;
+  }
+
+  .work-area:has(.safety-reset-button) .main-content {
+    --emergency-scroll-clearance: 150px;
+  }
+
+  .work-area:has(.safety-control-error) .main-content {
+    --emergency-scroll-clearance: 230px;
+  }
+
   .safety-dock {
-    width: 144px;
+    position: absolute;
     right: 10px;
     bottom: 10px;
+    display: block;
+    width: 144px;
+    padding: 6px;
+    border: 1px solid var(--color-danger-border);
+    border-radius: 14px;
+    box-shadow: 0 6px 24px rgba(13, 27, 42, 0.18);
+  }
+
+  .safety-dock .emergency-stop-stack {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .safety-dock .emergency-stop-stack > :first-child {
+    flex: none;
+  }
+
+  .safety-dock .safety-reset-button.ui-btn {
+    width: 100%;
   }
 
   .emergency-stop-stack > .ui-tooltip {
@@ -5070,7 +5170,7 @@ select {
   border-radius: 8px;
   background: var(--color-bg-card);
   color: var(--color-text-primary);
-  font: 600 12px/1 var(--ui);
+  font: 600 13px/1 var(--ui);
   cursor: pointer;
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
 }
@@ -5087,7 +5187,7 @@ select {
 .ui-tag {
   display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px;
   border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg-muted);
-  color: var(--color-text-secondary); font: 700 11px/1 var(--ui); white-space: nowrap;
+  color: var(--color-text-secondary); font: 700 12px/1 var(--ui); white-space: nowrap;
 }
 .ui-tag-success { background: var(--color-success-light); border-color: #9fdcc4; color: var(--color-success); }
 .ui-tag-warning { background: var(--color-warning-light); border-color: #f0d09a; color: var(--color-warning); }
@@ -5108,7 +5208,7 @@ select {
 .ui-segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--color-border); border-radius: 9px; background: var(--color-bg-muted); }
 .ui-segmented button {
   appearance: none; border: 0; background: transparent; color: var(--color-text-secondary);
-  font: 600 12px/1 var(--ui); padding: 6px 12px; border-radius: 7px; cursor: pointer;
+  font: 600 13px/1 var(--ui); padding: 6px 12px; border-radius: 7px; cursor: pointer;
 }
 .ui-segmented button.on { background: var(--color-bg-card); color: var(--color-primary); box-shadow: 0 1px 2px rgba(13,27,42,.04); }
 .ui-progress { display: grid; gap: 4px; }
@@ -5116,7 +5216,7 @@ select {
 .ui-progress-fill { height: 100%; border-radius: inherit; background: var(--color-primary); transition: width 160ms ease; }
 .ui-progress-success { background: var(--color-success); }
 .ui-progress-exception { background: var(--color-danger); }
-.ui-progress-label { font: 600 12px/1 var(--ui); color: var(--color-text-secondary); }
+.ui-progress-label { font: 400 13px/1 var(--ui); color: var(--color-text-secondary); }
 .ui-tooltip { display: inline-flex; }
 
 .ui-select {
@@ -5128,7 +5228,7 @@ select {
   border-radius: 8px;
   background: var(--color-bg-card);
   color: var(--color-text-primary);
-  font: 600 12px/1 var(--ui);
+  font: 400 13px/1 var(--ui);
 }
 .log-channel-filters {
   display: inline-flex;
@@ -5239,7 +5339,7 @@ select {
   border-radius: 8px;
   background: var(--color-bg-card);
   color: var(--color-text-primary);
-  font: 400 12px/1.5 var(--ui);
+  font: 400 13px/1.5 var(--ui);
   resize: vertical;
 }
 .ui-textarea:focus {
@@ -5393,7 +5493,7 @@ select {
 .ui-tabs-nav button {
   appearance: none; border: 0; background: transparent;
   color: var(--color-text-secondary);
-  font: 600 13px/1 var(--ui);
+  font: 600 14px/1 var(--ui);
   padding: 8px 12px; border-radius: 8px 8px 0 0;
   border-bottom: 2px solid transparent; cursor: pointer;
 }
