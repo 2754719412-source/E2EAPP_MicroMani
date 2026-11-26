@@ -121,7 +121,14 @@ async function inspectLayout(page, scenario) {
     contains(viewport, panel, '日志面板')
     contains(viewport, dock, '安全控制区')
     contains(rect('.work-area'), main, '主内容区')
-    contains(main, dock, '浮动急停')
+    if (innerWidth > 760) {
+      // 桌面端急停区独占主内容下方一行，不能与主内容区重叠。
+      contains(rect('.work-area'), dock, '安全控制区')
+      if (main && dock && Math.min(main.right, dock.right) - Math.max(main.x, dock.x) > epsilon
+        && Math.min(main.bottom, dock.bottom) - Math.max(main.y, dock.y) > epsilon) issues.push('急停区遮挡主内容区')
+    } else {
+      contains(main, dock, '浮动急停')
+    }
     contains(panel, toolbar, '日志工具栏')
     contains(viewport, rect('.status-bar'), '状态栏')
     if (panel && dock && Math.min(panel.right, dock.right) - Math.max(panel.x, dock.x) > epsilon

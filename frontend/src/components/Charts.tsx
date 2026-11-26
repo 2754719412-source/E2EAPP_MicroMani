@@ -10,6 +10,7 @@ import type { TelemetrySample } from '../types'
 
 const axisText = '#7a8b9c'
 const gridColor = '#e5e9f0'
+const axisFont = '11px ui-monospace, Consolas, monospace'
 const lineColor = '#d9e0e8'
 const palette = ['#1b6cf3', '#0b8a9b', '#d4870f', '#e03a4f', '#7353ba', '#0d9b6c', '#c86a12', '#7a8b9c']
 const semanticAxes = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw']
@@ -97,33 +98,36 @@ function LiveLineChart({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, width, cssHeight)
 
-      const padLeft = yUnit || bounds.min < 0 ? 36 : 28
+      const { min, max } = bounds
+      const range = max - min || 1
+      const yTicks = 4
+      const tickLabels = Array.from({ length: yTicks + 1 }, (_, i) => {
+        const value = min + range * (i / yTicks)
+        return Math.abs(value) >= 10 ? value.toFixed(0) : value.toFixed(1)
+      })
+      ctx.font = axisFont
+      // 左边距按最宽刻度留出，单位单独占顶部一行，避免与最上方刻度重叠。
+      const labelWidth = Math.max(...tickLabels.map((label) => ctx.measureText(label).width))
+      const padLeft = Math.max(28, Math.ceil(labelWidth) + 8)
       const padRight = 8
-      const padTop = 4
+      const padTop = yUnit ? 16 : 6
       const padBottom = showXLabels ? 18 : 6
       const plotW = Math.max(1, width - padLeft - padRight)
       const plotH = Math.max(1, cssHeight - padTop - padBottom)
-      const { min, max } = bounds
-      const range = max - min || 1
 
       // grid + y labels
       ctx.strokeStyle = gridColor
       ctx.lineWidth = 1
       ctx.fillStyle = axisText
-      ctx.font = '10px ui-monospace, Consolas, monospace'
       ctx.textAlign = 'right'
       ctx.textBaseline = 'middle'
-      const yTicks = 4
       for (let i = 0; i <= yTicks; i += 1) {
-        const t = i / yTicks
-        const y = padTop + plotH * (1 - t)
-        const value = min + range * t
+        const y = padTop + plotH * (1 - i / yTicks)
         ctx.beginPath()
         ctx.moveTo(padLeft, y)
         ctx.lineTo(padLeft + plotW, y)
         ctx.stroke()
-        const label = Math.abs(value) >= 1000 ? value.toFixed(0) : Math.abs(value) >= 10 ? value.toFixed(0) : value.toFixed(1)
-        ctx.fillText(label, padLeft - 4, y)
+        ctx.fillText(tickLabels[i], padLeft - 4, y)
       }
 
       // x axis line
@@ -152,7 +156,7 @@ function LiveLineChart({
 
       if (yUnit) {
         ctx.fillStyle = axisText
-        ctx.font = '10px ui-monospace, Consolas, monospace'
+        ctx.font = axisFont
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
         ctx.fillText(yUnit, 2, 2)

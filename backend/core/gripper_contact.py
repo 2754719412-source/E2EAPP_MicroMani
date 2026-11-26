@@ -100,7 +100,7 @@ def detect_contact_events(
     current: dict[str, Any] | None = None
     misses = 0
     limit = len(frames) if sample_limit is None else sample_limit
-    evidences = frame_evidences(frames[:limit + debounce_frames], min_gap_mm=min_gap_mm,
+    evidences = frame_evidences(frames[:limit + 1], min_gap_mm=min_gap_mm,
                                 current_threshold_raw=current_threshold_raw)
     for index, evidence in enumerate(evidences[:limit]):
         frame = frames[index]
@@ -126,8 +126,9 @@ def detect_contact_events(
             current["peakCurrentFrame"] = index
     if current is not None:
         if sample_limit is not None:
-            # 录像外只检查已有接触是否在去抖窗口内延续，不能延长录像内片段或改变其证据。
-            current["clippedToLastFrame"] = any(evidences[limit:limit + debounce_frames - misses])
+            # 只有窗内末条和窗外首条都有接触证据时，才标记接触连续跨越录像边界。
+            current["clippedToLastFrame"] = (misses == 0 and limit < len(evidences)
+                                             and evidences[limit] is not None)
         events.append(current)
     for event in events:
         event["evidence"], event["candidate"] = evidence_summary(event["evidence"])

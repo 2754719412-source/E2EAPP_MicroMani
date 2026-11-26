@@ -85,28 +85,45 @@ def parse_sample_history(native_status: Any) -> dict[str, list[GripperRawSample]
     return parsed
 
 
-def _validate_history_reply(
-    response: Mapping[str, Any], parsed: Mapping[str, list[GripperRawSample]], request: Mapping[str, Any],
-) -> None:
-    """专用读取须能解析双侧全部行，并到达 HAL 声明的最新序号。空增量也须与游标一致。"""
-    if not all(side in parsed for side in HARDWARE_SIDES):
-        raise ValueError("unsupported or incomplete gripper.samples history")
-    instance = response.get("gripperSampleInstanceId")
-    latest = response.get("latestSeq")
-    if (not isinstance(instance, str) or not instance.strip()
-            or not isinstance(latest, list) or len(latest) != 2
-            or not all(type(seq) is int and seq >= 0 for seq in latest)):
-        raise ValueError("invalid gripper.samples cursor")
+def history_reply_error(reply: Any, *, request: Mapping[str, Any] | None = None) -> str:
+    """校验 gripper.samples 应答结构；空增量（各侧空列表）合法，格式不认识或行结构不对返回错误原因。
+
+    parse_sample_history 会静默跳过坏行，不能用“解析出 0 条”判断应答是否可用。
+    """
+    if not isinstance(reply, Mapping):
+        return "reply is not an object"
+    if reply.get("gripperSampleHistoryFormat") != GRIPPER_SAMPLE_HISTORY_FORMAT:
+        return f"unknown history format: {reply.get('gripperSampleHistoryFormat')!r}"
+    history = reply.get("gripperSampleHistory")
+    if not isinstance(history, Mapping):
+        return "gripperSampleHistory missing"
+    instance = reply.get("gripperSampleInstanceId")
+    latest = reply.get("latestSeq")
+    if request is not None and (
+        not isinstance(instance, str) or not instance.strip()
+        or not isinstance(latest, list) or len(latest) != 2
+        or not all(type(seq) is int and seq >= 0 for seq in latest)
+    ):
+        return "invalid gripper.samples cursor"
     for index, side in enumerate(HARDWARE_SIDES):
-        rows = response["gripperSampleHistory"][side]
-        samples = parsed[side]
-        if len(samples) != len(rows) or any(type(value) is not int for row in rows for value in row):
-            raise ValueError(f"invalid gripper.samples {side} row")
-        cursor_key = "afterSeqLeft" if side == "left" else "afterSeqRight"
-        after = request[cursor_key] if instance == request["instanceId"] else 0
-        last = samples[-1].seq if samples else after
-        if last != latest[index] or (samples and samples[0].seq <= after):
-            raise ValueError(f"inconsistent gripper.samples {side} cursor")
+        rows = history.get(side)
+        if not isinstance(rows, list):
+            return f"{side} history is not a list"
+        for row in rows:
+            if (not isinstance(row, list) or len(row) != 13 or not all(type(value) is int for value in row)
+                    or row[0] <= 0 or row[1] <= 0):
+                return f"{side} history row malformed"
+        if request is not None:
+            cursor_key = "afterSeqLeft" if side == "left" else "afterSeqRight"
+            after = request[cursor_key] if instance == request["instanceId"] else 0
+            # 同一实例从请求游标往后读。合法空增量要与 HAL 声明的最新序号一致。
+            for row in rows:
+                if row[0] <= after:
+                    return f"{side} history sequence does not advance"
+                after = row[0]
+            if after != latest[index]:
+                return f"{side} history does not reach latestSeq"
+    return ""
 
 
 def sample_in_contact_state(sample: GripperRawSample) -> bool:
@@ -119,7 +136,6 @@ class GripperRawCollector:
 
     def __init__(self) -> None:
         self._lock = Lock()
-        self._generation = 0
         self._samples: dict[str, list[GripperRawSample]] = {side: [] for side in HARDWARE_SIDES}
         self._times: dict[str, list[float]] = {side: [] for side in HARDWARE_SIDES}
         self._last_seq: dict[str, int] = {side: 0 for side in HARDWARE_SIDES}
@@ -130,6 +146,12 @@ class GripperRawCollector:
         self._instance_id: str | None = None
         self._hal_restarts = 0
         self._fetch_errors = 0
+        # 当前接受的拉取会话代际；带旧代际的应答（成功或失败）一律不改动状态，核对与修改在同一把锁内完成。
+        self._session = 0
+
+    def set_session(self, session: int) -> None:
+        with self._lock:
+            self._session = session
 
     def fetch_payload(self) -> dict[str, Any]:
         """gripper.samples 请求参数：本实例已见的最大 seq；实例不认识时 HAL 返回全部历史。"""
@@ -137,20 +159,13 @@ class GripperRawCollector:
             return {"instanceId": self._instance_id or "", "afterSeqLeft": self._last_seq["left"],
                     "afterSeqRight": self._last_seq["right"]}
 
-    @property
-    def generation(self) -> int:
+    def note_fetch_error(self, *, session: int | None = None) -> bool:
+        """记一次拉取失败；session 不是当前会话（迟到的旧请求）时不计入，返回是否计入。"""
         with self._lock:
-            return self._generation
-
-    def retire_session(self) -> None:
-        """与应答入库和错误计数使用同一把锁，阻止已结束会话的读取改变收集器。"""
-        with self._lock:
-            self._generation += 1
-
-    def note_fetch_error(self, generation: int) -> None:
-        with self._lock:
-            if generation == self._generation:
-                self._fetch_errors += 1
+            if session is not None and session != self._session:
+                return False
+            self._fetch_errors += 1
+            return True
 
     def ingest_targets(self, target_stamp_s: float, targets: Sequence[float]) -> None:
         self.ingest({}, target_stamp_s=target_stamp_s, targets=targets)
@@ -161,18 +176,15 @@ class GripperRawCollector:
         *,
         target_stamp_s: float | None = None,
         targets: Sequence[float] | None = None,
-        generation: int | None = None,
-        request: Mapping[str, Any] | None = None,
-    ) -> int | None:
-        """返回新增读数条数。会话已结束时丢弃本次结果并返回 None。"""
+        session: int | None = None,
+    ) -> int:
+        """收入新的读数和当时的命令开口（硬件侧），返回新增读数条数；旧会话的应答返回 -1 且不改动任何状态。"""
         parsed = parse_sample_history(native_status)
-        if request is not None:
-            _validate_history_reply(native_status, parsed, request)
         instance = native_status.get("gripperSampleInstanceId") if isinstance(native_status, Mapping) else None
         added = 0
         with self._lock:
-            if generation is not None and generation != self._generation:
-                return None
+            if session is not None and session != self._session:
+                return -1
             if isinstance(instance, str) and instance and instance != self._instance_id:
                 if self._instance_id is not None:
                     # HAL 重启：seq 从 1 重新计数，旧序号作废；新旧之间的读数无法计数，按中断记录。

@@ -56,6 +56,8 @@ _RETRY_SAFE_COMMANDS = {
     "motion.disable_side", "motion.teleop_stop_side", "teleop.native.stop",
     "omega7.zero_force_feedback",
 }
+# 夹爪读数增量拉取：只读、下一轮会按游标补上，宁可快速失败也不能拖住保存或会话停止。
+GRIPPER_SAMPLES_TIMEOUT_S = 0.5
 _TELEOP_DELTA_AXES = ("X", "Y", "Z", "Roll", "Pitch", "Yaw")
 
 
@@ -74,6 +76,8 @@ def command_request_policy(name: str, timeout_s: float, *, long_timeout_s: float
     if name in _LONG_RUNNING_COMMANDS:
         # 回零类命令可能跨越多轴运动，DDS/HTTP 两条路径都使用同一套长 timeout 策略。
         return max(timeout_s, long_timeout_s), 1
+    if name == "gripper.samples":
+        return min(timeout_s, GRIPPER_SAMPLES_TIMEOUT_S), 1
     return timeout_s, 2 if name in _RETRY_SAFE_COMMANDS else 1
 
 
