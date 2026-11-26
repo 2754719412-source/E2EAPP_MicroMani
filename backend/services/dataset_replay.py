@@ -56,6 +56,9 @@ def validate_episode(data: dict[str, Any]) -> None:
 
 # 从主动停止起共用一个软件时限，覆盖在途应答、逐侧停轴和新采样。
 CONTROLLED_STOP_TIMEOUT_S = 1.0
+# 3011/3019 是目标刷新错过窗口，HAL 已重新发起运动段（LTDMCDriver teleopTargetUpdateMissedWindow），
+# 不按控制卡故障急停；未跟上目标由位置跟踪检查兜底。其他非零码仍视为结果未确认。
+_RECOVERED_UPDATE_RETURNS = {0, 3011, 3019}
 
 
 class _ReplayStopRequested(Exception):
@@ -245,7 +248,7 @@ class DatasetReplayService:
             # HAL 的外层成功应答仍可能携带卡上目标刷新的错误码。
             codes = response.get("updateReturn")
             if (not isinstance(codes, list) or len(codes) != 6
-                    or any(type(code) not in (int, float) or code != 0 for code in codes)):
+                    or any(type(code) not in (int, float) or code not in _RECOVERED_UPDATE_RETURNS for code in codes)):
                 raise RuntimeError(f"{side} 侧回放目标的控制卡应答未确认：{codes}")
             self._check(token)
             if include_grippers and side in hardware_sides(self._participation, "grippers"):

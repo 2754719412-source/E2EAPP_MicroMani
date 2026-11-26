@@ -93,7 +93,7 @@ def test_complete_replay_sends_all_frames_and_maps_sides(setup_replay):
 
 
 @pytest.mark.parametrize("codes,arms_only", [
-    ([0, 0, 3011, 0, 0, 0], True), ([0, 0, 3011, 0, 0, 0], False), (None, True), ([0] * 5, True),
+    ([0, 0, 1, 0, 0, 0], True), ([0, 0, 1, 0, 0, 0], False), (None, True), ([0] * 5, True),
 ])
 def test_uncertain_target_during_normal_replay_stops_before_next_command(setup_replay, codes, arms_only):
     app, replay, data, _ = setup_replay
@@ -118,6 +118,26 @@ def test_uncertain_target_during_normal_replay_stops_before_next_command(setup_r
         assert targets == ["left"]
         assert not any(call.args[0] == "gripper.replay_target" for call in original.await_args_list)
         app.state.commands.emergency_stop.assert_awaited_once()
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("code", [3011, 3019])
+def test_hal_recovered_refresh_window_codes_do_not_stop_replay(setup_replay, code):
+    # HAL 对错过刷新窗口已重新发起运动段；实际是否跟上由位置跟踪检查判断。
+    app, replay, *_ = setup_replay
+    original = app.state.hal.command
+
+    async def command(name, payload):
+        if name == "motion.replay_absolute_target":
+            return {"response": {"ok": True, "side": payload["side"], "updateReturn": [0, 0, code, 0, 0, 0]}}
+        return await original(name, payload)
+
+    app.state.hal.command = command
+    async def run():
+        await replay.start("d", "e", 1.)
+        await replay.task
+        assert replay.status()["phase"] == "completed", replay.status()
+        app.state.commands.emergency_stop.assert_not_awaited()
     asyncio.run(run())
 
 
@@ -196,7 +216,7 @@ def in_flight_replay(setup_replay):
                 raise TimeoutError("目标应答超时")
             if case.reply == "invalid":
                 return {"response": {}}
-            return {"response": {"ok": True, "side": side, "updateReturn": [3011 if case.reply == "card_error" else 0] * 6}}
+            return {"response": {"ok": True, "side": side, "updateReturn": [1 if case.reply == "card_error" else 0] * 6}}
         if name == "motion.teleop_stop_side":
             events.append(("stop", payload["side"]))
             return {"response": {"ok": case.stop_ok}}
