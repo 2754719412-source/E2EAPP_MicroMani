@@ -85,7 +85,8 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
           statusRevision.current += 1
           setStatus(payload.data)
           setConnection('online')
-          setStopRequest((request) => request && !payload.data.stopMode
+          // 仅在同一轮回放仍运行且后端未开始停车时保留停止失败提示；回放结束即清除。
+          setStopRequest((request) => request && payload.data.active && !payload.data.stopMode
             && request.target.runId === payload.data.runId && request.target.datasetId === payload.data.datasetId
             && request.target.episodeId === payload.data.episodeId ? request : null)
           if (payload.data.active) resetInspection()
@@ -143,7 +144,7 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
     } catch (cause) {
       if (command !== commandSequence.current) return
       if (stop) {
-        const message = cause instanceof CommandTimeoutError ? '停止请求超时，尚未确认停车，正在核对设备反馈。'
+        const message = cause instanceof CommandTimeoutError ? '停止请求超时，尚未确认停车。回放仍在运行时请再次点击停止，必要时使用实体急停。'
           : cause instanceof Error ? cause.message : '回放停止请求失败'
         setStopRequest((request) => request === stop ? { ...stop, error: message } : request)
       } else {

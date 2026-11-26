@@ -182,6 +182,20 @@ describe('DatasetReplayPanel', () => {
     expect(postCommand).toHaveBeenCalledTimes(1)
   })
 
+  it('停止请求超时而回放仍在运行时提示再次停止，回放结束后提示清除', async () => {
+    let data = { runId: 'run', datasetId: 'local', episodeId: 'e', phase: 'running', active: true, frame: 2, totalFrames: 30 }
+    vi.mocked(fetch).mockImplementation(async () => ({ ok: true, json: async () => ({ data }) }) as Response)
+    vi.mocked(postCommand).mockRejectedValueOnce(new CommandTimeoutError('请求超时，执行结果未知'))
+    render(<DatasetReplayPanel datasetId="local" episodeId="e" />)
+    await screen.findByText('回放中')
+    fireEvent.click(screen.getByRole('button', { name: '停止真机回放' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('请再次点击停止')
+    expect(screen.getByRole('button', { name: '停止真机回放' })).toBeEnabled()
+    data = { ...data, phase: 'completed', active: false, frame: 30 }
+    await screen.findByText('已完成')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it.each(['success', 'timeout'])('同一片段已再次运行，上一轮停止请求迟到的 %s 应答不覆盖新状态', async (outcome) => {
     const first = { runId: 'first', datasetId: 'local', episodeId: 'e', phase: 'running', active: true, frame: 2, totalFrames: 30 }
     let data = first
