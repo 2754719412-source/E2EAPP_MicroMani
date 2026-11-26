@@ -115,7 +115,7 @@
 | [backend/native/appstation_fastdds_transport.cpp](../backend/native/appstation_fastdds_transport.cpp) | 向 Python 暴露 Fast-DDS 的 C ABI；维护主题缓存、命令发布与应答同步。 | `JsonEnvelopeSample`、`HalCommandRequestSample`、`HalCommandReplySample`、`AppStationTopicDataType`、`AppStationFastDdsTransport` |
 | [hal/dds/appstation_hal.idl](../hal/dds/appstation_hal.idl) | 定义控制面 DDS 信封与命令请求/应答的线缆数据契约。 | 从文件顶部的参数、配置或入口流程开始 |
 
-## 06 HAL 硬件与安全（42 个文件）
+## 06 HAL 硬件与安全（43 个文件）
 
 | 文件 | 职责 / 阅读重点 | 定位符号 |
 | --- | --- | --- |
@@ -131,7 +131,8 @@
 | [hal/include/HkvlForceProtocol.h](../hal/include/HkvlForceProtocol.h) | 声明HkvlForceProtocol 的接口与状态结构；解析 HKVL 字节帧与 CRC，维护帧同步和错误统计。 | `HkvlForceFrame`、`HkvlForceParserStats`、`HkvlForceParser` |
 | [hal/include/JodellGripperDriver.h](../hal/include/JodellGripperDriver.h) | 声明JodellGripperDriver 的接口与状态结构；封装 Jodell 夹爪配置、开口换算与隔离 worker 通信。 | `JodellGripperConfig`、`JodellGripperDriver`、`ProcessWorkerHandle` |
 | [hal/include/JodellModbus.h](../hal/include/JodellModbus.h) | 钧舵 EPG 夹爪 Modbus RTU 帧编解码、结构化反馈样本及 worker 应答样本字段编解码；不含串口 I/O。 | `readStatusRequest`、`moveRequest`、`parseStatusResponse`、`GripperFeedbackSample`、`formatSampleFields`、`parseSampleFields` |
-| [hal/include/JodellModbusClient.h](../hal/include/JodellModbusClient.h) | worker 独占串口时的钧舵 Modbus 读写逻辑：一次读取状态/位置/电流、仅在未使能时使能、故障时拒绝运动。 | `ModbusTransport`、`JodellModbusClient::readSample`、`JodellModbusClient::moveTo` |
+| [hal/include/JodellModbusClient.h](../hal/include/JodellModbusClient.h) | worker 独占串口时的钧舵 Modbus 读写逻辑：一次读取状态/位置/电流；运动拆成 prepare/awaitActive/writeMove，仅在未使能时使能、故障时拒绝运动。 | `ModbusTransport`、`JodellModbusClient::readSample`、`prepare`、`awaitActive`、`writeMove` |
+| [hal/include/JodellWorkerProtocol.h](../hal/include/JodellWorkerProtocol.h) | 夹爪 worker 管道协议的可移植部分：应答行格式、Modbus 单行命令处理、父进程 PREPARE→AWAIT→MOVE 运动编排（每步之前检查运动授权）。 | `formatResponse`、`handleModbusLine`、`orchestrateModbusMove` |
 | [hal/include/LTDMCDriver.h](../hal/include/LTDMCDriver.h) | 声明LTDMCDriver 的接口与状态结构；封装运动卡访问、脉冲换算、回原点、目标续推、软限位及急停状态。 | `LTDMCDriver` |
 | [hal/include/MotionControlThread.h](../hal/include/MotionControlThread.h) | 声明MotionControlThread 的接口与状态结构；管理运动状态后台轮询线程的启动、循环和停止。 | `MotionControlThread` |
 | [hal/include/NativeTeleopController.h](../hal/include/NativeTeleopController.h) | 声明NativeTeleopController 的接口与状态结构；管理主手采样与遥操作状态机，计算映射、滤波、门控和夹爪跟随。 | `NativeTeleopConfig`、`NativeTeleopAction`、`NativeTeleopController`、`PendingGripperCommand`、`KalmanAxisState` |

@@ -190,3 +190,128 @@ def test_writer_rejects_missing_payload_without_poisoning_frames() -> None:
         future.result()
     assert writer._error == ""
     assert isinstance(GripperRawWrite(Path("."), 0, ()), GripperRawWrite)
+
+
+def test_recorder_collects_history_even_when_dds_status_cache_is_fresh() -> None:
+    """审查复现：DDS 遥测缓存只带最新样本；录制器必须用 gripper.samples 拉到逐读数历史。"""
+    import asyncio
+    import json
+
+    from backend.core.logging import LogService
+    from backend.hal_client.dds_client import DdsHalClient
+    from backend.hal_client.dds_types import (
+        TOPIC_HAL_NATIVE_TELEOP_STATUS,
+        HalCommandReply,
+        JsonEnvelope,
+        now_unix_ms,
+    )
+
+    class Transport:
+        def __init__(self) -> None:
+            self.latest = {TOPIC_HAL_NATIVE_TELEOP_STATUS: JsonEnvelope(
+                stamp_unix_ms=now_unix_ms(), stamp_monotonic_ms=1, source="hal-cpp",
+                payload_json=json.dumps({"grippers": {"left": {"sample": {"seq": 3, "currentRaw": 40}}}}))}
+            self.requests: list[object] = []
+            self.replies: dict[str, HalCommandReply] = {}
+
+        def start(self) -> None: ...
+        def close(self) -> None: ...
+
+        def get_latest(self, topic: str) -> JsonEnvelope | None:
+            return self.latest.get(topic)
+
+        def publish_command_request(self, request: object) -> None:
+            self.requests.append(request)
+            payload = json.loads(request.payload_json)  # type: ignore[attr-defined]
+            after = int(payload.get("afterSeqLeft", 0))
+            history = native_status([r for r in [row(1, 10.0, cur=40), row(2, 10.01, cur=41), row(3, 10.02, cur=42)]
+                                     if r[0] > after])
+            history["gripperSampleInstanceId"] = "hal-a"
+            self.replies[request.request_id] = HalCommandReply(  # type: ignore[attr-defined]
+                request_id=request.request_id, ok=True, result_json=json.dumps(history), error="")  # type: ignore[attr-defined]
+
+        def wait_for_command_reply(self, request_id: str, timeout_s: float) -> HalCommandReply | None:
+            return self.replies.get(request_id)
+
+    transport = Transport()
+    recorder = object.__new__(DatasetRecorderService)
+    recorder.hal = DdsHalClient(LogService(emit_startup=False), transport=transport, reply_timeout_s=0.2)
+    collector = recorder._gripper_raw_collector()
+    # 缓存路径本身仍只给最新样本：
+    cached = asyncio.run(recorder.hal.command("teleop.native.status", {}))["response"]
+    assert raw.parse_sample_history(cached) == {}
+
+    recorder._poll_gripper_samples(asyncio.run, collector)
+    assert [sample.seq for sample in collector.recent("left", 1.0)] == [1, 2, 3]
+    # 限频：0.1 s 内不重复请求；之后只请求更大的 seq。
+    recorder._poll_gripper_samples(asyncio.run, collector)
+    assert len(transport.requests) == 1
+    recorder._gripper_samples_polled_at = 0.0
+    recorder._poll_gripper_samples(asyncio.run, collector)
+    assert json.loads(transport.requests[-1].payload_json)["afterSeqLeft"] == 3  # type: ignore[attr-defined]
+
+
+def test_poll_failure_is_counted_without_raising() -> None:
+    import asyncio
+
+    recorder = object.__new__(DatasetRecorderService)
+
+    class Broken:
+        async def command(self, *_args: object) -> dict[str, object]:
+            raise RuntimeError("dds-gripper-samples channel is busy")
+
+    recorder.hal = Broken()
+    collector = recorder._gripper_raw_collector()
+    collector.begin_episode(0.0)
+    recorder._poll_gripper_samples(asyncio.run, collector)
+    assert collector.end_episode()["fetchErrors"] == 1
+
+
+def test_hal_restart_resets_sequence_and_marks_interruption() -> None:
+    """审查复现：HAL 重启后 seq 从 1 重新计数，新读数不能被当作重复丢弃。"""
+    collector = raw.GripperRawCollector()
+    first = native_status([row(10000, 10.0)])
+    first["gripperSampleInstanceId"] = "hal-a"
+    collector.ingest(first)
+    collector.begin_episode(9.0)
+    restarted = native_status([row(1, 12.0), row(2, 12.01)])
+    restarted["gripperSampleInstanceId"] = "hal-b"
+    collector.ingest(restarted)
+    assert collector.fetch_payload() == {"instanceId": "hal-b", "afterSeqLeft": 2, "afterSeqRight": 0}
+    snapshot = collector.end_episode()
+    assert [sample.seq for sample in snapshot["samples"]["left"]] == [10000, 1, 2]
+    assert snapshot["halRestarts"] == 1
+
+
+def _contact_snapshot(rows: list[list[int]]) -> dict[str, object]:
+    collector = raw.GripperRawCollector()
+    collector.begin_episode(10.0)
+    collector.ingest(native_status(rows), target_stamp_s=10.0, targets=[2.0, 2.0])
+    return collector.end_episode()
+
+
+def _events(snapshot: dict[str, object], frame_count: int | None = None) -> list[dict[str, object]]:
+    return raw.contact_events(snapshot, ["left"], stroke_mm=STROKE, min_gap_mm=1.02, fps=30.0,
+                              thresholds_raw={"left": 10.0}, dataset_side_for_hardware={"left": "right"},
+                              frame_count=frame_count)
+
+
+def test_contact_events_do_not_span_missing_samples() -> None:
+    """审查复现：相隔 2 s、seq 从 1 跳到 70 的两条接触读数不能连成一个片段。"""
+    contact = {"pos": 140, "cur": 200, "gto": 1, "obj": 0}
+    events = _events(_contact_snapshot([row(1, 10.0, **contact), row(70, 12.0, **contact)]))
+    assert [(event["startSeq"], event["endSeq"]) for event in events] == [(1, 1), (70, 70)]
+    # seq 连续但相邻间隔超过上限同样切断。
+    events = _events(_contact_snapshot([row(1, 10.0, **contact), row(2, 10.5, **contact)]))
+    assert [(event["startSeq"], event["endSeq"]) for event in events] == [(1, 1), (2, 2)]
+
+
+def test_contact_events_are_limited_to_written_frames() -> None:
+    """审查复现：15 帧 episode（帧 0–14）中，停止后排空期间的接触不能指向第 17 帧。"""
+    contact = {"pos": 140, "cur": 200, "gto": 1, "obj": 0}
+    tail = [row(i, 10.0 + 0.55 + i * 0.01, **contact) for i in range(1, 5)]  # 0.56–0.59 s → 帧 16–17
+    assert _events(_contact_snapshot(tail), frame_count=15) == []
+    spanning = [row(i, 10.4 + i * 0.03, **contact) for i in range(1, 9)]  # 0.43–0.64 s → 帧 12–19
+    events = _events(_contact_snapshot(spanning), frame_count=15)
+    assert len(events) == 1 and events[0]["endFrame"] == 14 and events[0]["clippedToLastFrame"] is True
+    assert _events(_contact_snapshot(spanning), frame_count=0) == []

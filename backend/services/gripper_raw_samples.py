@@ -4,9 +4,10 @@
 # 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
 """夹爪原始读数收集。
 
-HAL 每次成功读到夹爪就分配每侧递增的 seq，并在状态 JSON 的 gripperSampleHistory 中保留最近一段。
-录制采样线程每次取到 native 状态都调用 ingest：seq 不大于已见最大值的行是重复，seq 跳号说明 HAL 历史已经滚动
-覆盖、样本确实丢失，计入 missedSeq。训练帧可以按 30/60 fps 多次引用同一读数，但旁路文件每个 seq 只写一行。
+HAL 每次成功读到夹爪就分配每侧递增的 seq，并保留最近一段历史。录制采样线程用只读命令 gripper.samples 按
+seq 增量拉取（DDS 遥测缓存只带最新样本）：seq 不大于已见最大值的行是重复，seq 跳号说明 HAL 历史已经滚动
+覆盖、样本确实丢失，计入 missedSeq。seq 只在同一 HAL 实例内单调；实例 ID 变化（HAL 重启）时清空已见序号，
+并在当前 episode 记一次中断。训练帧可以按 30/60 fps 多次引用同一读数，但旁路文件每个 seq 只写一行。
 侧别一律是硬件侧；写入数据集 feature 时再按数据契约换成操作者侧顺序。
 """
 
@@ -30,6 +31,8 @@ IDLE_RETENTION_S = 2.0
 IDLE_WINDOW_S = 0.3
 IDLE_MIN_SAMPLES = 5
 IDLE_MAX_AGE_S = 0.25
+# 接触片段只在连续观测内成立：seq 跳号、HAL 重启或相邻读数间隔超过该值都会切断片段。
+CONTACT_MAX_GAP_S = 0.25
 
 
 @dataclass(frozen=True)
@@ -99,6 +102,22 @@ class GripperRawCollector:
         self._duplicates: dict[str, int] = {side: 0 for side in HARDWARE_SIDES}
         self._targets: list[tuple[float, tuple[float, float]]] = []
         self._episode_start_s: float | None = None
+        self._instance_id: str | None = None
+        self._hal_restarts = 0
+        self._fetch_errors = 0
+
+    def fetch_payload(self) -> dict[str, Any]:
+        """gripper.samples 请求参数：本实例已见的最大 seq；实例不认识时 HAL 返回全部历史。"""
+        with self._lock:
+            return {"instanceId": self._instance_id or "", "afterSeqLeft": self._last_seq["left"],
+                    "afterSeqRight": self._last_seq["right"]}
+
+    def note_fetch_error(self) -> None:
+        with self._lock:
+            self._fetch_errors += 1
+
+    def ingest_targets(self, target_stamp_s: float, targets: Sequence[float]) -> None:
+        self.ingest({}, target_stamp_s=target_stamp_s, targets=targets)
 
     def ingest(
         self,
@@ -109,8 +128,16 @@ class GripperRawCollector:
     ) -> int:
         """收入新的读数和当时的命令开口（硬件侧），返回新增读数条数。"""
         parsed = parse_sample_history(native_status)
+        instance = native_status.get("gripperSampleInstanceId") if isinstance(native_status, Mapping) else None
         added = 0
         with self._lock:
+            if isinstance(instance, str) and instance and instance != self._instance_id:
+                if self._instance_id is not None:
+                    # HAL 重启：seq 从 1 重新计数，旧序号作废；新旧之间的读数无法计数，按中断记录。
+                    self._last_seq = {side: 0 for side in HARDWARE_SIDES}
+                    if self._episode_start_s is not None:
+                        self._hal_restarts += 1
+                self._instance_id = instance
             for side, samples in parsed.items():
                 for sample in samples:
                     last = self._last_seq[side]
@@ -160,6 +187,8 @@ class GripperRawCollector:
             del self._targets[:keep]
             self._missed = {side: 0 for side in HARDWARE_SIDES}
             self._duplicates = {side: 0 for side in HARDWARE_SIDES}
+            self._hal_restarts = 0
+            self._fetch_errors = 0
 
     def end_episode(self) -> dict[str, Any]:
         """取出本 episode 的读数快照并回到空闲保留模式。"""
@@ -172,6 +201,8 @@ class GripperRawCollector:
                 "targets": list(self._targets),
                 "missedSeq": dict(self._missed),
                 "duplicateRows": dict(self._duplicates),
+                "halRestarts": self._hal_restarts,
+                "fetchErrors": self._fetch_errors,
             }
             self._episode_start_s = None
             self._trim_idle_locked()
@@ -320,44 +351,73 @@ def episode_rows(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_mm
     return rows
 
 
+def _contiguous_segments(samples: Sequence[GripperRawSample]) -> list[list[GripperRawSample]]:
+    """按连续观测切段：seq 不是逐一递增（缺样、HAL 重启、位置无效被滤掉）或相邻间隔过大即断开。"""
+    segments: list[list[GripperRawSample]] = []
+    for sample in samples:
+        if (segments and sample.seq == segments[-1][-1].seq + 1
+                and sample.monotonic_s - segments[-1][-1].monotonic_s <= CONTACT_MAX_GAP_S):
+            segments[-1].append(sample)
+        else:
+            segments.append([sample])
+    return segments
+
+
 def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_mm: float, min_gap_mm: float,
                    fps: float, thresholds_raw: Mapping[str, float | None],
-                   dataset_side_for_hardware: Mapping[str, str]) -> list[dict[str, Any]]:
-    """按读数检测接触片段，并换算成训练帧区间；仅凭位置推断的片段标为候选。"""
+                   dataset_side_for_hardware: Mapping[str, str],
+                   frame_count: int | None = None) -> list[dict[str, Any]]:
+    """按读数检测接触片段并换算成训练帧区间；仅凭位置推断的片段标为候选。
+
+    片段只在连续观测内成立，不跨越缺样或 HAL 重启。frame_count 为实际写入的帧数：完全落在最后一帧之后
+    （停止录制、排空写队列期间）的片段丢弃，跨过末尾的片段截到最后一帧并标记 clippedToLastFrame。
+    """
     start_s = snapshot.get("startS") or 0.0
     targets = snapshot["targets"]
     stamps = [stamp for stamp, _ in targets]
+    last_frame = frame_count - 1 if frame_count is not None else None
     events: list[dict[str, Any]] = []
     for side in sides:
         index = HARDWARE_SIDES.index(side)
-        samples: list[GripperRawSample] = [s for s in snapshot["samples"].get(side, []) if s.position_valid]
-        frames = [
-            ContactFrame(
-                gap_mm=gap_mm_for_position_raw(sample.position_raw, stroke_mm),
-                commanded_gap_mm=_commanded_at(targets, stamps, index, sample.monotonic_s),
-                gobj=sample.gOBJ if sample.status_valid else None,
-                current_raw=float(sample.current_raw) if sample.current_valid else None,
-                gripper_moving=sample.gGTO == 1 if sample.status_valid else None,
-            )
-            for sample in samples
-        ]
-        for event in detect_contact_events(frames, min_gap_mm=min_gap_mm, current_threshold_raw=thresholds_raw.get(side)):
-            first, last = samples[event["startFrame"]], samples[event["endFrame"]]
-            start_t = first.monotonic_s - start_s
-            end_t = last.monotonic_s - start_s
-            events.append({
-                "hardwareSide": side,
-                "datasetSide": dataset_side_for_hardware[side],
-                "startS": round(start_t, 4),
-                "endS": round(end_t, 4),
-                "startFrame": max(0, int(math.floor(start_t * fps))),
-                "endFrame": max(0, int(math.floor(end_t * fps))),
-                "startSeq": first.seq,
-                "endSeq": last.seq,
-                "evidence": event["evidence"],
-                "candidate": event["candidate"],
-                "minGapMm": round(event["minGapMm"], 4),
-                "peakCurrentRaw": event["peakCurrentRaw"],
-                "peakSeq": samples[event["peakCurrentFrame"]].seq if event["peakCurrentFrame"] is not None else None,
-            })
+        valid = [s for s in snapshot["samples"].get(side, []) if s.position_valid]
+        for samples in _contiguous_segments(valid):
+            frames = [
+                ContactFrame(
+                    gap_mm=gap_mm_for_position_raw(sample.position_raw, stroke_mm),
+                    commanded_gap_mm=_commanded_at(targets, stamps, index, sample.monotonic_s),
+                    gobj=sample.gOBJ if sample.status_valid else None,
+                    current_raw=float(sample.current_raw) if sample.current_valid else None,
+                    gripper_moving=sample.gGTO == 1 if sample.status_valid else None,
+                )
+                for sample in samples
+            ]
+            detected = detect_contact_events(
+                frames, min_gap_mm=min_gap_mm, current_threshold_raw=thresholds_raw.get(side))
+            for event in detected:
+                first, last = samples[event["startFrame"]], samples[event["endFrame"]]
+                start_t = first.monotonic_s - start_s
+                end_t = last.monotonic_s - start_s
+                start_frame = max(0, int(math.floor(start_t * fps)))
+                end_frame = max(0, int(math.floor(end_t * fps)))
+                if last_frame is not None:
+                    if last_frame < 0 or start_frame > last_frame:
+                        continue
+                clipped = last_frame is not None and end_frame > last_frame
+                events.append({
+                    "hardwareSide": side,
+                    "datasetSide": dataset_side_for_hardware[side],
+                    "startS": round(start_t, 4),
+                    "endS": round(end_t, 4),
+                    "startFrame": start_frame,
+                    "endFrame": min(end_frame, last_frame) if last_frame is not None else end_frame,
+                    "clippedToLastFrame": clipped,
+                    "startSeq": first.seq,
+                    "endSeq": last.seq,
+                    "evidence": event["evidence"],
+                    "candidate": event["candidate"],
+                    "minGapMm": round(event["minGapMm"], 4),
+                    "peakCurrentRaw": event["peakCurrentRaw"],
+                    "peakSeq": samples[event["peakCurrentFrame"]].seq if event["peakCurrentFrame"] is not None
+                    else None,
+                })
     return sorted(events, key=lambda item: (item["startS"], item["hardwareSide"]))

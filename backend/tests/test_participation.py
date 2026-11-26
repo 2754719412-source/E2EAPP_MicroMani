@@ -77,7 +77,9 @@ def test_record_gripper_samples_dds_without_waiting_for_ui_cache(monkeypatch, re
         aligned = recorder._aligned_sample("gripper", target)
         assert aligned.ok and not aligned.stale
         assert aligned.monotonic_s == fresh["monotonic_s"]
-    recorder.hal.command.assert_awaited_once_with("teleop.native.status", {})
+    # 位置取自状态读取；逐读数历史另由只读的 gripper.samples 增量拉取（缓存只带最新样本）。
+    calls = [call.args[0] for call in recorder.hal.command.await_args_list]
+    assert calls == ["teleop.native.status", "gripper.samples"]
 
 
 @pytest.mark.parametrize("fault", ["missing", "expired", "timeout", "alignment"])

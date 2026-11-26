@@ -126,6 +126,8 @@ GRIPPER_RAW_COLUMNS = {
     "gACT": "int8", "gGTO": "int8", "gSTA": "int8", "gOBJ": "int8", "fault": "int16",
     "commanded_gap_mm": "float64",
 }
+# HAL 每侧保留最近 256 条读数；按 10 Hz 增量拉取，100 Hz 采样时也有约 2.5 s 余量。
+GRIPPER_SAMPLES_POLL_S = 0.1
 GRIPPER_CURRENT_FEATURE_NAMES = ("operator_left.gcu_raw", "operator_right.gcu_raw")
 GRIPPER_CURRENT_VALID_FEATURE_NAMES = ("operator_left.gcu_valid", "operator_right.gcu_valid")
 FORCE_FEATURE_NAMES: tuple[str, ...] = ("fx", "fy", "fz", "mx", "my", "mz")
@@ -2312,6 +2314,23 @@ class DatasetRecorderService:
             thresholds[side] = float(value) if isinstance(value, (int, float)) else None
         return thresholds
 
+    def _poll_gripper_samples(
+        self, run: Callable[[Awaitable[Any]], Any], collector: gripper_raw_samples.GripperRawCollector
+    ) -> None:
+        """限频调用只读命令 gripper.samples 增量取读数；失败只计数，不影响位置采样和训练帧。"""
+        now_s = time.monotonic()
+        if now_s - getattr(self, "_gripper_samples_polled_at", 0.0) < GRIPPER_SAMPLES_POLL_S:
+            return
+        self._gripper_samples_polled_at = now_s
+        try:
+            result = run(self.hal.command("gripper.samples", collector.fetch_payload()))
+            response = result.get("response") if isinstance(result, dict) else None
+            if not isinstance(response, dict):
+                raise RuntimeError("gripper.samples response missing")
+            collector.ingest(response)
+        except Exception:  # noqa: BLE001
+            collector.note_fetch_error()
+
     def _gripper_raw_collector(self) -> gripper_raw_samples.GripperRawCollector:
         collector = getattr(self, "_gripper_raw", None)
         if collector is None:
@@ -2430,12 +2449,15 @@ class DatasetRecorderService:
             "sideSemantics": "hardware",
             "datasetSideForHardwareSide": dataset_side,
             "stats": gripper_raw_samples.episode_summary(snapshot, sides),
+            # HAL 重启（seq 重新计数）与增量拉取失败次数：非 0 时说明本 episode 有无法计数的缺样。
+            "halRestarts": snapshot.get("halRestarts", 0),
+            "fetchErrors": snapshot.get("fetchErrors", 0),
             "contactThresholdRaw": thresholds,
             # 标定完成前力值保留原码；接触片段只给原码峰值，不换算为牛顿。
             "contactEvents": gripper_raw_samples.contact_events(
                 snapshot, sides, stroke_mm=stroke, min_gap_mm=icf_target_min_gap_mm(config),
                 fps=float(getattr(self, "_record_fps_hz", 30)), thresholds_raw=thresholds,
-                dataset_side_for_hardware=dataset_side),
+                dataset_side_for_hardware=dataset_side, frame_count=getattr(self, "_episode_frames", None)),
         }
         self._episode_gripper_raw_meta = meta
         rows = gripper_raw_samples.episode_rows(
@@ -2842,10 +2864,11 @@ class DatasetRecorderService:
                 if target_buffer is not None and target_ok:
                     # 目标用 DDS 状态时标，不能套用更早的夹爪位置 READ 时标。
                     target_buffer.append(TimedSample("gripper_target", stamp, targets))
-                # 按 seq 收入真实读数，并记下当时的命令开口供接触片段检测。
-                self._gripper_raw_collector().ingest(
-                    native_status, target_stamp_s=stamp if target_ok else None,
-                    targets=list(targets) if target_ok and targets is not None else None)
+                # 记下当时的命令开口供接触片段检测；读数本身按 seq 另行增量拉取（遥测缓存只带最新样本）。
+                collector = self._gripper_raw_collector()
+                if target_ok and targets is not None:
+                    collector.ingest_targets(stamp, list(targets))
+                self._poll_gripper_samples(run, collector)
                 return self._gripper_source_sync(
                     config, target_s, record_quality=False, native_status=native_status)
             return self._gripper_source_sync(config, target_s, record_quality=False)
