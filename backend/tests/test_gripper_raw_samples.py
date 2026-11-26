@@ -260,7 +260,7 @@ def test_poll_failure_is_counted_without_raising() -> None:
     recorder.hal = Broken()
     collector = recorder._gripper_raw_collector()
     collector.begin_episode(0.0)
-    assert asyncio.run(recorder._fetch_gripper_samples(collector)) is False
+    assert asyncio.run(recorder._fetch_gripper_samples(collector)) == "busy"
     assert collector.end_episode()["fetchErrors"] == 1
 
 
@@ -545,3 +545,128 @@ def test_contact_evidence_ignores_readings_after_last_frame() -> None:
     event = events[0]
     assert event["endSeq"] == 5 and event["clippedToLastFrame"] is True
     assert event["evidence"] == ["position_only"] and event["candidate"] is True
+
+
+class _SilentHalTransport(_BlockingHalTransport):
+    """模拟夹爪/HAL 无应答：请求发出但永远收不到回复。"""
+
+    def wait_for_command_reply(self, request_id: str, timeout_s: float) -> object | None:
+        import time
+
+        time.sleep(timeout_s)
+        return None
+
+
+def test_save_does_not_hang_when_hal_never_replies(tmp_path: Path) -> None:
+    """审查复现：默认 5 s DDS 超时、HAL 无应答时，原实现补读 10 个请求、50 s 后才继续保存。"""
+    import asyncio
+    import time
+
+    from backend.core.logging import LogService
+    from backend.hal_client.dds_client import DdsHalClient
+
+    transport = _SilentHalTransport()
+    recorder = _recorder_with_dds(tmp_path, transport, ["right"])
+    recorder.hal = DdsHalClient(LogService(emit_startup=False), transport=transport)  # 默认 reply_timeout
+    calls: list[str] = []
+
+    async def writer_command(kind: str, payload: object = None) -> object:
+        calls.append(kind)
+        return {} if kind == "latest_episode_metadata" else 0
+
+    recorder._native_writer_command = writer_command  # type: ignore[method-assign]
+    recorder._gripper_raw_collector().begin_episode(9.0)
+    started = time.monotonic()
+    asyncio.run(recorder._save_native_episode())
+    elapsed = time.monotonic() - started
+    assert elapsed < 2.0  # 前端保存请求 10 s 超时
+    assert len(transport.requests) <= 2
+    assert "save_episode" in calls  # 训练数据照常保存
+    meta = recorder._episode_gripper_raw_meta
+    assert meta["tailFetch"] == "failed" and meta["tailFetchError"]
+
+
+def test_late_replies_from_previous_session_do_not_touch_new_session() -> None:
+    """审查复现：旧会话的失败应答不能给新 episode 计 fetchErrors；旧成功应答不能推进新会话游标。"""
+    collector = raw.GripperRawCollector()
+    collector.set_session(1)
+    collector.set_session(2)  # 会话切换
+    collector.begin_episode(9.0)
+    late = native_status([row(75, 10.0)])
+    late["gripperSampleInstanceId"] = "hal-a"
+    assert collector.ingest(late, session=1) == -1
+    assert collector.note_fetch_error(session=1) is False
+    assert collector.fetch_payload()["afterSeqLeft"] == 0
+    assert collector.end_episode()["fetchErrors"] == 0
+
+
+def test_previous_session_failure_reply_is_not_counted(tmp_path: Path) -> None:
+    """同上，经真实 DDS 客户端：旧会话请求在新 episode 开始后才失败，新 episode 的 fetchErrors 仍为 0。"""
+    import asyncio
+    import json
+
+    from backend.hal_client.dds_types import HalCommandReply
+
+    class FailingFirst(_BlockingHalTransport):
+        def publish_command_request(self, request: object) -> None:
+            super().publish_command_request(request)
+            if len(self.requests) == 1:
+                self.replies[request.request_id] = HalCommandReply(  # type: ignore[attr-defined]
+                    request_id=request.request_id, ok=False, result_json="{}", error="worker crashed")  # type: ignore[attr-defined]
+
+    transport = FailingFirst()
+    recorder = _recorder_with_dds(tmp_path, transport, ["right"])
+    recorder._sampler_threads = {}
+    recorder._sampler_stop_event = __import__("threading").Event()
+    collector = recorder._gripper_raw_collector()
+    recorder._start_gripper_samples_thread(recorder._recording_config())
+    assert transport.first_request.wait(2.0)
+    asyncio.run(recorder._stop_sampler_tasks())
+    old = recorder._gripper_samples_thread
+    recorder._start_gripper_samples_thread(recorder._recording_config())  # 新会话
+    collector.begin_episode(9.0)
+    transport.release.set()
+    old.join(2.0)
+    recorder._retire_gripper_samples_thread().join(2.0)
+    assert collector.end_episode()["fetchErrors"] == 0
+    assert json.loads(transport.requests[0].payload_json)["afterSeqLeft"] == 0  # type: ignore[attr-defined]
+
+
+def test_readings_after_last_frame_do_not_extend_contact() -> None:
+    """审查复现：0.43 s 接触、0.47 s 无接触，片段结束在第 12 帧；录像外 0.53 s 再接触不能把结束改成第 14 帧。"""
+    contact = {"pos": 140, "cur": 200, "gto": 1, "obj": 0}
+    rows = [row(1, 10.40, **contact), row(2, 10.43, **contact), row(3, 10.47, pos=140, cur=3, gto=1, obj=0)]
+    baseline = _events(_contact_snapshot(rows), frame_count=15)
+    extended = _events(_contact_snapshot([*rows, row(4, 10.53, **contact)]), frame_count=15)
+    assert [(e["endFrame"], e["endSeq"]) for e in baseline] == [(12, 2)]
+    assert [(e["endFrame"], e["endSeq"]) for e in extended] == [(12, 2)]
+    assert extended[0]["clippedToLastFrame"] is False
+
+
+def test_unrecognized_history_reply_is_a_failed_fetch(tmp_path: Path) -> None:
+    """审查复现：HAL 返回未识别格式（左侧最新 seq=3）时，不能记 tailFetch=ok、fetchErrors=0。"""
+    import asyncio
+
+    recorder = _recorder_with_dds(tmp_path, _BlockingHalTransport(), ["right"])
+
+    class Hal:
+        async def command(self, name: str, payload: dict[str, object]) -> dict[str, object]:
+            return {"response": {"gripperSampleInstanceId": "hal-a", "latestSeq": [3, 0],
+                                 "gripperSampleHistoryFormat": "seq_v0",
+                                 "gripperSampleHistory": {"left": [[1, 2, 3]], "right": []}}}
+
+    async def writer_command(kind: str, payload: object = None) -> object:
+        return {} if kind == "latest_episode_metadata" else 0
+
+    recorder.hal = Hal()
+    recorder._native_writer_command = writer_command  # type: ignore[method-assign]
+    collector = recorder._gripper_raw_collector()
+    collector.begin_episode(9.0)
+    asyncio.run(recorder._save_native_episode())
+    meta = recorder._episode_gripper_raw_meta
+    assert meta["tailFetch"] == "failed" and meta["fetchErrors"] == 1
+    assert "unknown history format" in meta["tailFetchError"]
+    assert collector.fetch_payload()["afterSeqLeft"] == 0
+    # 合法的空增量仍算成功。
+    assert raw.history_reply_error(native_status([])) == ""
+    assert "malformed" in raw.history_reply_error(native_status([[1, 2]]))
