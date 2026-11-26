@@ -64,6 +64,14 @@ def _force_axis_signs(config: dict[str, Any]) -> dict[str, list[float]]:
     return result
 
 
+def _compliance_axis_signs(config: dict[str, Any], side: str) -> list[Any] | None:
+    # HAL 导纳只用方向换算后的 Fx、Fz，二者符号翻转等同反转导纳方向；其他轴不影响。
+    force = config.get("force")
+    axis_sign = force.get("axisSign") if isinstance(force, dict) else None
+    signs = axis_sign.get(side) if isinstance(axis_sign, dict) else None
+    return [signs[0], signs[2]] if isinstance(signs, list) and len(signs) == 6 else None
+
+
 def invalidate_changed_force_mappings(
     current: dict[str, Any], candidate: dict[str, Any], *, confirm_side: str | None = None,
 ) -> None:
@@ -73,9 +81,10 @@ def invalidate_changed_force_mappings(
     for side in ("left", "right"):
         previous = previous_compliance.get(side) if isinstance(previous_compliance, dict) else None
         updated = _mapping(compliance.get(side), f"force.compliance.{side}")
-        changed = not isinstance(previous, dict) or previous.get("matrix") != updated.get("matrix")
+        changed = (not isinstance(previous, dict) or previous.get("matrix") != updated.get("matrix")
+                   or _compliance_axis_signs(current, side) != _compliance_axis_signs(candidate, side))
         if changed and side == confirm_side:
-            raise ValueError("请先保存新矩阵，再确认该侧映射")
+            raise ValueError("请先保存新矩阵或 Fx/Fz 方向，再确认该侧映射")
         # 重试完整设置或重复应用旧快照，不能替操作者确认刚失效的矩阵。
         unconfirmed = (side != confirm_side and isinstance(previous, dict)
                        and previous.get("mappingConfirmed") is not True and updated.get("mappingConfirmed"))

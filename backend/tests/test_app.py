@@ -487,6 +487,30 @@ def test_matrix_edit_invalidates_only_edited_side_before_hal_and_on_disk(
     }
 
 
+@pytest.mark.parametrize("axis, invalidates", [(0, True), (2, True), (1, False)])
+def test_fx_fz_direction_flip_invalidates_that_side_mapping(
+    tmp_path: Path, monkeypatch: MonkeyPatch, axis: int, invalidates: bool,
+) -> None:
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+    client = TestClient(create_app(tmp_path))
+    _attach_mock_control_lease(client)
+
+    async def accept(name, payload):
+        return {"ok": True}
+
+    monkeypatch.setattr(_app_state(client).hal, "command", accept)
+    config = client.get("/api/settings").json()
+    for side in ("left", "right"):
+        config["force"]["compliance"][side]["mappingConfirmed"] = True
+        assert client.put(f"/api/settings?confirmMappingSide={side}", json=config).status_code == 200
+    config["force"]["compliance"]["enabled"] = True
+    config["force"]["axisSign"]["left"][axis] *= -1
+    assert client.put("/api/settings", json=config).status_code == 200
+    saved = client.get("/api/settings").json()["force"]["compliance"]
+    assert saved["left"]["mappingConfirmed"] is not invalidates and saved["enabled"] is not invalidates
+    assert saved["right"]["mappingConfirmed"] is True
+
+
 def test_concurrent_settings_write_cannot_restore_stale_force_mapping(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
     client = TestClient(create_app(tmp_path))
