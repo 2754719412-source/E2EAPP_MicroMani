@@ -17,6 +17,7 @@ it('请求超时即撤权并结束等待；Abort 不表示服务端动作已取�
   const rejected = expect(pending).rejects.toThrow('执行结果未知')
   await vi.advanceTimersByTimeAsync(10_001)
   await rejected
+  await expect(pending).rejects.toBeInstanceOf(api.CommandTimeoutError)
   expect(revoke).toHaveBeenCalledOnce()
   expect(fetcher).toHaveBeenCalledOnce()
   const options = (fetcher.mock.calls[0] as unknown as [string, RequestInit])[1]

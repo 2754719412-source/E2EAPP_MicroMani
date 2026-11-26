@@ -3,9 +3,9 @@ const dualParticipation: Participation = { version: 'appstation.participation.v1
 import { act, fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DatasetReplayPanel } from './DatasetReplayPanel'
-import { postCommand } from '../api'
+import { CommandTimeoutError, postCommand } from '../api'
 
-vi.mock('../api', () => ({ apiBase: 'http://localhost', mockMode: false, postCommand: vi.fn() }))
+vi.mock('../api', async (load) => ({ ...await load<typeof import('../api')>(), apiBase: 'http://localhost', mockMode: false, postCommand: vi.fn() }))
 beforeEach(() => {
   vi.mocked(postCommand).mockReset()
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { phase: 'idle', active: false, frame: 0, totalFrames: 0 } }) }))
@@ -144,6 +144,42 @@ describe('DatasetReplayPanel', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '停止真机回放' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: '停止真机回放' }))
     await waitFor(() => expect(postCommand).toHaveBeenCalledWith('/api/replay/stop', {}))
+  })
+
+  it.each([
+    ['stopped', 'controlled', '已确认参与机械臂静止。'],
+    ['failed', 'emergency', '停轴被控制卡拒绝'],
+  ])('停止请求先超时，按实际运行片段的 %s 反馈更新提示', async (phase, stopMode, message) => {
+    const running = { datasetId: 'other', episodeId: 'old', phase: 'running', active: true, frame: 2, totalFrames: 30 }
+    let data = { ...running, stopMode: '', error: '' }
+    vi.mocked(fetch).mockImplementation(async () => ({ ok: true, json: async () => ({ data }) }) as Response)
+    vi.mocked(postCommand).mockRejectedValueOnce(new CommandTimeoutError('请求超时，执行结果未知'))
+    render(<DatasetReplayPanel datasetId="local" episodeId="new" />)
+    await screen.findByText('执行片段：other / old')
+    fireEvent.click(screen.getByRole('button', { name: '停止真机回放' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('尚未确认停车')
+    data = { ...data, phase, stopMode, active: false, error: phase === 'failed' ? message : '' }
+    await screen.findByText(phase === 'failed' ? '失败' : '已停止')
+    if (phase === 'failed') expect(screen.getByRole('alert')).toHaveTextContent(message)
+    else expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText(message, { selector: phase === 'failed' ? 'strong' : 'p' })).toBeVisible()
+    expect(postCommand).toHaveBeenCalledTimes(1)
+  })
+
+  it('停车已被轮询确认时，迟到的请求超时不覆盖最终状态', async () => {
+    const running = { datasetId: 'local', episodeId: 'e', phase: 'running', active: true, frame: 2, totalFrames: 30 }
+    let data = { ...running, stopMode: '' }
+    vi.mocked(fetch).mockImplementation(async () => ({ ok: true, json: async () => ({ data }) }) as Response)
+    let rejectStop!: (error: Error) => void
+    vi.mocked(postCommand).mockImplementationOnce(() => new Promise((_, reject) => { rejectStop = reject }))
+    render(<DatasetReplayPanel datasetId="local" episodeId="e" />)
+    await screen.findByText('回放中')
+    fireEvent.click(screen.getByRole('button', { name: '停止真机回放' }))
+    data = { ...data, phase: 'stopped', stopMode: 'controlled', active: false }
+    await screen.findByText('已确认参与机械臂静止。')
+    await act(async () => rejectStop(new CommandTimeoutError('请求超时，执行结果未知')))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(postCommand).toHaveBeenCalledTimes(1)
   })
 })
 

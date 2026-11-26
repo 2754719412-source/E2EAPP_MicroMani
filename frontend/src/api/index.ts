@@ -312,6 +312,8 @@ export async function fetchHardwareStatus(): Promise<HardwareProbeStatus> {
   return response.json() as Promise<HardwareProbeStatus>
 }
 
+export class CommandTimeoutError extends Error {}
+
 /** 发送或封装对应的后端命令。 */
 export async function postCommand(path: string, body?: unknown) {
   // 调用方可以传完整接口路径或短路径，这里统一规范成后端路由。
@@ -354,7 +356,7 @@ export async function postCommand(path: string, body?: unknown) {
           try {
             if (commandRequiresSafetyClear(apiPath, body)) controlCommandUncertain(reason)
           } finally {
-            reject(new Error(reason))
+            reject(new CommandTimeoutError(reason))
           }
         }, timeoutMs)
       }),

@@ -2,7 +2,7 @@ import type { Participation } from '../types'
 import { ParticipationSelector } from './ParticipationSelector'
 import { useEffect, useRef, useState } from 'react'
 import { AlertCircle, Play, RotateCcw, ShieldCheck, Square } from 'lucide-react'
-import { apiBase, mockMode, postCommand } from '../api'
+import { apiBase, CommandTimeoutError, mockMode, postCommand } from '../api'
 import { UiButton, UiTag, UiTitle } from './ui'
 
 type ReplayTiming = {
@@ -55,6 +55,7 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
   const [speed, setSpeed] = useState('0.25')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
+  const [stopRequest, setStopRequest] = useState<{ target: ReplayStatus; timedOut: boolean } | null>(null)
   const [connection, setConnection] = useState<'connecting' | 'online' | 'offline'>('connecting')
   const connected = connection === 'online'
   const canInspect = connected && !mockMode && !pending && !status?.active && selected.arms.length > 0
@@ -79,6 +80,10 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
         if (!disposed) {
           setStatus(payload.data)
           setConnection('online')
+          if (payload.data.stopMode) {
+            setStopRequest((request) => request && request.target.datasetId === payload.data.datasetId
+              && request.target.episodeId === payload.data.episodeId ? null : request)
+          }
           if (payload.data.active) resetInspection()
         }
       } catch {
@@ -119,15 +124,23 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
     resetInspection()
     setPending(true)
     setError('')
+    const stop = operation === 'stop' && status ? { target: status, timedOut: false } : null
+    setStopRequest(stop)
     try {
       const result = await (operation === 'stop' ? postCommand('/api/replay/stop', {})
         : postCommand(`${replayPath}/start`, { participation: selected, speed: Number(speed), confirmMotion: true })) as { data: ReplayStatus }
       setStatus(result.data)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '回放操作失败')
+      if (stop && cause instanceof CommandTimeoutError) {
+        // 轮询可能先于超时返回停车反馈，此时不再显示结果未知。
+        setStopRequest((request) => request === stop ? { ...stop, timedOut: true } : request)
+      } else {
+        setError(cause instanceof Error ? cause.message : '回放操作失败')
+      }
     } finally { setPending(false) }
   }
-  const errorDetail = connection === 'offline' ? '回放状态连接中断，请核验设备状态' : error || status?.error || current?.error || ''
+  const stopNotice = stopRequest?.timedOut ? '停止请求超时，尚未确认停车，正在核对设备反馈。' : ''
+  const errorDetail = connection === 'offline' ? '回放状态连接中断，请核验设备状态' : error || status?.error || stopNotice || current?.error || ''
   const diagnosticError = errorDetail.startsWith('目标位置对齐超时') || errorDetail.startsWith('实际位置偏离回放目标') || errorDetail.startsWith('回放跟随等待超时')
   const errorMessage = diagnosticError ? errorDetail.split('\n')[0] : errorDetail.includes('Parquet magic bytes')
     ? '数据文件无法读取，请检查 Parquet 文件是否完整。'
