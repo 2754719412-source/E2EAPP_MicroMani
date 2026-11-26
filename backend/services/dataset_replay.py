@@ -7,6 +7,7 @@ import math
 import time
 from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
 from backend.core.data_contract import validate_data_contract, dataset_to_hardware_state
 from backend.core.participation import participation, action_mask, hardware_sides
@@ -160,7 +161,7 @@ class DatasetReplayService:
         self._stop = asyncio.Event()
         self._stop_acknowledged = asyncio.Event()
         self._status = {"phase": "loading", "frame": 0, "totalFrames": 0, "error": "",
-                        "datasetId": dataset_id, "episodeId": episode_id, "speed": speed}
+                        "runId": uuid4().hex, "datasetId": dataset_id, "episodeId": episode_id, "speed": speed}
         self._feedback_samples = {}
         self._participation = None
         self._controlled_stop_available = False
@@ -241,12 +242,11 @@ class DatasetReplayService:
             response = reply.get("response") if isinstance(reply, dict) else None
             if not isinstance(response, dict) or response.get("ok") is not True or response.get("side") != side:
                 raise RuntimeError(f"{side} 侧回放目标下发结果未知")
-            if self._stop.is_set() and self._controlled_stop_available:
-                # HAL 的外层成功应答仍可能携带卡上目标刷新的错误码。
-                codes = response.get("updateReturn")
-                if (not isinstance(codes, list) or len(codes) != 6
-                        or any(type(code) not in (int, float) or code != 0 for code in codes)):
-                    raise RuntimeError(f"{side} 侧在途目标的控制卡应答未确认")
+            # HAL 的外层成功应答仍可能携带卡上目标刷新的错误码。
+            codes = response.get("updateReturn")
+            if (not isinstance(codes, list) or len(codes) != 6
+                    or any(type(code) not in (int, float) or code != 0 for code in codes)):
+                raise RuntimeError(f"{side} 侧回放目标的控制卡应答未确认：{codes}")
             self._check(token)
             if include_grippers and side in hardware_sides(self._participation, "grippers"):
                 await self.svc.hal.command("gripper.replay_target", native_gripper_payload(config, side, gap))

@@ -260,6 +260,84 @@ describe('设置迁移回归', () => {
     expect(screen.getByLabelText('配置应用状态')).toHaveTextContent('后续修改尚未应用')
   })
 
+  it('快照在途时编辑目录和 FPS，只将编辑字段合并到快照结果', async () => {
+    vi.spyOn(api, 'mockMode', 'get').mockReturnValue(false)
+    const snapshot = deferred<Awaited<ReturnType<typeof api.applyParameterSnapshotApi>>>()
+    const firstSave = deferred<typeof defaultConfig>()
+    vi.spyOn(api, 'applyParameterSnapshotApi').mockReturnValue(snapshot.promise)
+    const put = vi.spyOn(api, 'putConfig').mockReturnValueOnce(firstSave.promise).mockImplementation(async (config) => config)
+    const saved = structuredClone(defaultConfig)
+    saved.teleop.motionProfileDecSec = 0.4
+    saved.storage.recordFps = 27
+    saved.force.compliance.left.gainUmPerNs[1] += 2
+    const store = useTelemetryStore.getState()
+    store.applyParameterSnapshot('snapshot')
+    const { force, storage } = store.config
+    const gain = [...force.compliance.left.gainUmPerNs]
+    gain[0] += 1
+    store.updateConfig({ storage: { ...storage, datasetRoot: 'D:/newer-edit' }, force: {
+      ...force, compliance: { ...force.compliance, left: { ...force.compliance.left, gainUmPerNs: gain } },
+    } })
+    await act(async () => snapshot.resolve({ ok: true, data: { config: saved } }))
+    const first = put.mock.calls[0][0]
+    expect(first.teleop.motionProfileDecSec).toBe(0.4)
+    expect(first.storage).toMatchObject({ recordFps: 27, datasetRoot: 'D:/newer-edit' })
+    expect(first.force.compliance.left.gainUmPerNs).toEqual([gain[0], saved.force.compliance.left.gainUmPerNs[1]])
+    expect(useTelemetryStore.getState().config).toEqual(first)
+    store.updateConfig({ storage: { ...first.storage, recordFps: 18 } })
+    await act(async () => firstSave.resolve(first))
+    expect(put).toHaveBeenCalledTimes(2)
+    expect(useTelemetryStore.getState().config).toEqual(put.mock.calls[1][0])
+    expect(useTelemetryStore.getState().config.storage).toMatchObject({ recordFps: 18, datasetRoot: 'D:/newer-edit' })
+  })
+
+  it('自动保存失败后，已排队的显式应用仍提交操作者编辑的目录', async () => {
+    vi.spyOn(api, 'mockMode', 'get').mockReturnValue(false)
+    const save = deferred<typeof defaultConfig>()
+    vi.spyOn(api, 'putConfig').mockReturnValueOnce(save.promise)
+    const apply = vi.spyOn(api, 'applyConfig').mockImplementation(async (config) => ({ ok: true, data: { config }, ts: Date.now() }))
+    await show('storage')
+    fireEvent.change(screen.getByLabelText('数据集根目录'), { target: { value: 'D:/requested' } })
+    fireEvent.click(screen.getByRole('button', { name: '应用配置' }))
+    await act(async () => save.reject(new Error('write failed')))
+    expect(apply.mock.calls[0][0]?.storage.datasetRoot).toBe('D:/requested')
+    expect(useTelemetryStore.getState().config.storage.datasetRoot).toBe('D:/requested')
+  })
+
+  it('方向标定以保存应答为准，拒绝后保留生效方向和待重试的草稿', async () => {
+    vi.spyOn(api, 'mockMode', 'get').mockReturnValue(false)
+    const log = vi.spyOn(api, 'sendSettingsLogCommand').mockResolvedValue({})
+    const original = structuredClone(defaultConfig)
+    original.force.compliance.right.mappingConfirmed = true
+    useTelemetryStore.setState({ config: original })
+    const first = deferred<typeof defaultConfig>()
+    const put = vi.spyOn(api, 'putConfig').mockReturnValueOnce(first.promise).mockImplementation(async (config) => {
+      const saved = structuredClone(config)
+      saved.force.compliance.right.mappingConfirmed = false
+      return saved
+    })
+    await show('force-left')
+    const card = within(document.getElementById('force-left')!)
+    fireEvent.click(card.getByLabelText('左臂六轴方向标定'))
+    const dialog = within(card.getByRole('dialog'))
+    const negative = within(dialog.getByLabelText('左臂X方向')).getByRole('radio', { name: /反向/ })
+    fireEvent.click(negative)
+    fireEvent.click(dialog.getByRole('button', { name: '保存标定' }))
+    expect(card.getByLabelText('左臂已标定方向')).toHaveTextContent('X+')
+    await act(async () => first.reject(new Error('servos enabled')))
+    expect(dialog.getByRole('alert')).toHaveTextContent('servos enabled')
+    expect(negative).toBeChecked()
+    expect(useTelemetryStore.getState().config.force).toEqual(original.force)
+    expect(log).toHaveBeenCalledWith('[FORCE]', expect.stringContaining('servos enabled'), 'ERROR')
+    expect(log).not.toHaveBeenCalledWith('[FORCE]', expect.stringContaining('方向标定已保存'), 'INFO')
+    fireEvent.click(dialog.getByRole('button', { name: '保存标定' }))
+    await waitFor(() => expect(card.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(put).toHaveBeenCalledTimes(2)
+    expect(card.getByLabelText('左臂已标定方向')).toHaveTextContent('X−')
+    expect(card.getByText('X/Z 映射待确认')).toBeVisible()
+    expect(log).toHaveBeenCalledWith('[FORCE]', expect.stringContaining('方向标定已保存'), 'INFO')
+  })
+
   it('数据目录和录制 FPS 可编辑且不会覆盖相机采集 FPS', async () => {
     await show('storage')
     const card = within(document.getElementById('storage')!)

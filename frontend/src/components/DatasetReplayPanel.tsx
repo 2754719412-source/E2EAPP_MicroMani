@@ -19,6 +19,7 @@ type ReplayTiming = {
 }
 type ReplayStatus = {
   active: boolean
+  runId?: string
   stopMode?: 'controlled' | 'emergency'
   phase: string
   frame: number
@@ -51,11 +52,13 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
   } | null>(null)
   const [attempt, setAttempt] = useState(0)
   const generation = useRef(0)
+  const statusRevision = useRef(0)
+  const commandSequence = useRef(0)
   const [confirmed, setConfirmed] = useState(false)
   const [speed, setSpeed] = useState('0.25')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
-  const [stopRequest, setStopRequest] = useState<{ target: ReplayStatus; timedOut: boolean } | null>(null)
+  const [stopRequest, setStopRequest] = useState<{ target: ReplayStatus; error: string } | null>(null)
   const [connection, setConnection] = useState<'connecting' | 'online' | 'offline'>('connecting')
   const connected = connection === 'online'
   const canInspect = connected && !mockMode && !pending && !status?.active && selected.arms.length > 0
@@ -73,17 +76,18 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
     let disposed = false
     let timer: ReturnType<typeof setTimeout>
     const poll = async () => {
+      const revision = statusRevision.current
       try {
         const response = await fetch(`${apiBase}/api/replay/status`, { signal: AbortSignal.timeout(3000) })
         if (!response.ok) throw new Error('无法获取回放状态')
         const payload = await response.json() as { data: ReplayStatus }
-        if (!disposed) {
+        if (!disposed && revision === statusRevision.current) {
+          statusRevision.current += 1
           setStatus(payload.data)
           setConnection('online')
-          if (payload.data.stopMode) {
-            setStopRequest((request) => request && request.target.datasetId === payload.data.datasetId
-              && request.target.episodeId === payload.data.episodeId ? null : request)
-          }
+          setStopRequest((request) => request && !payload.data.stopMode
+            && request.target.runId === payload.data.runId && request.target.datasetId === payload.data.datasetId
+            && request.target.episodeId === payload.data.episodeId ? request : null)
           if (payload.data.active) resetInspection()
         }
       } catch {
@@ -121,26 +125,35 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
 
   const run = async (operation: 'start' | 'stop') => {
     if (operation === 'start' && !(verified && confirmed)) return
+    const revision = statusRevision.current
+    const command = ++commandSequence.current
     resetInspection()
     setPending(true)
     setError('')
-    const stop = operation === 'stop' && status ? { target: status, timedOut: false } : null
+    const stop = operation === 'stop' && status ? { target: status, error: '' } : null
     setStopRequest(stop)
     try {
       const result = await (operation === 'stop' ? postCommand('/api/replay/stop', {})
         : postCommand(`${replayPath}/start`, { participation: selected, speed: Number(speed), confirmMotion: true })) as { data: ReplayStatus }
-      setStatus(result.data)
+      // 命令返回期间若已收到更新的状态，继续以轮询为准。
+      if (command === commandSequence.current && revision === statusRevision.current) {
+        statusRevision.current += 1
+        setStatus(result.data)
+      }
     } catch (cause) {
-      if (stop && cause instanceof CommandTimeoutError) {
-        // 轮询可能先于超时返回停车反馈，此时不再显示结果未知。
-        setStopRequest((request) => request === stop ? { ...stop, timedOut: true } : request)
+      if (command !== commandSequence.current) return
+      if (stop) {
+        const message = cause instanceof CommandTimeoutError ? '停止请求超时，尚未确认停车，正在核对设备反馈。'
+          : cause instanceof Error ? cause.message : '回放停止请求失败'
+        setStopRequest((request) => request === stop ? { ...stop, error: message } : request)
       } else {
         setError(cause instanceof Error ? cause.message : '回放操作失败')
       }
-    } finally { setPending(false) }
+    } finally {
+      if (command === commandSequence.current) setPending(false)
+    }
   }
-  const stopNotice = stopRequest?.timedOut ? '停止请求超时，尚未确认停车，正在核对设备反馈。' : ''
-  const errorDetail = connection === 'offline' ? '回放状态连接中断，请核验设备状态' : error || status?.error || stopNotice || current?.error || ''
+  const errorDetail = connection === 'offline' ? '回放状态连接中断，请核验设备状态' : error || status?.error || stopRequest?.error || current?.error || ''
   const diagnosticError = errorDetail.startsWith('目标位置对齐超时') || errorDetail.startsWith('实际位置偏离回放目标') || errorDetail.startsWith('回放跟随等待超时')
   const errorMessage = diagnosticError ? errorDetail.split('\n')[0] : errorDetail.includes('Parquet magic bytes')
     ? '数据文件无法读取，请检查 Parquet 文件是否完整。'

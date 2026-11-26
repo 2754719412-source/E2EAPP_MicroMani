@@ -3,6 +3,16 @@ import { motionSideReturnOriginReady } from './motionReturnReady'
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.resetModules() })
 
+it('配置保存将 HAL 拒绝方向标定的具体原因传给设置卡', async () => {
+  vi.resetModules()
+  vi.stubEnv('MODE', 'development')
+  const detail = { code: 'HAL_REJECTED', message: 'force configuration requires all axes stopped and servos disabled' }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail }), { status: 409 })))
+  const { putConfig } = await import('./api')
+  const { defaultConfig } = await import('./data')
+  await expect(putConfig(defaultConfig)).rejects.toThrow(detail.message)
+})
+
 it('请求超时即撤权并结束等待；Abort 不表示服务端动作已取消', async () => {
   vi.resetModules()
   vi.stubEnv('MODE', 'development')

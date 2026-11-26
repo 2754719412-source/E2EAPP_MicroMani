@@ -65,6 +65,7 @@ export function ForceSensorCard({
   injectLog: (level: 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR', msg: string, channel?: LogEntry['channel']) => void
 }) {
   const history = useTelemetryStore((state) => state.history)
+  const saveForceAxisSigns = useTelemetryStore((state) => state.saveForceAxisSigns)
   const tareBlockedReason = useTelemetryStore((state) => controlSafetyBlockReason(state, !mockMode))
   const hardwareSide = hardwareSideForOperatorSide(side)
   const sideSpec = armHardwareSpecs[hardwareSide]
@@ -89,6 +90,8 @@ export function ForceSensorCard({
   const axisSigns = axisSignConfig[hardwareSide] ?? fallbackForceAxisSigns[hardwareSide]
   const [axisCalibrationOpen, setAxisCalibrationOpen] = useState(false)
   const [axisSignDraft, setAxisSignDraft] = useState<number[]>(axisSigns)
+  const [savingAxisSigns, setSavingAxisSigns] = useState(false)
+  const [axisSaveError, setAxisSaveError] = useState('')
   const updateComplianceArray = (
     key: 'matrix' | 'deadbandN' | 'gainUmPerNs' | 'maxStepUm' | 'maxOffsetUm',
     index: number,
@@ -126,20 +129,23 @@ export function ForceSensorCard({
   }
   const openAxisCalibration = () => {
     setAxisSignDraft([...axisSigns])
+    setAxisSaveError('')
     setAxisCalibrationOpen(true)
   }
-  const saveAxisCalibration = () => {
-    updateConfig({
-      force: {
-        ...config.force,
-        axisSign: {
-          ...axisSignConfig,
-          [hardwareSide]: axisSignDraft,
-        },
-      },
-    })
-    commandLog(injectLog, '[FORCE]', `${operatorLabel} 六轴方向标定已保存；请释放载荷后重新 Tare`)
-    setAxisCalibrationOpen(false)
+  const saveAxisCalibration = async () => {
+    setSavingAxisSigns(true)
+    setAxisSaveError('')
+    try {
+      await saveForceAxisSigns(hardwareSide, axisSignDraft)
+      commandLog(injectLog, '[FORCE]', `${operatorLabel} 六轴方向标定已保存；请释放载荷后重新 Tare`)
+      setAxisCalibrationOpen(false)
+    } catch (error) {
+      const message = `方向标定保存失败：${error instanceof Error ? error.message : String(error)}`
+      setAxisSaveError(message)
+      injectLog('ERROR', message, '[FORCE]')
+    } finally {
+      setSavingAxisSigns(false)
+    }
   }
   const updateAxisSignDraft = (index: number, value: number) => {
     setAxisSignDraft((current) => current.map((sign, signIndex) => signIndex === index ? value : sign))
@@ -308,11 +314,12 @@ export function ForceSensorCard({
                     aria-label={`${operatorLabel}六轴方向标定`}
                     className="force-calibration-launch"
                     icon={<Crosshair size={15} />}
-                    disabled={config.force.compliance.enabled}
+                    disabled={config.force.compliance.enabled || savingAxisSigns}
                     onClick={openAxisCalibration}
                   >
-                    六轴方向标定
+                    {savingAxisSigns ? '正在保存标定' : '六轴方向标定'}
                   </UiButton>
+                  {!axisCalibrationOpen && axisSaveError && <p role="alert">{axisSaveError}</p>}
                   <div className="force-axis-sign-grid" aria-label={`${operatorLabel}已标定方向`}>
                     {forceAxisCalibrationAxes.map(({ axis, channel, index }) => (
                       <span className="force-axis-sign" key={axis}>
@@ -417,6 +424,7 @@ export function ForceSensorCard({
                               <button
                                 type="button"
                                 role="radio"
+                                disabled={savingAxisSigns}
                                 aria-checked={(axisSignDraft[index] ?? 1) === 1}
                                 className={(axisSignDraft[index] ?? 1) === 1 ? 'on' : ''}
                                 onClick={() => updateAxisSignDraft(index, 1)}
@@ -426,6 +434,7 @@ export function ForceSensorCard({
                               <button
                                 type="button"
                                 role="radio"
+                                disabled={savingAxisSigns}
                                 aria-checked={(axisSignDraft[index] ?? 1) === -1}
                                 className={(axisSignDraft[index] ?? 1) === -1 ? 'on' : ''}
                                 onClick={() => updateAxisSignDraft(index, -1)}
@@ -442,10 +451,11 @@ export function ForceSensorCard({
                 <UiText secondary className="force-calibration-warning">
                   保存会重新加载力传感器。请释放外力、完成 Tare 后，再启用位置导纳。
                 </UiText>
+                {axisSaveError && <p role="alert">{axisSaveError}</p>}
                 </div>
                 <div className="ui-modal-actions">
-                  <UiButton onClick={() => setAxisCalibrationOpen(false)}>取消</UiButton>
-                  <UiButton variant="primary" onClick={saveAxisCalibration}>保存标定</UiButton>
+                  <UiButton onClick={() => setAxisCalibrationOpen(false)}>{savingAxisSigns ? '关闭' : '取消'}</UiButton>
+                  <UiButton variant="primary" disabled={savingAxisSigns} onClick={saveAxisCalibration}>{savingAxisSigns ? '正在保存标定' : '保存标定'}</UiButton>
                 </div>
                 </div>
               </div>

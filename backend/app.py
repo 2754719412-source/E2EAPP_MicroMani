@@ -2245,35 +2245,34 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
     async def pico_network_auto_configure(
         payload: Annotated[dict[str, Any] | None, Body()] = None,
     ) -> ApiEnvelope:
-        config = await get_config_async()
-        pico = config["picoVision"]
-        original_pico_ip = str(pico.get("ip", ""))
-        requested_pico_ip = str((payload or {}).get("picoIp", "")).strip()
-        if requested_pico_ip:
-            pico["ip"] = requested_pico_ip
-        try:
-            network = await asyncio.to_thread(
-                detect_pico_network,
-                str(pico["ip"]),
-                preferred_gateway=str(pico.get("gateway", "")),
-            )
-        except PicoNetworkDetectionError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail={"code": "PICO_NETWORK_DETECTION_FAILED", "message": str(exc)},
-            ) from exc
-        changed = original_pico_ip != str(pico["ip"])
-        changed = changed or int(pico.get("ifIndex", -1)) != int(network["ifIndex"])
-        gateway = str(network.get("gateway", "")).strip()
-        if gateway:
-            changed = changed or str(pico.get("gateway", "")) != gateway
-            pico["gateway"] = gateway
-        pico["ifIndex"] = int(network["ifIndex"])
-        saved = (
-            await asyncio.to_thread(settings.save_config, config, source="pico-network-auto")
-            if changed
-            else config
-        )
+        pico = (await get_config_async())["picoVision"]
+        target_ip = str((payload or {}).get("picoIp", "")).strip() or pico["ip"]
+        while True:
+            try:
+                network = await asyncio.to_thread(detect_pico_network, target_ip, preferred_gateway=pico.get("gateway", ""))
+            except PicoNetworkDetectionError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "PICO_NETWORK_DETECTION_FAILED", "message": str(exc)},
+                ) from exc
+            async with settings_write_lock:
+                saved = await get_config_async()
+                current = saved["picoVision"]
+                if current["ip"] != pico["ip"] or current.get("gateway") != pico.get("gateway"):
+                    # 探测期间有人改了网络目标，按新地址再探测一次。
+                    if current["ip"] != pico["ip"]:
+                        target_ip = current["ip"]
+                    pico = current
+                    continue
+                gateway = str(network.get("gateway", "")).strip()
+                fields = {"ip": target_ip, "ifIndex": int(network["ifIndex"])}
+                if gateway:
+                    fields["gateway"] = gateway
+                changed = any(current.get(key) != value for key, value in fields.items())
+                if changed:
+                    current.update(fields)
+                    saved = await asyncio.to_thread(settings.save_config, saved, source="pico-network-auto")
+                break
         network["changed"] = changed
         (logs.info if changed else logs.debug)(
             "[CAMERA]",

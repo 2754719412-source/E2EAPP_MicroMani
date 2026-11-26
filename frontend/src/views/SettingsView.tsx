@@ -169,8 +169,8 @@ export function SettingsView() {
     setApplyingConfig(true)
     setConfigApplyStatus('正在应用配置')
     try {
-      await queueSettingsWrite(async (previous) => {
-        const response = await applyConfig(previous ?? config)
+      await queueSettingsWrite(async (previous, requested) => {
+        const response = await applyConfig(requested)
         const draft = useTelemetryStore.getState().config
         const current = draft === config || draft === previous
         const active = response.data.config && normalizeConfig(response.data.config)

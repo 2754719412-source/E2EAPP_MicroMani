@@ -92,6 +92,47 @@ def test_complete_replay_sends_all_frames_and_maps_sides(setup_replay):
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("codes,arms_only", [
+    ([0, 0, 3011, 0, 0, 0], True), ([0, 0, 3011, 0, 0, 0], False), (None, True), ([0] * 5, True),
+])
+def test_uncertain_target_during_normal_replay_stops_before_next_command(setup_replay, codes, arms_only):
+    app, replay, data, _ = setup_replay
+    if arms_only:
+        data["episode"]["participation"]["grippers"] = []
+    original = app.state.hal.command
+    targets = []
+
+    async def command(name, payload):
+        if name == "motion.replay_absolute_target":
+            targets.append(payload["side"])
+            return {"response": {"ok": True, "side": payload["side"], "updateReturn": codes}}
+        return await original(name, payload)
+
+    app.state.hal.command = command
+    async def run():
+        await replay.start("d", "e", 1.)
+        await replay.task
+        status = await replay.stop()
+        assert status["phase"] == "failed" and status["stopMode"] == "emergency"
+        assert "控制卡应答未确认" in status["error"]
+        assert targets == ["left"]
+        assert not any(call.args[0] == "gripper.replay_target" for call in original.await_args_list)
+        app.state.commands.emergency_stop.assert_awaited_once()
+    asyncio.run(run())
+
+
+def test_restarting_same_episode_assigns_new_run_id(setup_replay):
+    _, replay, *_ = setup_replay
+    async def run():
+        first = await replay.start("d", "e", 1.)
+        await replay.task
+        assert replay.status()["runId"] == first["runId"]
+        second = await replay.start("d", "e", 1.)
+        await replay.task
+        assert replay.status()["runId"] == second["runId"] != first["runId"]
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize('mutation', ['contract', 'nan', 'missing', 'sequence', 'time', 'origin', 'calibration', 'gripper'])
 def test_preflight_rejects_before_motion(setup_replay, mutation):
     app, replay, data, _ = setup_replay

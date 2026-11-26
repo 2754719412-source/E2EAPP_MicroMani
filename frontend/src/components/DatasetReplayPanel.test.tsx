@@ -181,6 +181,28 @@ describe('DatasetReplayPanel', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(postCommand).toHaveBeenCalledTimes(1)
   })
+
+  it.each(['success', 'timeout'])('同一片段已再次运行，上一轮停止请求迟到的 %s 应答不覆盖新状态', async (outcome) => {
+    const first = { runId: 'first', datasetId: 'local', episodeId: 'e', phase: 'running', active: true, frame: 2, totalFrames: 30 }
+    let data = first
+    vi.mocked(fetch).mockImplementation(async () => ({ ok: true, json: async () => ({ data }) }) as Response)
+    let finish!: () => void
+    vi.mocked(postCommand).mockImplementationOnce(() => new Promise((resolve, reject) => {
+      finish = () => outcome === 'timeout' ? reject(new CommandTimeoutError('超时'))
+        : resolve({ data: { ...first, phase: 'stopped', active: false, stopMode: 'controlled' } })
+    }))
+    render(<DatasetReplayPanel datasetId="local" episodeId="e" />)
+    await screen.findByText('回放中')
+    const stop = screen.getByRole('button', { name: '停止真机回放' })
+    fireEvent.click(stop)
+    data = { ...first, runId: 'second', phase: 'following' }
+    await screen.findByText('等待设备跟随')
+    await act(async () => finish())
+    expect(stop).toBeEnabled()
+    expect(screen.getByText('等待设备跟随')).toBeVisible()
+    expect(screen.queryByText(/已确认参与机械臂静止/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
 })
 
 it('requires explicit legacy selection and resets validation after changing devices', async () => {

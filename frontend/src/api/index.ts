@@ -376,7 +376,7 @@ export async function putConfig(config: AppConfig, confirmMappingSide?: 'left' |
     headers: commandHeaders(),
     body: JSON.stringify(config),
   })
-  if (!response.ok) throw new Error(`settings save failed: ${response.status}`)
+  if (!response.ok) throw await commandErrorFromResponse(response, '配置保存失败')
   return response.json() as Promise<AppConfig>
 }
 /** 应用对应配置或状态。 */

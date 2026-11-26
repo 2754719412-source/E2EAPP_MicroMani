@@ -541,6 +541,53 @@ def test_concurrent_settings_write_cannot_restore_stale_force_mapping(tmp_path: 
     assert client.get("/api/settings").json()["force"]["compliance"] == candidate["force"]["compliance"]
 
 
+@pytest.mark.parametrize("change_network_target", [False, True])
+def test_pico_detection_preserves_concurrent_force_settings(
+    tmp_path: Path, monkeypatch: MonkeyPatch, change_network_target: bool,
+) -> None:
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+    client = TestClient(create_app(tmp_path))
+    _attach_mock_control_lease(client)
+    candidate = client.get("/api/settings").json()
+    matrix = candidate["force"]["compliance"]["left"]["matrix"]
+    matrix[0] += 1
+    initial_ip = candidate["picoVision"]["ip"]
+    detected_ips = []
+    entered, release = Event(), Event()
+
+    def detect(ip, *, preferred_gateway):
+        detected_ips.append(ip)
+        entered.set()
+        assert release.wait(5)
+        return {"ifIndex": 93, "gateway": preferred_gateway, "interfaceAlias": "test",
+                "localIp": "192.0.2.10", "prefixLength": 24}
+
+    if change_network_target:
+        candidate["picoVision"]["ip"] = "192.0.2.20"
+    command = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr(_app_state(client).hal, "command", command)
+    monkeypatch.setattr("backend.app.detect_pico_network", detect)
+
+    async def run():
+        network = asyncio.create_task(asyncio.to_thread(client.post, "/api/pico/network/auto-configure"))
+        try:
+            assert await asyncio.to_thread(entered.wait, 5)
+            result = await asyncio.to_thread(client.put, "/api/settings", json=candidate)
+            assert result.status_code == 200, result.text
+        finally:
+            release.set()
+        result = await network
+        assert result.status_code == 200, result.text
+        saved = result.json()["data"]["config"]
+        assert saved == client.get("/api/settings").json()
+        assert saved["force"]["compliance"]["left"]["matrix"] == command.await_args.args[1]["leftComplianceMatrix"] == matrix
+        assert saved["picoVision"]["ifIndex"] == 93
+        assert saved["picoVision"]["ip"] == candidate["picoVision"]["ip"]
+        assert detected_ips == ([initial_ip, "192.0.2.20"] if change_network_target else [initial_ip])
+
+    asyncio.run(run())
+
+
 def test_force_runtime_snapshot_is_not_applied_when_hal_rejects_it(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,

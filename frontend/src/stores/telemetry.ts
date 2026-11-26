@@ -133,7 +133,9 @@ function returnedRecordResetState(session: RecordSessionState, side: RecordReset
   }
 }
 // 配置请求共用保存队列；追踪录制启动时，应同时检查它是否等待最近一次配置落盘。
-let configSaveQueue: Promise<AppConfig | undefined> | undefined
+let configSaveQueue: Promise<{ active: AppConfig; draft: AppConfig }> | undefined
+type ConfigEdit = (config: AppConfig) => AppConfig
+const pendingConfigEdits = new Set<ConfigEdit>()
 const manualAxisOrder: ManualControlAxis[] = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw']
 const manualAxisKeys = ['x', 'y', 'z', 'roll', 'pitch', 'yaw'] as const
 const manualAxisDirectionSign = {
@@ -146,30 +148,56 @@ function manualAxisBusyKey(side: ManualControlState['selectedSide'], axis: Manua
 }
 
 /** 排队中的写入可取前一项生效的配置。队列清空后，下一次操作使用当时的草稿。 */
-export function queueSettingsWrite(write: (previous?: AppConfig) => Promise<AppConfig | undefined>) {
-  const next = (configSaveQueue ?? Promise.resolve(undefined)).catch(() => undefined).then(write)
-  configSaveQueue = next
+export function queueSettingsWrite(
+  write: (active: AppConfig, draft: AppConfig) => Promise<AppConfig | undefined>,
+  rejectedDraft?: ConfigEdit,
+) {
+  const current = useTelemetryStore.getState().config
+  const previous = configSaveQueue ?? Promise.resolve({ active: current, draft: current })
+  const next = previous.then(({ active, draft }) => write(active, draft))
+  // 后续单项编辑从生效值开始。显式应用或录制前保存仍可重试刚才的草稿。
+  const tail = next.then(
+    (saved) => saved ? { active: saved, draft: saved } : previous,
+    () => previous.then(({ active }) => ({ active, draft: rejectedDraft ? rejectedDraft(active) : active })),
+  )
+  configSaveQueue = tail
   const clear = () => {
-    if (configSaveQueue === next) configSaveQueue = undefined
+    if (configSaveQueue === tail) configSaveQueue = undefined
   }
-  void next.then(clear, clear)
+  void tail.then(clear)
   return next
 }
 
-/** 按顺序保存配置，避免录制启动早于最近一次参数写入。 */
-function queueConfigSave(config: AppConfig, confirmMappingSide?: 'left' | 'right') {
-  return queueSettingsWrite(async () => {
-    const saved = confirmMappingSide ? await putConfig(config, confirmMappingSide) : await putConfig(config)
-    const actual = saved.force.compliance
-    const draft = config.force.compliance
-    if (useTelemetryStore.getState().config === config && (actual.enabled !== draft.enabled
-      || actual.left.mappingConfirmed !== draft.left.mappingConfirmed || actual.right.mappingConfirmed !== draft.right.mappingConfirmed)) {
-      const active = normalizeConfig(saved)
-      useTelemetryStore.setState({ config: active })
-      return active
+function withPendingConfigEdits(config: AppConfig) {
+  for (const edit of pendingConfigEdits) config = edit(config)
+  return config
+}
+
+function publishSavedConfig(active: AppConfig) {
+  const visible = withPendingConfigEdits(active)
+  const draft = useTelemetryStore.getState().config
+  // 相同内容的保存应答无须替换草稿，否则会清掉设置页对本次应用的提示。
+  if (JSON.stringify(visible) === JSON.stringify(draft)) return pendingConfigEdits.size === 0 ? draft : active
+  useTelemetryStore.setState({ config: visible })
+  return active
+}
+
+function queueConfigSave(edit: ConfigEdit, optimistic: boolean, confirmMappingSide?: 'left' | 'right') {
+  const write = queueSettingsWrite(async (previous) => {
+    const candidate = edit(previous)
+    let active: AppConfig
+    try {
+      active = normalizeConfig(confirmMappingSide ? await putConfig(candidate, confirmMappingSide) : await putConfig(candidate))
+    } finally {
+      pendingConfigEdits.delete(edit)
     }
-    return saved
-  })
+    return publishSavedConfig(active)
+  }, optimistic ? edit : undefined)
+  if (optimistic) {
+    pendingConfigEdits.add(edit)
+    useTelemetryStore.setState((state) => ({ config: edit(state.config) }))
+  }
+  return write
 }
 /** Convert UI units to pulse units for per-axis jog safety limits. */
 function manualAxisPulsePerUiUnit(
@@ -454,6 +482,7 @@ interface TelemetryStore {
   setPicoConnectionStatus: (state: ConnectionState, message: string) => void
   autoConfigurePicoNetwork: (picoIp?: string) => Promise<PicoNetworkInfo>
   updateConfig: (patch: Partial<AppConfig>, confirmMappingSide?: 'left' | 'right') => void
+  saveForceAxisSigns: (side: 'left' | 'right', signs: number[]) => Promise<void>
   saveParameterSnapshot: (scope: ParameterSnapshotScope, name: string) => void
   applyParameterSnapshot: (id: string) => void
   deleteParameterSnapshot: (id: string) => void
@@ -1106,6 +1135,30 @@ function mergeConfig(current: AppConfig, patch: Partial<AppConfig>): AppConfig {
     teleop: { ...current.teleop, ...patch.teleop },
     wsl: { ...current.wsl, ...patch.wsl },
   }
+}
+
+// 设置卡会展开整组旧值。将实际改动的字段合入前一次写入结果，保留快照的其他字段。
+function rebaseConfigValue(before: unknown, edited: unknown, active: unknown): unknown {
+  if (edited === before) return active
+  if (active === before) return edited
+  if (Array.isArray(edited) && Array.isArray(before)) {
+    if (JSON.stringify(edited) === JSON.stringify(before)) return active
+    if (Array.isArray(active) && edited.length === before.length && active.length === before.length) {
+      return edited.map((value, index) => rebaseConfigValue(before[index], value, active[index]))
+    }
+    return edited
+  }
+  const record = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+  if (!record(before) || !record(edited) || !record(active)) return edited
+  const result = { ...active }
+  for (const key of Object.keys(before)) {
+    if (!(key in edited)) delete result[key]
+  }
+  for (const key of Object.keys(edited)) {
+    if (before[key] !== edited[key]) result[key] = rebaseConfigValue(before[key], edited[key], active[key])
+  }
+  return result
 }
 
 /** 应用当前现场硬件的前端配置迁移。 */
@@ -1943,7 +1996,7 @@ startRecordSession: (datasetName, task) => {
         }))
         await finishRecordSessionApi()
       }
-      await queueConfigSave(get().config)
+      await queueSettingsWrite(async (_, draft) => publishSavedConfig(normalizeConfig(await putConfig(draft))))
       assertControlGeneration(get, generation)
       const createResponse = await createRecordSessionApi(nextDatasetName, task, get().recordSession.participation)
       assertControlGeneration(get, generation)
@@ -2649,15 +2702,36 @@ autoConfigurePicoNetwork: async (picoIp) => {
 
 /** 描述当前方法的功能边界。 */
 updateConfig: (patch, confirmMappingSide) => {
-    const nextConfig = mergeConfig(get().config, patch)
-    set({ config: nextConfig })
-    if (!mockMode) {
-      void queueConfigSave(nextConfig, confirmMappingSide).catch((error) => {
-        set((state) => ({
-          logs: appendLog(state.logs, makeLog('ERROR', `settings save failed: ${String(error)}`, '[BACKEND]')),
-        }))
-      })
+    const before = get().config
+    const draft = mergeConfig(before, patch)
+    if (mockMode) {
+      set({ config: draft })
+      return
     }
+    void queueConfigSave((active) => rebaseConfigValue(before, draft, active) as AppConfig, true, confirmMappingSide).catch((error) => {
+      set((state) => ({
+        logs: appendLog(state.logs, makeLog('ERROR', `settings save failed: ${String(error)}`, '[BACKEND]')),
+      }))
+    })
+  },
+
+  saveForceAxisSigns: async (side, signs) => {
+    const edit = (config: AppConfig) => {
+      const force = config.force
+      const axisSign = { ...force.axisSign, [side]: signs }
+      return { ...config, force: { ...force, axisSign } }
+    }
+    if (mockMode) {
+      const current = get().config
+      const next = edit(current)
+      if ([0, 2].some((axis) => signs[axis] !== current.force.axisSign[side][axis])) {
+        const compliance = current.force.compliance
+        next.force.compliance = { ...compliance, enabled: false, [side]: { ...compliance[side], mappingConfirmed: false } }
+      }
+      set({ config: next })
+      return
+    }
+    await queueConfigSave(edit, false)
   },
 
 /** 描述当前方法的功能边界。 */
@@ -2707,10 +2781,11 @@ applyParameterSnapshot: (id) => {
         const response = await applyParameterSnapshotApi(id)
         const data: { config?: AppConfig; snapshots?: ParameterSnapshot[] } | undefined = response.data
         const patch: Partial<TelemetryStore> = {}
-        if (data?.config) patch.config = normalizeConfig(data.config)
+        const active = data?.config && normalizeConfig(data.config)
+        if (active) patch.config = withPendingConfigEdits(active)
         if (data?.snapshots) patch.parameterSnapshots = data.snapshots
         if (Object.keys(patch).length > 0) set(patch)
-        return patch.config
+        return active
       }).catch((error) => {
         set((state) => ({
           logs: appendLog(state.logs, makeLog('ERROR', `snapshot apply failed: ${String(error)}`, '[BACKEND]')),
