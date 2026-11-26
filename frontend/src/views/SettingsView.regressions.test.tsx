@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import * as api from '../api'
@@ -220,7 +220,7 @@ describe('设置迁移回归', () => {
     const status = () => screen.getByRole('status', { name: '配置应用状态' })
     fireEvent.click(button())
     fireEvent.click(button())
-    expect(apply).toHaveBeenCalledExactlyOnceWith(currentConfig)
+    await waitFor(() => expect(apply).toHaveBeenCalledExactlyOnceWith(currentConfig))
     expect(button()).toBeDisabled()
     expect(status()).toHaveTextContent('正在应用配置')
     fireEvent.click(screen.getByRole('tab', { name: '系统连接' }))
@@ -230,7 +230,7 @@ describe('设置迁移回归', () => {
     expect(status()).toHaveTextContent('配置应用失败：servos enabled')
     expect(status()).not.toHaveTextContent('已保存')
     fireEvent.click(button())
-    expect(apply).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(apply).toHaveBeenCalledTimes(2))
     await act(async () => { second.resolve({ ok: true, data: { config: currentConfig } }) })
     expect(status()).toHaveTextContent('配置已保存并应用')
     expect(button()).toBeEnabled()

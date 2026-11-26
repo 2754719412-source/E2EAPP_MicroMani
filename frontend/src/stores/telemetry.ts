@@ -145,12 +145,16 @@ function manualAxisBusyKey(side: ManualControlState['selectedSide'], axis: Manua
   return `${side}-${axis}`
 }
 
+/** 设置写入共用一个串行队列：后端同一时刻只接受一个设置写入，并发者直接 409。 */
+export function queueSettingsWrite<T>(write: () => Promise<T>): Promise<T> {
+  const next = configSaveQueue.catch(() => undefined).then(write)
+  configSaveQueue = next.catch(() => undefined)
+  return next
+}
+
 /** 按顺序保存配置，避免录制启动早于最近一次参数写入。 */
 function queueConfigSave(config: AppConfig, confirmMappingSide?: 'left' | 'right') {
-  const nextSave = configSaveQueue.catch(() => undefined).then(() =>
-    confirmMappingSide ? putConfig(config, confirmMappingSide) : putConfig(config))
-  configSaveQueue = nextSave.catch(() => undefined)
-  return nextSave
+  return queueSettingsWrite(() => confirmMappingSide ? putConfig(config, confirmMappingSide) : putConfig(config))
 }
 /** Convert UI units to pulse units for per-axis jog safety limits. */
 function manualAxisPulsePerUiUnit(
@@ -2690,7 +2694,7 @@ saveParameterSnapshot: (scope, name) => {
 /** 应用对应配置或状态。 */
 applyParameterSnapshot: (id) => {
     if (!mockMode) {
-      void applyParameterSnapshotApi(id)
+      void queueSettingsWrite(() => applyParameterSnapshotApi(id))
         .then((response) => {
           const data = response.data as { config?: AppConfig; snapshots?: ParameterSnapshot[] } | undefined
           const patch: Partial<TelemetryStore> = {}

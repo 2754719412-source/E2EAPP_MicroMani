@@ -27,7 +27,7 @@ import {
 } from '../data'
 import { numberArrayEqual, teleopHandFrameEqual, teleopHandFrameSlice, useFrameField } from '../stores/frameSelectors'
 import { reportedForceDanger } from '../forceDisplay'
-import { normalizeConfig, useTelemetryStore } from '../stores/telemetry'
+import { normalizeConfig, queueSettingsWrite, useTelemetryStore } from '../stores/telemetry'
 import { canAcknowledgeControlSafety } from '../utils/controlSafety'
 import { GripperCard } from './settings/GripperCards'
 import { MotionCard } from './settings/MotionCards'
@@ -169,7 +169,7 @@ export function SettingsView() {
     setApplyingConfig(true)
     setConfigApplyStatus('正在应用配置')
     try {
-      const response = await applyConfig(config)
+      const response = await queueSettingsWrite(() => applyConfig(config))
       const current = useTelemetryStore.getState().config === config
       if (current && response.data.config) {
         appliedConfigRef.current = normalizeConfig(response.data.config)
