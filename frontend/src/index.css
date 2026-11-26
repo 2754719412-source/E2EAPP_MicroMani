@@ -3500,6 +3500,16 @@ select {
   align-items: start;
 }
 
+.jodell-card-grid .force-settings-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1000px) {
+  .hardware-settings-grid.jodell-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .force-settings-layout-hkvl {
   grid-template-areas:
     "visual config"

@@ -4,7 +4,8 @@
  */
 import { Activity } from 'lucide-react'
 import { useState } from 'react'
-import { GripperCurrentChart } from '../../components/Charts'
+import { GripperCurrentChart, JodellOfficialChart } from '../../components/Charts'
+import type { JodellCapture } from './useJodellCapture'
 import { UiField, UiNumber, UiSelect, UiSwitch, UiTag, UiText } from '../../components/ui'
 import { hardwareSideForOperatorSide, operatorSideLabel, type RobotSide } from '../../data'
 import {
@@ -26,12 +27,15 @@ const HISTORY_LIMIT = 300
 /** 按 seq 累积最近的有效电流读数；同一读数只记一次，seq 回退（HAL 重启）时清空。
  *  在渲染期间按新 seq 调整状态（React 推荐的“随 props 调整状态”写法），lastSeq 守卫避免重复更新。 */
 function useCurrentHistory(sample: GripperFeedbackSample | null | undefined) {
-  const [state, setState] = useState<{ points: { seq: number; value: number }[]; lastSeq?: number }>({ points: [] })
+  const [state, setState] = useState<{ points: { seq: number; value: number; position: number }[]; lastSeq?: number }>({ points: [] })
   const seq = sample?.seq
   const value = sample?.currentValid ? sample.currentRaw : null
-  if (seq !== undefined && value !== null && seq !== state.lastSeq) {
+  if (value === null && state.points.length) {
+    setState({ points: [] })
+  } else if (seq !== undefined && value !== null && seq !== state.lastSeq) {
     const base = state.lastSeq !== undefined && seq < state.lastSeq ? [] : state.points
-    setState({ points: [...base, { seq, value }].slice(-HISTORY_LIMIT), lastSeq: seq })
+    const position = sample?.positionValid ? sample.positionRaw : Number.NaN
+    setState({ points: [...base, { seq, value, position }].slice(-HISTORY_LIMIT), lastSeq: seq })
   }
   return state.points
 }
@@ -47,17 +51,24 @@ export function GripperForceCard({
   updateConfig,
   focusHash,
   gripperStatus,
+  capture,
 }: {
   side: RobotSide
   config: AppConfig
   updateConfig: (patch: Partial<AppConfig>) => void
   focusHash: string
   gripperStatus: GripperStatus | undefined
+  capture?: JodellCapture | null
 }) {
   const hardwareSide = hardwareSideForOperatorSide(side)
   const operatorLabel = operatorSideLabel(side)
   const sideStatus = gripperStatus?.sides?.[hardwareSide]
   const sample = sideStatus?.sample ?? null
+  const port = hardwareSide === 'left' ? config.gripper.leftPort : config.gripper.rightPort
+  const slaveId = hardwareSide === 'left' ? config.gripper.leftSlaveId : config.gripper.rightSlaveId
+  const official = capture?.live && capture.port.toUpperCase() === port.toUpperCase() && capture.slaveId === slaveId
+    && capture.samples.length > 0 && !sample?.currentValid ? capture : null
+  const row = official?.samples[official.samples.length - 1]
   const stats = sideStatus?.sampleStats ?? null
   const command = gripperStatus?.command ?? null
   const calibration = matchingCalibration(config, hardwareSide)
@@ -84,36 +95,36 @@ export function GripperForceCard({
       focusHash={focusHash}
       icon={<Activity size={20} />}
       title={`${operatorLabel} Jodell 夹爪力感知`}
-      subtitle={`EPG26-006 · gCU 电流原码 0–255 · ${transportLabel(transport)}`}
-      state={health}
+      subtitle={`${port} / ${slaveId} · ${official ? '钧舵工具采集' : transportLabel(transport)} · gCU 0–255`}
+      state={official ? 'ok' : health}
       badges={<UiTag tone={calibration ? 'success' : 'warning'}>{calibration ? '已标定' : '未标定'}</UiTag>}
-      wide
     >
       <div className="force-settings-layout">
         <div className="force-visual-area">
-          <GripperCurrentChart
+          {official ? <JodellOfficialChart rows={official.samples} /> : <GripperCurrentChart
             side={hardwareSide}
             values={history.map((item) => item.value)}
+            positions={history.map((item) => item.position)}
             thresholdRaw={calibration?.baseline.contactThresholdRaw ?? null}
             height={170}
-          />
+          />}
           <div className="force-current-grid force-current-grid-settings gripper-sense-grid" aria-label={`${operatorLabel}夹爪当前读数`}>
             <span>
-              <b>gCU</b>
-              {sample?.currentValid ? sample.currentRaw : '不可用'}
+              <b>gCU 电流原码</b>
+              {row ? row[2] : sample?.currentValid ? sample.currentRaw : '不可用'}
             </span>
-            <span>
+            {calibration && <span>
               <b>估算夹持力</b>
-              {holdForceN === null ? '—' : `${holdForceN.toFixed(2)} N`}
-            </span>
+              {holdForceN !== null ? `${holdForceN.toFixed(2)} N` : '—'}
+            </span>}
             <span>
-              <b>开口</b>
-              {sample?.positionValid ? `${gapMmFromRaw(sample.positionRaw, config.gripper.strokeMm).toFixed(2)} mm` : '—'}
+              <b>{row ? '位置原码' : '开口'}</b>
+              {row ? row[1] : sample?.positionValid ? `${gapMmFromRaw(sample.positionRaw, config.gripper.strokeMm).toFixed(2)} mm` : '—'}
             </span>
-            <span className={`gripper-sense-object gripper-sense-object-${gripperObjectTone(objectState)}`}>
+            {row ? <span><b>速度原码</b>{row[3]}</span> : <span className={`gripper-sense-object gripper-sense-object-${gripperObjectTone(objectState)}`}>
               <b>目标检测</b>
               {gripperObjectLabels[objectState]}
-            </span>
+            </span>}
             <span>
               <b>空载阈值</b>
               {aboveIdle === null ? '未标定' : aboveIdle ? '已越过' : '未越过'}
@@ -124,8 +135,10 @@ export function GripperForceCard({
             </span>
           </div>
           <UiText secondary className="gripper-sense-note">
-            {transport === 'modbus'
-              ? '估算力只在稳态夹持时有效：gCU 按标定反推等效 rFC，再换算为牛顿；未标定时只显示原码。'
+            {official && row
+              ? `钧舵工具最新采样 ${row[0]} · ${official.file}`
+              : transport === 'modbus'
+              ? '绿色曲线是钧舵上位机的力矩反馈，取自 0x07D2 高字节。蓝色曲线是夹爪位置原码。'
               : 'Vendor DLL 遥操作只读位置，电流与目标检测不可用；切换到 Modbus 直连并完成现场验收后才有完整读数。'}
           </UiText>
         </div>
@@ -152,9 +165,9 @@ export function GripperForceCard({
                 onChange={(value) => updateConfig({ gripper: { ...config.gripper, sampleHz: Number(value ?? 30) } })}
               />
             </UiField>
-            <UiField label="命令力限制 N">
+            {calibration && <UiField label="命令力限制 N">
               <UiNumber disabled value={config.gripper.commandForceLimitN} />
-            </UiField>
+            </UiField>}
             <UiField label="按标定换算力限制（双侧共用）">
               <UiSwitch
                 aria-label="按标定换算力限制"
@@ -184,7 +197,7 @@ export function GripperForceCard({
             <MetricBox
               label="夹持力设定"
               value={typeof appliedRfc === 'number' ? `rFC ${appliedRfc}` : '—'}
-              hint={expectedForceN === null ? '未标定，无法换算 N' : `约 ${expectedForceN.toFixed(2)} N`}
+              hint={expectedForceN === null ? undefined : `约 ${expectedForceN.toFixed(2)} N`}
             />
             <MetricBox
               label="时间戳"

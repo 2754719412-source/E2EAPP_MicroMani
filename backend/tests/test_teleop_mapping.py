@@ -1476,6 +1476,15 @@ def test_hal_native_payload_enables_gripper_teleop_from_config() -> None:
     assert payload["gripperTeleopEnabled"] is True
 
 
+def test_native_teleop_leaves_vendor_port_to_official_tool(monkeypatch) -> None:
+    monkeypatch.setenv("APPSTATION_JODELL_EXTERNAL_PORT", "com9")
+    config = start_config()
+    config["gripper"].update(leftPort="COM8", rightPort="COM9")
+    mapper = TeleopMappingService(settings=FakeSettings(config), hal=FakeHal(), logs=LogService())
+    payload = mapper._native_payload(config)
+    assert payload["leftGripperParticipating"] and not payload["rightGripperParticipating"]
+
+
 def test_hal_native_payload_maps_operator_gripper_sources_to_hardware_targets() -> None:
     config = start_config()
     config["teleop"]["gripperTeleop"]["leftSourceHand"] = "PhysicalLeft"

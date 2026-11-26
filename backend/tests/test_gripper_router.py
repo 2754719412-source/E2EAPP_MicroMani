@@ -77,6 +77,27 @@ def test_router_status_uses_native_status() -> None:
     assert status["ports"][1]["port"] == "COM9"
 
 
+def test_idle_router_uses_current_dds_sample_and_clears_it_when_topic_is_missing() -> None:
+    class SamplingHal(FakeHal):
+        status: dict[str, Any] | None = None
+
+        async def latest_native_teleop_status(self) -> dict[str, Any] | None:
+            return self.status
+
+    hal = SamplingHal()
+    mapper = FakeTeleopMapper()
+    mapper.native_status = {"grippers": {"left": {"sample": {"seq": 1}}}}
+    router = GripperRouter(native=NativeGripperAdapter(hal, mapper))
+    for seq, raw in [(7, 0), (8, 23)]:
+        sample = {"seq": seq, "currentRaw": raw, "currentValid": True}
+        hal.status = {"grippers": {"left": {"sample": sample}}}
+        result = asyncio.run(router.status(default_config()))
+        assert result["sides"]["left"]["sample"] == sample
+    hal.status = None
+    assert asyncio.run(router.status(default_config()))["sides"]["left"]["sample"] is None
+    assert hal.commands == []
+
+
 def test_router_command_sends_hal_native_payload() -> None:
     router, hal, _teleop = build_router()
     config = default_config()
@@ -88,6 +109,23 @@ def test_router_command_sends_hal_native_payload() -> None:
     assert result.details["nativeManaged"] is True
     assert hal.commands[0][0] == "teleop.native.gripper_command"
     assert hal.commands[0][1]["targetMm"] == 7.5
+
+
+def test_fresh_dds_publication_does_not_extend_current_sample_lifetime() -> None:
+    from backend.services.gripper_backend import native_status_to_gripper_status
+
+    config = default_config()
+    config["gripper"]["sampleStaleMs"] = 250
+    sample = {"seq": 7, "monotonicUs": 1_000_999, "currentRaw": 23, "currentValid": True}
+    native = {"dds_stamp_monotonic_ms": 1250, "grippers": {"left": {"sample": sample}}}
+
+    def displayed_sample() -> Any:
+        return native_status_to_gripper_status(config, {"nativeStatus": native})["sides"]["left"]["sample"]
+
+    assert displayed_sample() == sample
+    native["dds_stamp_monotonic_ms"] = 1251
+    assert displayed_sample() is None
+    assert native["grippers"]["left"]["sample"] == sample
 
 
 def test_native_gripper_status_exposes_structured_samples_for_ui() -> None:

@@ -1372,6 +1372,58 @@ def test_startup_never_moves_with_legacy_home_config(tmp_path: Path, monkeypatch
     stop.assert_awaited_once_with("teleop-connect")
 
 
+@pytest.mark.parametrize("transport,enabled,expected,reserved", [
+    ("dll", True, False, ""), ("modbus", False, False, ""), ("modbus", True, True, ""),
+    ("modbus", True, True, "com9"),
+])
+def test_idle_startup_restores_only_modbus_feedback(tmp_path, monkeypatch, transport, enabled, expected, reserved):
+    from unittest.mock import AsyncMock, Mock
+
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
+    monkeypatch.setenv("APPSTATION_JODELL_EXTERNAL_PORT", reserved)
+    fake = Mock()
+    fake.command = AsyncMock(return_value={})
+    monkeypatch.setattr("backend.app.make_hal_client", lambda *_args: fake)
+    config = default_config()
+    config["gripper"].update(workerTransport=transport, processWorkersEnabled=enabled)
+    (tmp_path / "config.json").write_text(json.dumps(config), encoding="utf-8")
+    app = create_app(tmp_path)
+    monkeypatch.setattr(app.state.teleop_mapper, "stop", AsyncMock())
+    startup = next(h for h in app.router.on_startup if h.__name__ == "reconcile_startup_hal_state")
+    asyncio.run(startup())
+    calls = [call.args for call in fake.command.await_args_list]
+    names = ["teleop.native.stop"]
+    if expected:
+        names.append("gripper.feedback.configure")
+    assert [name for name, _ in calls] == names
+    if expected:
+        payload = calls[-1][1]
+        assert payload["leftGripperParticipating"]
+        assert payload["rightGripperParticipating"] is (not reserved)
+        assert payload["gripperWorkerTransport"] == "modbus"
+        assert "targetMm" not in payload and "side" not in payload
+
+
+@pytest.mark.parametrize("running", [False, True])
+def test_startup_keeps_existing_controller_and_reads_grippers_if_idle(tmp_path, monkeypatch, running):
+    from unittest.mock import AsyncMock, Mock
+
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
+    fake = Mock()
+    fake.command = AsyncMock(return_value={"response": {"running": running,
+        "gripperCommandWorkerRunning": running, "gripperFeedbackSampling": False}})
+    monkeypatch.setattr("backend.app.make_hal_client", lambda *_args: fake)
+    config = default_config()
+    config["gripper"].update(workerTransport="modbus", processWorkersEnabled=True)
+    config["teleop"]["rightConnected"] = True
+    (tmp_path / "config.json").write_text(json.dumps(config), encoding="utf-8")
+    app = create_app(tmp_path)
+    startup = next(h for h in app.router.on_startup if h.__name__ == "reconcile_startup_hal_state")
+    asyncio.run(startup())
+    expected = ["teleop.native.status"] if running else ["teleop.native.status", "gripper.feedback.configure"]
+    assert [call.args[0] for call in fake.command.await_args_list] == expected
+
+
 def test_hal_deployment_status_reports_pending_next_binary(tmp_path: Path) -> None:
     build_dir = tmp_path / "hal" / "build"
     build_dir.mkdir(parents=True)
