@@ -232,6 +232,9 @@ def test_hal_teleop_stop_side_hard_stops_and_retargets_to_current_position() -> 
         1,
     )[0]
 
+    assert 'if (!dmcStop) throw' in body
+    sample = source.split("MotionState LTDMCDriver::readStateLocked()", 1)[1].split("void LTDMCDriver::refreshOriginStateLocked", 1)[0]
+    assert "state.axes[index].moving = dmcCheckDone(card, axisNo) != 1;" in sample
     assert "dmcStop(card, axisNo, 0)" in body
     assert "pulse_[index] = static_cast<double>(dmcGetPosition(card, axisNo));" in body
     assert "updateTeleopTargetBestEffort(card, axisNo, currentPulse);" in body

@@ -134,7 +134,12 @@ class TestHalClient(HalClient):
             self.motion_enabled["left"] = False
             self.motion_enabled["right"] = False
         self.logs.info("[HAL]", f"{name} accepted by TestHalClient")
-        return {"mode": "test", "command": name, "payload": payload or {}}
+        result = {"mode": "test", "command": name, "payload": payload or {}}
+        if name in {"motion.replay_absolute_target", "motion.teleop_stop_side"}:
+            result["response"] = {"ok": True, "side": payload["side"]}
+            if name == "motion.replay_absolute_target":
+                result["response"]["updateReturn"] = [0] * 6
+        return result
 
     async def motion_state(self) -> dict[str, Any]:
         self._poll_lease()

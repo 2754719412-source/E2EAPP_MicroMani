@@ -53,12 +53,23 @@ def validate_episode(data: dict[str, Any]) -> None:
         previous = stamp
 
 
+# 从主动停止起共用一个软件时限，覆盖在途应答、逐侧停轴和新采样。
+CONTROLLED_STOP_TIMEOUT_S = 1.0
+
+
+class _ReplayStopRequested(Exception):
+    pass
+
+
 class DatasetReplayService:
     def __init__(self, services):
         self.svc = services
         self.safety = services.commands.safety
         self.task: asyncio.Task | None = None
         self._participation = None
+        self._controlled_stop_available = False
+        self._stop_task: asyncio.Task | None = None
+        self._emergency_task: asyncio.Task | None = None
         self._feedback_samples: dict[str, Any] = {}
         self._started_at = None
         self._stop = asyncio.Event()
@@ -66,7 +77,8 @@ class DatasetReplayService:
 
     @property
     def active(self) -> bool:
-        return self.task is not None and not self.task.done()
+        return ((self.task is not None and not self.task.done())
+                or (self._emergency_task is not None and not self._emergency_task.done()))
 
     def _update_progress(self):
         if self._started_at is not None:
@@ -136,7 +148,7 @@ class DatasetReplayService:
         return targets
 
     async def start(self, dataset_id: str, episode_id: str, speed: float, selected=None) -> dict[str, Any]:
-        if self.active:
+        if self.active or (self._stop_task is not None and not self._stop_task.done()):
             raise RuntimeError("已有回放任务正在执行")
         if not math.isfinite(speed) or not .1 <= speed <= 1.:
             raise ValueError("回放倍率必须在 0.1 到 1 之间")
@@ -147,12 +159,15 @@ class DatasetReplayService:
         self._status = {"phase": "loading", "frame": 0, "totalFrames": 0, "error": "",
                         "datasetId": dataset_id, "episodeId": episode_id, "speed": speed}
         self._feedback_samples = {}
+        self._participation = None
+        self._controlled_stop_available = False
+        self._stop_task = self._emergency_task = None
         self.task = asyncio.create_task(self._run(dataset_id, episode_id, speed, token, selected), name="dataset-replay")
         return self.status()
 
     def _check(self, token):
         if self._stop.is_set():
-            raise RuntimeError("回放已停止")
+            raise _ReplayStopRequested()
         self.safety.check(token)
 
     async def _observe(self, config):
@@ -219,7 +234,16 @@ class DatasetReplayService:
                 "rotationStepLimitPulse": teleop.get("rotationStepLimitPulse", 1250.),
                 **replay_motion_profile(config),
             }
-            await self.svc.hal.command("motion.replay_absolute_target", payload)
+            reply = await self.svc.hal.command("motion.replay_absolute_target", payload)
+            response = reply.get("response") if isinstance(reply, dict) else None
+            if not isinstance(response, dict) or response.get("ok") is not True or response.get("side") != side:
+                raise RuntimeError(f"{side} 侧回放目标下发结果未知")
+            if self._stop.is_set() and self._controlled_stop_available:
+                # HAL 的外层成功应答仍可能携带卡上目标刷新的错误码。
+                codes = response.get("updateReturn")
+                if (not isinstance(codes, list) or len(codes) != 6
+                        or any(type(code) not in (int, float) or code != 0 for code in codes)):
+                    raise RuntimeError(f"{side} 侧在途目标的控制卡应答未确认")
             self._check(token)
             if include_grippers and side in hardware_sides(self._participation, "grippers"):
                 await self.svc.hal.command("gripper.replay_target", native_gripper_payload(config, side, gap))
@@ -398,109 +422,197 @@ class DatasetReplayService:
                 if any(current.get(key) != config.get(key) for key in ('motion', 'teleop', 'gripper', 'force')):
                     raise RuntimeError('回放期间控制配置发生变化')
 
+    async def _execute_motion(self, data, config, plan, token, supports_controlled_stop):
+        # 停止示教会退出原有采样线程；独立启动只读采样，不下发位置。
+        if self._participation["grippers"]:
+            grippers = hardware_sides(self._participation, "grippers")
+            payload = native_gripper_payload(config, grippers[0], 0.)
+            payload.update(leftGripperParticipating="left" in grippers, rightGripperParticipating="right" in grippers)
+            await self.svc.hal.command("gripper.prepare_replay", payload)
+        feedback_deadline = time.monotonic() + 2.
+        while True:
+            self._check(token)
+            try:
+                observed = await self._observe(config)
+                break
+            except RuntimeError as exc:
+                if "夹爪反馈" not in str(exc) or time.monotonic() >= feedback_deadline:
+                    raise
+                await asyncio.sleep(.05)
+        initial = data["rows"][0]["observation.state"]
+        for side, offset in (("right", 0), ("left", 7)):
+            if side not in hardware_sides(self._participation):
+                continue
+            for i, enabled in enumerate(config["teleop"][f"{side}EnabledAxes"]):
+                if not enabled and any(abs(row[key][offset+i] - observed[offset+i]) > TOLERANCE[offset+i]
+                    for row in data["rows"] for key in ("action", "observation.state")):
+                    raise RuntimeError("回放包含未启用轴的运动")
+        self._check(token)
+        for side in hardware_sides(self._participation):
+            await self.svc.commands.enable_motion_side(side)
+            self._check(token)
+        self._controlled_stop_available = supports_controlled_stop and not self._participation["grippers"]
+        self._status.update(phase="aligning", totalFrames=len(data["rows"]))
+        await self._settle(initial, config, token)
+        self._status["phase"] = "running"
+        self._started_at = time.monotonic()
+        previous = initial
+        previous_sent_at_ms = None
+        for index, (row, segment) in enumerate(zip(data['rows'], plan['segments'])):
+            observed, _ = await self._read_tracking(data, index, previous, config, token, previous_sent_at_ms)
+            await self._send(row['action'], config, token)
+            previous_sent_at_ms = time.time() * 1000
+            self._status['frame'] = index + 1
+            await self._wait_segment(data, index, row['action'], observed, segment['durationS'],
+                                     config, token, previous_sent_at_ms)
+            self._status['completedFrames'] = index + 1
+            self._update_progress()
+            previous = row['action']
+        self._status["phase"] = "settling"
+        await self._settle(previous, config, token)
+
+    async def _finish_motion(self, token):
+        sides = hardware_sides(self._participation)
+        self.safety.check(token)
+        for side in sides:
+            reply = await self.svc.commands.stop_motion_side(side)
+            if self._emergency_task is not None:
+                return
+            response = reply.get("response") if isinstance(reply, dict) else None
+            if not isinstance(response, dict) or response.get("ok") is not True:
+                raise RuntimeError(f"{side} 侧停轴结果未知")
+            # stop_motion_side 会推进本侧停止代际，其他侧、全局急停及租约仍须核验。
+            self.safety.check(token, ignore_side=side)
+            token = self.safety.capture()
+        after_stop_ms = int(time.time() * 1000)
+        if not self._stop.is_set():
+            await self.svc.hal.command("teleop.native.stop", {})
+        if self._emergency_task is not None:
+            return
+        self.safety.check(token)
+        if self._stop.is_set():
+            indices = [i for side in sides for i in (range(6) if side == "left" else range(6, 12))]
+            while self._emergency_task is None:
+                self.safety.check(token)
+                try:
+                    state = await self.svc.hal.motion_state()
+                except RuntimeError as exc:
+                    # 遥测轮询可能抢占读取通道。在同一个停车期限内只重读状态。
+                    if str(exc) not in {"dds-motion-state channel is busy; request was not queued",
+                                        "DDS motion controller sample timestamp is stale or unavailable"}:
+                        raise
+                    await asyncio.sleep(.02)
+                    continue
+                self.safety.check(token)
+                moving, stamp = state.get("moving"), state.get("timestamp_ms")
+                if state.get("estop_active") is not False:
+                    raise RuntimeError("停车反馈报告急停已锁存或缺少急停状态")
+                if (type(stamp) is int and stamp > after_stop_ms and 0 <= time.time() * 1000 - stamp <= 500
+                        and isinstance(moving, list) and len(moving) == 12 and all(moving[i] is False for i in indices)):
+                    return
+                await asyncio.sleep(.02)
+
     async def _run(self, dataset_id, episode_id, speed, token, selected=None):
-        began = False
         try:
             with self.safety.operation():
-                self._check(token)
-                data = await asyncio.to_thread(self.svc.recorder.load_replay_episode, dataset_id, episode_id)
-                self._participation = self._resolve_participation(data, selected)
-                self._status["participation"] = self._participation
-                await asyncio.to_thread(validate_episode, data)
-                config = await asyncio.to_thread(self.svc.settings.get_config)
-                await asyncio.to_thread(self._validate_config, data, config)
-                plan = await asyncio.to_thread(build_replay_timing, data, config, self._participation, speed)
-                self._status.update(timing=plan['summary'], fps=data['fps'], completedFrames=0,
-                                    elapsedS=0., effectiveSpeed=0., feedbackWaitS=0., waitingChannels=[])
-                self._check(token)
-                health = await self.svc.hal.health()
-                if "replay_absolute_target_v1" not in (health.capabilities or []):
-                    raise RuntimeError("HAL 不支持绝对目标回放，请配套构建并部署 HAL 与夹爪 worker")
-                if not all(action_mask(self._participation)) and "record_participation_v1" not in (health.capabilities or []):
-                    raise RuntimeError("HAL 不支持参与侧隔离，请部署配套 HAL 后回放")
-                record_status = await asyncio.to_thread(self.svc.recorder.status)
-                mapper = self.svc.teleop_mapper.status(config)
-                if record_status.get("active") or mapper.get("armed") or mapper.get("running") or self.svc.policy.auto_status(config)["running"]:
-                    raise RuntimeError("请先停止录制、遥操作及策略执行")
-                for side in hardware_sides(self._participation, "grippers"):
-                    if not config["gripper"].get(f"{side}Enabled"):
-                        label = "操作者左侧" if operator_side_for_hardware_side(side) == "left" else "操作者右侧"
-                        raise RuntimeError(f"{label}夹爪未启用：请先启用该夹爪；仅回放机械臂时请选择不参与夹爪的片段或取消可选夹爪")
-                self._check(token)
-                began = True
-                # 停止示教会退出原有采样线程；独立启动只读采样，不下发位置。
-                if self._participation["grippers"]:
-                    grippers = hardware_sides(self._participation, "grippers")
-                    payload = native_gripper_payload(config, grippers[0], 0.)
-                    payload.update(leftGripperParticipating="left" in grippers, rightGripperParticipating="right" in grippers)
-                    await self.svc.hal.command("gripper.prepare_replay", payload)
-                feedback_deadline = time.monotonic() + 2.
-                while True:
-                    self._check(token)
-                    try:
-                        observed = await self._observe(config)
-                        break
-                    except RuntimeError as exc:
-                        if "夹爪反馈" not in str(exc) or time.monotonic() >= feedback_deadline:
-                            raise
-                        await asyncio.sleep(.05)
-                initial = data["rows"][0]["observation.state"]
-                for side, offset in (("right", 0), ("left", 7)):
-                    if side not in hardware_sides(self._participation):
-                        continue
-                    for i, enabled in enumerate(config["teleop"][f"{side}EnabledAxes"]):
-                        if not enabled and any(abs(row[key][offset+i] - observed[offset+i]) > TOLERANCE[offset+i]
-                            for row in data["rows"] for key in ("action", "observation.state")):
-                            raise RuntimeError("回放包含未启用轴的运动")
-                self._check(token)
-                for side in hardware_sides(self._participation):
-                    await self.svc.commands.enable_motion_side(side)
-                    self._check(token)
-                self._status.update(phase="aligning", totalFrames=len(data["rows"]))
-                await self._settle(initial, config, token)
-                self._status["phase"] = "running"
-                self._started_at = time.monotonic()
-                previous = initial
-                previous_sent_at_ms = None
-                for index, (row, segment) in enumerate(zip(data['rows'], plan['segments'])):
-                    observed, _ = await self._read_tracking(data, index, previous, config, token, previous_sent_at_ms)
-                    await self._send(row['action'], config, token)
-                    previous_sent_at_ms = time.time() * 1000
-                    self._status['frame'] = index + 1
-                    await self._wait_segment(data, index, row['action'], observed, segment['durationS'],
-                                             config, token, previous_sent_at_ms)
-                    self._status['completedFrames'] = index + 1
-                    self._update_progress()
-                    previous = row['action']
-                self._status["phase"] = "settling"
-                await self._settle(previous, config, token)
-                for side in hardware_sides(self._participation):
-                    await self.svc.commands.stop_motion_side(side)
-                await self.svc.hal.command("teleop.native.stop", {})
-                if self._stop.is_set() or self.safety.latched:
-                    raise RuntimeError("回放被停止")
-                self._status["phase"] = "completed"
-        except (Exception, asyncio.CancelledError) as exc:
-            self._status.update(phase="stopped" if self._stop.is_set() else "failed", error=str(exc))
-            if began:
-                try:
-                    await self.svc.commands.emergency_stop()
-                except Exception as stop_error:
-                    self._status["error"] += f"; 急停未确认: {stop_error}"
-            self.svc.logs.error("[HAL]", f"回放停止: {exc}")
-            if self._status.get("trackingFault"):
-                self.svc.logs.error("[HAL]", "event=replay_tracking_fault " + json.dumps(self._status["trackingFault"], ensure_ascii=False, allow_nan=False))
+                await self._run_exclusive(dataset_id, episode_id, speed, token, selected)
+        except RuntimeError as exc:
+            self._status.update(phase="failed", error=str(exc))
         finally:
             self._update_progress()
             self._started_at = None
-            self._status["active"] = False
 
-    async def stop(self):
-        if self.active:
-            self._stop.set()
-            self.safety.interrupt()
+    async def _run_exclusive(self, dataset_id, episode_id, speed, token, selected):
+        began = False
+        try:
+            self._check(token)
+            data = await asyncio.to_thread(self.svc.recorder.load_replay_episode, dataset_id, episode_id)
+            self._participation = self._resolve_participation(data, selected)
+            self._status["participation"] = self._participation
+            await asyncio.to_thread(validate_episode, data)
+            config = await asyncio.to_thread(self.svc.settings.get_config)
+            await asyncio.to_thread(self._validate_config, data, config)
+            plan = await asyncio.to_thread(build_replay_timing, data, config, self._participation, speed)
+            self._status.update(timing=plan['summary'], fps=data['fps'], completedFrames=0,
+                                elapsedS=0., effectiveSpeed=0., feedbackWaitS=0., waitingChannels=[])
+            self._check(token)
+            health = await self.svc.hal.health()
+            if "replay_absolute_target_v1" not in (health.capabilities or []):
+                raise RuntimeError("HAL 不支持绝对目标回放，请配套构建并部署 HAL 与夹爪 worker")
+            if not all(action_mask(self._participation)) and "record_participation_v1" not in (health.capabilities or []):
+                raise RuntimeError("HAL 不支持参与侧隔离，请部署配套 HAL 后回放")
+            record_status = await asyncio.to_thread(self.svc.recorder.status)
+            mapper = self.svc.teleop_mapper.status(config)
+            if record_status.get("active") or mapper.get("armed") or mapper.get("running") or self.svc.policy.auto_status(config)["running"]:
+                raise RuntimeError("请先停止录制、遥操作及策略执行")
+            for side in hardware_sides(self._participation, "grippers"):
+                if not config["gripper"].get(f"{side}Enabled"):
+                    label = "操作者左侧" if operator_side_for_hardware_side(side) == "left" else "操作者右侧"
+                    raise RuntimeError(f"{label}夹爪未启用：请先启用该夹爪；仅回放机械臂时请选择不参与夹爪的片段或取消可选夹爪")
+            self._check(token)
+            began = True
+            supports_controlled_stop = "replay_controlled_stop_v1" in (health.capabilities or [])
             try:
-                await self.svc.commands.emergency_stop()
-            finally:
-                await self.task
+                await self._execute_motion(data, config, plan, token, supports_controlled_stop)
+            except _ReplayStopRequested:
+                pass
+            if self._emergency_task is None:
+                await self._finish_motion(token)
+            if self._stop.is_set():
+                raise _ReplayStopRequested()
+            self._status["phase"] = "completed"
+        except _ReplayStopRequested:
+            if self._emergency_task is not None:
+                await asyncio.shield(self._emergency_task)
+            if not self._status["error"]:
+                self._status["phase"] = "stopped"
+                self.svc.logs.info("[HAL]", f"回放已停止: {self._status['stopMode']}")
+        except (Exception, asyncio.CancelledError) as exc:
+            self._status["phase"] = "failed"
+            detail = str(exc) or "回放任务被取消，执行结果未知"
+            self._status["error"] = "; ".join(filter(None, (self._status["error"], detail)))
+            if began or self._stop.is_set():
+                await asyncio.shield(self._request_emergency())
+            self.svc.logs.error("[HAL]", f"回放停止: {self._status['error']}")
+            if self._status.get("trackingFault"):
+                self.svc.logs.error("[HAL]", "event=replay_tracking_fault " + json.dumps(self._status["trackingFault"], ensure_ascii=False, allow_nan=False))
+
+    def _request_emergency(self):
+        self._status["stopMode"] = "emergency"
+        if self._emergency_task is None:
+            self._emergency_task = asyncio.create_task(self._emergency_stop())
+        return self._emergency_task
+
+    async def _emergency_stop(self):
+        try:
+            await self.svc.commands.emergency_stop()
+        except (Exception, asyncio.CancelledError) as exc:
+            error = "; ".join(filter(None, (self._status["error"], f"急停未确认: {exc or '急停请求被取消'}")))
+            self._status.update(phase="failed", error=error)
+            self.svc.logs.error("[HAL]", error)
+
+    async def _wait_for_stop(self, task):
+        # 不取消在途 DDS 调用，也不让它拖住独立急停通道。
+        done, _ = await asyncio.wait({task}, timeout=CONTROLLED_STOP_TIMEOUT_S)
+        timed_out = not done and self._emergency_task is None
+        if timed_out:
+            self._status.update(phase="failed", error="受控停止超时，目标或停车反馈未确认，已请求急停")
+            self._request_emergency()
+        if self._emergency_task is not None:
+            await asyncio.shield(self._emergency_task)
+        if timed_out:
+            self.svc.logs.error("[HAL]", self._status["error"])
         return self.status()
+
+    async def stop(self, *, emergency=False):
+        if not self.active:
+            return self.status()
+        self._stop.set()
+        if emergency or not self._controlled_stop_available:
+            self._request_emergency()
+        if self._stop_task is None:
+            if not self._status["error"]:
+                self._status["phase"] = "stopping"
+            self._status.setdefault("stopMode", "controlled")
+            self._stop_task = asyncio.create_task(self._wait_for_stop(self.task))
+        return await asyncio.shield(self._stop_task)

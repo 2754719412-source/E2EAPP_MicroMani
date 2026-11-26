@@ -4,7 +4,7 @@ import asyncio
 import time
 from copy import deepcopy
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, DEFAULT
 
 import pytest
 
@@ -24,7 +24,7 @@ def setup_replay(tmp_path, monkeypatch):
     monkeypatch.setattr(replay_module, 'time', SimpleNamespace(monotonic=lambda: clock.now, time=time.time))
     monkeypatch.setattr(replay_module, 'asyncio', SimpleNamespace(
         Event=asyncio.Event, Task=asyncio.Task, create_task=asyncio.create_task, to_thread=asyncio.to_thread,
-        CancelledError=asyncio.CancelledError, sleep=advance))
+        CancelledError=asyncio.CancelledError, shield=asyncio.shield, wait=asyncio.wait, sleep=advance))
     monkeypatch.setenv('APPSTATION_HAL_MODE', 'test')
     monkeypatch.setenv('APPSTATION_DISABLE_CAMERA_PROBE', '1')
     app = create_app(tmp_path)
@@ -46,13 +46,17 @@ def setup_replay(tmp_path, monkeypatch):
     monkeypatch.setattr(svc.recorder, 'load_replay_episode', lambda *args: deepcopy(data))
     monkeypatch.setattr(svc.recorder, 'status', lambda: {'active': False})
     monkeypatch.setattr(svc.teleop_mapper, 'status', lambda *args: {'running': False})
-    svc.hal.health = AsyncMock(return_value=SimpleNamespace(capabilities=['replay_absolute_target_v1', 'record_participation_v1']))
+    svc.hal.health = AsyncMock(return_value=SimpleNamespace(capabilities=['replay_absolute_target_v1', 'record_participation_v1', 'replay_controlled_stop_v1']))
     svc.hal.motion_state = AsyncMock(return_value={'pulses': [0.]*12})
     svc.commands.enable_motion_side = AsyncMock()
-    svc.commands.stop_motion_side = AsyncMock()
+    svc.commands.stop_motion_side = AsyncMock(return_value={"response": {"ok": True}})
     svc.commands.emergency_stop = AsyncMock()
     native = {'running': False, 'grippers': {side: {'ok': True, 'positionMm': 0., 'positionOk': True, 'positionSampleTs': time.time()*1000} for side in ('left', 'right')}}
-    svc.hal.command = AsyncMock(return_value={'response': native})
+    def command_reply(name, payload):
+        if name == 'motion.replay_absolute_target':
+            return {'response': {'ok': True, 'side': payload['side'], 'updateReturn': [0] * 6}}
+        return DEFAULT
+    svc.hal.command = AsyncMock(side_effect=command_reply, return_value={'response': native})
     return app, replay, data, config
 
 
@@ -128,6 +132,207 @@ def test_stop_during_loading_does_not_enable(setup_replay):
         app.state.commands.enable_motion_side.assert_not_called()
         app.state.commands.emergency_stop.assert_awaited_once()
     asyncio.run(run())
+
+
+@pytest.fixture
+def in_flight_replay(setup_replay):
+    app, replay, data, _ = setup_replay
+    selection = data["episode"]["participation"]
+    selection["grippers"] = []
+    entered, release = asyncio.Event(), asyncio.Event()
+    events = []
+    case = SimpleNamespace(reply="ok", stop_ok=True, stationary=True, hardware_left_busy=False, busy_once=False)
+    native = app.state.hal.command.return_value
+
+    async def command(name, payload):
+        if name == "motion.replay_absolute_target":
+            side = payload["side"]
+            events.append(("target", side))
+            entered.set()
+            await release.wait()
+            events.append(("reply", side))
+            if case.reply == "timeout":
+                raise TimeoutError("目标应答超时")
+            if case.reply == "invalid":
+                return {"response": {}}
+            return {"response": {"ok": True, "side": side, "updateReturn": [3011 if case.reply == "card_error" else 0] * 6}}
+        if name == "motion.teleop_stop_side":
+            events.append(("stop", payload["side"]))
+            return {"response": {"ok": case.stop_ok}}
+        return native
+
+    async def emergency():
+        events.append(("emergency", None))
+        replay.safety.interrupt(emergency=True)
+
+    def motion_state():
+        if case.busy_once:
+            case.busy_once = False
+            raise RuntimeError("dds-motion-state channel is busy; request was not queued")
+        return {"pulses": [0.] * 12, "estop_active": False,
+                "moving": [case.hardware_left_busy or not case.stationary] * 6 + [not case.stationary] * 6,
+                "timestamp_ms": int(time.time() * 1000)}
+
+    app.state.hal.motion_state.side_effect = motion_state
+    app.state.hal.command.side_effect = command
+    commands = app.state.commands
+    commands.stop_motion_side = type(commands).stop_motion_side.__get__(commands)
+    commands.emergency_stop.side_effect = emergency
+
+    async def start():
+        await replay.start("d", "e", 1.)
+        await asyncio.wait_for(entered.wait(), 2)
+
+    return replay, case, start, release, events, selection
+
+
+@pytest.mark.parametrize("arms, sides", [(["left"], ["right"]), (["left", "right"], ["right", "left"])])
+def test_controlled_stop_waits_for_in_flight_target_before_stopping_selected_arms(in_flight_replay, arms, sides):
+    replay, case, start, release, events, selection = in_flight_replay
+    selection["arms"] = arms
+    case.hardware_left_busy = arms == ["left"]  # 单臂用例故意让未参与的硬件左侧一直运动。
+
+    async def run():
+        await start()
+        first = asyncio.create_task(replay.stop())
+        second = asyncio.create_task(replay.stop())
+        await replay._stop.wait()
+        assert [event for event, _ in events] == ["target"]
+        case.stationary = False
+        case.busy_once = True
+        release.set()
+        while events[-1] != ("stop", sides[-1]):
+            await asyncio.sleep(0)
+        assert not first.done()
+        with pytest.raises(RuntimeError, match="已有回放"):
+            await replay.start("d", "e", 1.)
+        with pytest.raises(RuntimeError, match="in progress"):
+            with replay.safety.operation():
+                pass
+        case.stationary = True
+        results = await asyncio.gather(first, second)
+        assert all(r["phase"] == "stopped" and not r["active"] and r["stopMode"] == "controlled" for r in results)
+        first_target = "left" if len(arms) == 2 else "right"
+        assert events == [("target", first_target), ("reply", first_target), *(("stop", side) for side in sides)]
+        assert not replay.safety.latched
+    asyncio.run(asyncio.wait_for(run(), 4))
+
+
+@pytest.mark.parametrize("cause", ["timeout", "invalid", "card_error", "stop_rejected", "stale_feedback", "moving", "lease"])
+def test_uncertain_arm_stop_escalates_without_sending_more_targets(in_flight_replay, monkeypatch, cause):
+    replay, case, start, release, events, _ = in_flight_replay
+    monkeypatch.setattr("backend.services.dataset_replay.CONTROLLED_STOP_TIMEOUT_S", .15)
+    async def run():
+        await start()
+        stopping = asyncio.create_task(replay.stop())
+        await replay._stop.wait()
+        case.reply = cause
+        case.stop_ok = cause != "stop_rejected"
+        case.stationary = cause != "moving"
+        if cause == "stale_feedback":
+            # 冻结在最后一次下发之前，不能用停止前的静止帧确认停车。
+            stamp = int(time.time() * 1000) - 10
+            replay.svc.hal.motion_state.side_effect = lambda: {"moving": [False]*12, "estop_active": False, "timestamp_ms": stamp}
+        if cause == "lease":
+            def expired():
+                raise RuntimeError("lease lost")
+            replay.safety.readiness_check = expired
+        release.set()
+        await stopping
+        await replay.task
+        assert replay.status()["phase"] == "failed" and replay.status()["error"]
+        assert replay.status()["stopMode"] == "emergency" and replay.safety.latched
+        actions = [event for event, _ in events]
+        assert actions.count("target") == actions.count("emergency") == 1
+        if cause in ("timeout", "invalid", "card_error", "lease"):
+            assert "stop" not in actions
+    asyncio.run(asyncio.wait_for(run(), 4))
+
+
+def test_blocked_target_triggers_independent_emergency_even_if_stop_caller_disconnects(in_flight_replay, monkeypatch):
+    replay, _, start, release, events, _ = in_flight_replay
+    monkeypatch.setattr("backend.services.dataset_replay.CONTROLLED_STOP_TIMEOUT_S", .05)
+    async def run():
+        await start()
+        caller = asyncio.create_task(replay.stop())
+        await replay._stop.wait()
+        caller.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await caller
+        status = await replay.stop()
+        assert status["active"] and status["phase"] == "failed" and status["stopMode"] == "emergency"
+        assert [name for name, _ in events] == ["target", "emergency"]
+        with pytest.raises(RuntimeError, match="已有回放"):
+            await replay.start("d", "e", 1.)
+        release.set()
+        await replay.task
+        assert [name for name, _ in events] == ["target", "emergency", "reply"]
+        assert replay.status()["phase"] == "failed"
+    asyncio.run(asyncio.wait_for(run(), 4))
+
+
+@pytest.mark.parametrize("reason", ["gripper", "legacy_hal", "shutdown"])
+def test_stop_requiring_emergency_does_not_wait_for_in_flight_arm(in_flight_replay, reason):
+    replay, _, start, release, events, selection = in_flight_replay
+    if reason == "gripper":
+        selection["grippers"] = ["right"]
+    if reason == "legacy_hal":
+        replay.svc.hal.health.return_value.capabilities.remove("replay_controlled_stop_v1")
+    async def run():
+        await start()
+        stopping = asyncio.create_task(replay.stop())
+        if reason == "shutdown":
+            await replay._stop.wait()
+            shutdown = asyncio.create_task(replay.stop(emergency=True))
+        while ("emergency", None) not in events:
+            await asyncio.sleep(0)
+        release.set()
+        result = await stopping
+        if reason == "shutdown":
+            assert await shutdown == result
+        assert result["phase"] == "stopped" and result["stopMode"] == "emergency"
+        assert [name for name, _ in events] == ["target", "emergency", "reply"]
+    asyncio.run(asyncio.wait_for(run(), 4))
+
+
+def test_failed_emergency_response_does_not_report_stopped(in_flight_replay):
+    replay, case, start, release, _, _ = in_flight_replay
+    replay.svc.commands.emergency_stop.side_effect = RuntimeError("急停通道无应答")
+    async def run():
+        await start()
+        stopping = asyncio.create_task(replay.stop())
+        await replay._stop.wait()
+        case.reply = "timeout"
+        release.set()
+        result = await stopping
+        assert result["phase"] == "failed" and result["stopMode"] == "emergency"
+        assert "目标应答超时" in result["error"] and "急停未确认" in result["error"]
+        replay.svc.commands.emergency_stop.assert_awaited_once()
+    asyncio.run(asyncio.wait_for(run(), 4))
+
+
+def test_stop_during_unconfirmed_arm_enable_retains_emergency_path(setup_replay):
+    app, replay, data, _ = setup_replay
+    data["episode"]["participation"]["grippers"] = []
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def enable(side):
+        entered.set()
+        await release.wait()
+
+    app.state.commands.enable_motion_side.side_effect = enable
+    async def run():
+        await replay.start("d", "e", 1.)
+        await entered.wait()
+        stopping = asyncio.create_task(replay.stop())
+        while not app.state.commands.emergency_stop.await_count:
+            await asyncio.sleep(0)
+        release.set()
+        assert (await stopping)["stopMode"] == "emergency"
+        app.state.commands.enable_motion_side.assert_awaited_once()
+        app.state.commands.stop_motion_side.assert_not_awaited()
+        assert not any(call.args[0] == "motion.replay_absolute_target" for call in app.state.hal.command.await_args_list)
+    asyncio.run(asyncio.wait_for(run(), 4))
 
 
 def test_stop_between_sides_blocks_remaining_commands(setup_replay):
@@ -488,8 +693,25 @@ def test_replay_timeout_identifies_wakeup_and_feedback_delays(setup_replay, monk
     asyncio.run(run())
 
 
-def test_replay_can_run_longer_than_sixty_seconds(setup_replay):
-    app, replay, data, _ = setup_replay
+@pytest.fixture
+def live_gripper_feedback(setup_replay):
+    # 这两个回放用例要求夹爪持续采样，即使它一直停在同一个位置。
+    app, _, _, _ = setup_replay
+    hal = app.state.hal
+    command_reply = hal.command.side_effect
+
+    def sample(name, payload):
+        if name == "teleop.native.status":
+            for side in hal.command.return_value["response"]["grippers"].values():
+                side["positionSampleTs"] = time.time() * 1000
+        return command_reply(name, payload)
+
+    hal.command.side_effect = sample
+    return setup_replay
+
+
+def test_replay_can_run_longer_than_sixty_seconds(live_gripper_feedback):
+    app, replay, data, _ = live_gripper_feedback
     data['rows'] = [dict(deepcopy(data['rows'][0]), frame_index=i, timestamp=i / 30) for i in range(460)]
 
     async def run():
@@ -514,6 +736,7 @@ def test_shutdown_continues_after_replay_stop_error(setup_replay, monkeypatch):
     monkeypatch.setattr(app.state.telemetry, 'shutdown', telemetry_close)
     shutdown = next(fn for fn in app.router.on_shutdown if fn.__name__ == 'shutdown_runtime_services')
     asyncio.run(shutdown())
+    replay.stop.assert_awaited_once_with(emergency=True)
     watchdog_close.assert_awaited_once()
     cameras_close.assert_called_once()
     telemetry_close.assert_called_once()
@@ -933,8 +1156,8 @@ def test_gripper_error_does_not_block_replay_and_final_error_is_warning(setup_re
     asyncio.run(run())
 
 
-def test_gripper_initial_alignment_still_required(setup_replay):
-    app, replay, data, _ = setup_replay
+def test_gripper_initial_alignment_still_required(live_gripper_feedback):
+    app, replay, data, _ = live_gripper_feedback
     data['rows'][0]['observation.state'][6] = 3.
     async def run():
         await replay.start('d', 'e', 1.)

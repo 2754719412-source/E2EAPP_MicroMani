@@ -952,7 +952,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
     @app.on_event("shutdown")
     async def shutdown_runtime_services() -> None:
         try:
-            await replay.stop()
+            await replay.stop(emergency=True)
         except Exception as exc:
             logs.error("[HAL]", f"shutdown replay stop unconfirmed: {exc}")
         await control_watchdog.close()

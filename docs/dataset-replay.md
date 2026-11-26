@@ -2,11 +2,12 @@
 
 入口：数据集 → 选择本地数据集和 Episode → 详情下方「示教数据真机回放测试」。
 
-1. 核对参与设备；旧片段没有参与元信息时，必须选择操作者左臂、右臂或双臂，并分别勾选需要回放的夹爪。选择倍率后点击「校验回放数据」。这一步只读完整动作文件及当前配置，并显示时间规划，不使能、不运动。
+1. 核对参与设备；旧片段没有参与元信息时，必须选择操作者左臂、右臂或双臂，并分别勾选需要回放的夹爪。选定设备和倍率后，页面自动预检动作文件及当前配置，显示时间规划。预检不发送运动命令。
 2. 停止示教遥操作、录制会话和自动策略。保留浏览器控制连接及有效控制租约，按现有流程完成力自检与安全确认。
 3. 倍率支持 0.1、0.25、0.5、1，默认 0.25；改变倍率须重新校验。确认工作区可运动并勾选运动确认。
 4. 点击「对齐起点并真机回放」。参与臂及夹爪先移动到首帧 observation.state，再按轨迹时间规划逐帧下发 action；末帧等待机械臂到位后停止参与臂连续目标；夹爪不到位仅显示提示。
-5. 「停止真机回放」使用硬件急停并锁存。检查设备并重新确认安全后才能再启动；不自动恢复中断片段。
+5. 点击「停止真机回放」。纯机械臂已完成使能且 HAL 声明 `replay_controlled_stop_v1` 时，回放任务停止发送后续目标，等在途目标应答后逐侧停轴。收到停轴后的新采样并确认参与轴全部静止，页面才显示受控停止完成。再次回放需要重新确认并启动。
+6. 夹爪参与、使能结果待确认、旧 HAL 或服务关闭时，直接请求硬件急停。在途命令结果未知、停轴被拒绝，或从点击停止起 1 秒内无法确认停车，也会请求急停。此时查看设备反馈，按急停恢复流程处理。
 
 ## 数据与执行边界
 
@@ -32,18 +33,20 @@
 
 ## 接口
 
-- `POST /api/datasets/{dataset_id}/episodes/{episode_id}/replay/inspect`：只读校验，接受 `speed`（默认 0.25）及 `participation`，返回 `timing`。
+- `POST /api/datasets/{dataset_id}/episodes/{episode_id}/replay/inspect`：校验数据和参数，接受 `speed`（默认 0.25）及 `participation`，返回 `timing`。
 - `POST /api/datasets/{dataset_id}/episodes/{episode_id}/replay/start`：`{"speed":0.25,"confirmMotion":true}`，必须携带有效 `X-Control-Session`。
 - `GET /api/replay/status`：全局回放任务状态。
-- `POST /api/replay/stop`：停止；停止不依赖当前页面所选片段。
+- `POST /api/replay/stop` 停止当前执行的片段，即使页面已切换到其他片段。`stopMode` 表示选用的停止方式（`controlled` 或 `emergency`），`phase` 和 `error` 表示进度与失败原因。
 
 ## 构建、部署与验证
 
-本轮使用隔离目录 `hal/build/replay-validation` 成对构建带 SDK/Fast-DDS 的 `HalServer.next.exe` 和 `JodellGripperWorker.next.exe`。未启动候选程序、未驱动设备。构建脚本副本省略了正式程序覆盖步骤。
+受控停轴部署需使用声明 `replay_controlled_stop_v1` 的 HalServer 和与其配套构建的 JodellGripperWorker。现场验收需测量负载下的停车时间和距离，1 秒是后端升级急停的等待时限。
+
+早期绝对目标回放曾使用隔离目录 `hal/build/replay-validation` 成对构建带 SDK/Fast-DDS 的 `HalServer.next.exe` 和 `JodellGripperWorker.next.exe`。未启动候选程序、未驱动设备。构建脚本副本省略了正式程序覆盖步骤。
 
 启动前必须配套部署二者并重启后端。标准 `Start-App.cmd` 调用的 `start-hal.ps1` 会在启动时提升 `hal/build/` 下的 `.next.exe` 候选并备份旧程序；不要只替换其中一个。回退时也需使用匹配的旧程序对及源码。
 
-已验证 Python 回放/Policy/DDS/契约回归、React 交互与控制门闩、类型检查及前端构建；C++ 离线 MotionExecutorTests、ForceCoreTests 及带 SDK 的配套编译。离线浏览器接口全部拦截，检查面板显示与数据校验流程，无页面脚本错误。
+早期绝对目标回放已验证 Python 回放/Policy/DDS/契约回归、React 交互与控制门闩、类型检查及前端构建；C++ 离线 MotionExecutorTests、ForceCoreTests 及带 SDK 的配套编译。离线浏览器接口全部拦截，检查面板显示与数据校验流程，无页面脚本错误。
 
 未验证：实际 DDS 往返时延、设备轨迹跟随、物理夹爪到位精度、接触状态下的力保护，以及真实数据集的运动验收。不得将上述离线通过表述为真机验收完成。
 
@@ -100,4 +103,4 @@ Episode 扩展元数据保存 `participation`、`actionMask`、`observationMask`
 
 `timing` 返回请求/计划平均/最慢段倍率、预计动作时长、延时段数及受限通道。预计时间不含起点对齐、通信和额外跟随等待。夹爪速度是设备档位，不能作为 mm/s 计算轨迹时间，夹爪位置差不再延长连续回放，gripperFeedbackLimited 为 false；反馈有效性检查继续保留。`completedFrames` 是完成计划段和跟随检查的帧数；`frame` 是已下发帧数。`elapsedS` 从起点对齐后开始，`effectiveSpeed` 为已完成帧数/fps/运行时间；`feedbackWaitS` 只统计段后额外等待。故障 JSON 及 UI 保留原有诊断和停止路径。
 
-本轮不修改 C++ HAL 或 DDS 契约、不启动设备运动。离线验证不能证明任意负载、接触状态或真实通信延迟下都能跟随；逐轴、负载验收记录仍待实测补齐。
+此次时间规划改动沿用了当时的 C++ HAL 和 DDS 契约，验证在离线环境完成。离线验证不能证明任意负载、接触状态或真实通信延迟下都能跟随；逐轴、负载验收记录仍待实测补齐。

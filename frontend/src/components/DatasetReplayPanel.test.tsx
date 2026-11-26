@@ -1,6 +1,6 @@
 import type { Participation } from '../types'
 const dualParticipation: Participation = { version: 'appstation.participation.v1', arms: ['left', 'right'], grippers: ['left', 'right'] }
-import { fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DatasetReplayPanel } from './DatasetReplayPanel'
 import { postCommand } from '../api'
@@ -22,9 +22,7 @@ const timing = {
 it('按选择的倍率规划并显示未验证的示教参数，改倍率需重新校验', async () => {
   vi.mocked(postCommand).mockResolvedValue({ data: { frames: 60, fps: 30, durationS: 2, timing } })
   render(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="e" />)
-  const inspect = screen.getByRole('button', { name: '校验回放数据' })
-  await waitFor(() => expect(inspect).toBeEnabled())
-  fireEvent.click(inspect)
+  await waitFor(() => expect(postCommand).toHaveBeenCalledTimes(1))
   const plan = await screen.findByLabelText('回放时间规划')
   expect(postCommand).toHaveBeenCalledWith('/api/datasets/local/episodes/e/replay/inspect', { speed: .25, participation: dualParticipation })
   expect(plan).toHaveTextContent('预计 12.4 秒')
@@ -61,14 +59,13 @@ it('不把其他片段的运行计划当成所选片段的规划', async () => {
 
 it('切换片段后迟到的校验响应不能解除新片段的门控', async () => {
   let resolve!: (value: unknown) => void
-  vi.mocked(postCommand).mockReturnValue(new Promise((done) => { resolve = done }) as ReturnType<typeof postCommand>)
+  vi.mocked(postCommand).mockReturnValueOnce(new Promise((done) => { resolve = done }) as ReturnType<typeof postCommand>)
+    .mockReturnValue(new Promise(() => {}))
   const { rerender } = render(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="old" />)
-  const inspect = screen.getByRole('button', { name: '校验回放数据' })
-  await waitFor(() => expect(inspect).toBeEnabled())
-  fireEvent.click(inspect)
+  await waitFor(() => expect(postCommand).toHaveBeenCalledTimes(1))
   rerender(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="new" />)
-  resolve({ data: { frames: 60, fps: 30, durationS: 2, timing } })
-  await waitFor(() => expect(screen.getByRole('button', { name: '校验回放数据' })).toBeEnabled())
+  await act(async () => resolve({ data: { frames: 60, fps: 30, durationS: 2, timing } }))
+  await waitFor(() => expect(postCommand).toHaveBeenCalledTimes(2))
   expect(screen.queryByLabelText('回放时间规划')).not.toBeInTheDocument()
   expect(screen.getByRole('checkbox', { name: /确认工作区/ })).toBeDisabled()
 })
@@ -80,8 +77,6 @@ describe('DatasetReplayPanel', () => {
     render(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="episode_000001" />)
     const start = screen.getByRole('button', { name: '对齐起点并真机回放' })
     expect(start).toBeDisabled()
-    await waitFor(() => expect(screen.getByRole('button', { name: '校验回放数据' })).toBeEnabled())
-    fireEvent.click(screen.getByRole('button', { name: '校验回放数据' }))
     await screen.findByText('30 帧 · 30 Hz · 1.0 秒')
     expect(start).toBeDisabled()
     fireEvent.click(screen.getByRole('checkbox', { name: /确认工作区/ }))
@@ -94,18 +89,19 @@ describe('DatasetReplayPanel', () => {
   it('shows validation rejection without allowing motion', async () => {
     vi.mocked(postCommand).mockRejectedValueOnce(new Error('原点不一致'))
     render(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="episode" />)
-    await waitFor(() => expect(screen.getByRole('button', { name: '校验回放数据' })).toBeEnabled())
-    fireEvent.click(screen.getByRole('button', { name: '校验回放数据' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('原点不一致')
-    expect(screen.getByRole('button', { name: '对齐起点并真机回放' })).toBeDisabled()
+    const start = screen.getByRole('button', { name: '对齐起点并真机回放' })
+    expect(start).toBeDisabled()
+    vi.mocked(postCommand).mockResolvedValueOnce({ data: { frames: 30, fps: 30, durationS: 1 } })
+    fireEvent.click(screen.getByRole('button', { name: '重新校验回放数据' }))
+    await screen.findByText('30 帧 · 30 Hz · 1.0 秒')
+    expect(start).toBeDisabled()
   })
 
   it('collapses technical errors behind a readable message', async () => {
     const detail = `REPLAY_REJECTED: ${'dataset path /'.repeat(30)} Parquet magic bytes not found in footer`
     vi.mocked(postCommand).mockRejectedValueOnce(new Error(detail))
     render(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="episode" />)
-    await waitFor(() => expect(screen.getByRole('button', { name: '校验回放数据' })).toBeEnabled())
-    fireEvent.click(screen.getByRole('button', { name: '校验回放数据' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('数据文件无法读取，请检查 Parquet 文件是否完整。')
     const details = screen.getByText('查看错误详情').closest('details')!
     expect(details).not.toHaveAttribute('open')
@@ -118,14 +114,25 @@ describe('DatasetReplayPanel', () => {
       .mockResolvedValueOnce({ data: { phase: 'running', active: true, frame: 1, totalFrames: 30 } })
     render(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="episode" />)
     fireEvent.click(screen.getByRole('radio', { name: '0.5 倍速' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: '校验回放数据' })).toBeEnabled())
-    fireEvent.click(screen.getByRole('button', { name: '校验回放数据' }))
     await screen.findByText('30 帧 · 30 Hz · 1.0 秒')
     fireEvent.click(screen.getByRole('checkbox', { name: /确认工作区/ }))
     fireEvent.click(screen.getByRole('button', { name: '对齐起点并真机回放' }))
     await waitFor(() => expect(postCommand).toHaveBeenLastCalledWith(
       '/api/datasets/local/episodes/episode/replay/start', { speed: .5, confirmMotion: true, participation: dualParticipation }))
     expect(screen.getByRole('radio', { name: '0.5 倍速' })).toBeDisabled()
+  })
+
+  it.each([
+    ['stopping', 'controlled', '正在等待参与机械臂停轴反馈'],
+    ['stopped', 'controlled', '已确认参与机械臂静止'],
+    ['failed', 'emergency', '已请求硬件急停'],
+  ])('显示后端回报的停车状态 %s/%s', async (phase, stopMode, message) => {
+    vi.mocked(fetch).mockResolvedValue({ ok: true, json: async () => ({ data: {
+      phase, stopMode, active: phase === 'stopping', frame: 1, totalFrames: 30,
+    } }) } as Response)
+    render(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="e" />)
+    expect(await screen.findByRole('status')).toHaveTextContent(message)
+    expect(postCommand).not.toHaveBeenCalled()
   })
 
   it('can stop an active replay belonging to another selected episode', async () => {
@@ -143,11 +150,9 @@ describe('DatasetReplayPanel', () => {
 it('requires explicit legacy selection and resets validation after changing devices', async () => {
   vi.mocked(postCommand).mockResolvedValue({ data: { frames: 30, fps: 30, durationS: 1 } })
   render(<DatasetReplayPanel datasetId="legacy" episodeId="episode" />)
-  const inspect = screen.getByRole('button', { name: '校验回放数据' })
-  expect(inspect).toBeDisabled()
+  await screen.findByText('待命')
+  expect(postCommand).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('checkbox', { name: '左臂' }))
-  await waitFor(() => expect(inspect).toBeEnabled())
-  fireEvent.click(inspect)
   await screen.findByText('30 帧 · 30 Hz · 1.0 秒')
   expect(postCommand).toHaveBeenLastCalledWith('/api/datasets/legacy/episodes/episode/replay/inspect', {
     speed: .25, participation: { version: 'appstation.participation.v1', arms: ['left'], grippers: [] },
@@ -172,7 +177,7 @@ it('对齐超时直接展开未到位通道，不被长错误提示折叠', asyn
   expect(alert.querySelector('details')).toHaveAttribute('open')
   expect(alert.querySelector('pre')).toHaveTextContent('误差 25 μm，允许 10 μm')
   expect(alert.querySelector('pre')).toHaveTextContent('右夹爪')
-  expect(postCommand).not.toHaveBeenCalled()
+  expect(vi.mocked(postCommand).mock.calls.every(([path]) => path.endsWith('/inspect'))).toBe(true)
 })
 
 it('运行超限直接展开故障帧、目标反馈和采样时间', async () => {
@@ -189,7 +194,7 @@ it('运行超限直接展开故障帧、目标反馈和采样时间', async () =
   expect(alert.querySelector('pre')).toHaveTextContent('第 48 帧 action；准备下发第 49 帧')
   expect(alert.querySelector('pre')).toHaveTextContent('误差 1.3516 °，允许 1 °')
   expect(alert.querySelector('pre')).toHaveTextContent('反馈时间 2026-09-21T15:30:14.920+08:00')
-  expect(postCommand).not.toHaveBeenCalled()
+  expect(vi.mocked(postCommand).mock.calls.every(([path]) => path.endsWith('/inspect'))).toBe(true)
 })
 
 it('shows final gripper warning alongside completed status without a failure alert', async () => {
@@ -201,4 +206,37 @@ it('shows final gripper warning alongside completed status without a failure ale
   expect(await screen.findByText(warning)).toBeInTheDocument()
   expect(screen.getByText('已完成')).toBeInTheDocument()
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
+
+it.each(['成功', '失败'])('改倍率后忽略旧请求迟到的%s结果', async (outcome) => {
+  let finishOld!: () => void
+  vi.mocked(postCommand).mockImplementationOnce(() => new Promise((resolve, reject) => {
+    finishOld = () => outcome === '失败' ? reject(new Error('过期的错误'))
+      : resolve({ data: { frames: 10, fps: 10, durationS: 1 } })
+  })).mockResolvedValueOnce({ data: { frames: 40, fps: 10, durationS: 4, timing: { ...timing, requestedSpeed: 1 } } })
+  render(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="e" />)
+  await waitFor(() => expect(postCommand).toHaveBeenCalledTimes(1))
+  fireEvent.click(screen.getByRole('radio', { name: '1 倍速' }))
+  await screen.findByText('40 帧 · 10 Hz · 4.0 秒')
+  fireEvent.click(screen.getByRole('checkbox', { name: /确认工作区/ }))
+  await act(async () => finishOld())
+  expect(screen.getByLabelText('回放时间规划')).toHaveTextContent('请求 1×')
+  expect(screen.getByRole('checkbox', { name: /确认工作区/ })).toBeChecked()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  expect(postCommand).toHaveBeenCalledTimes(2)
+})
+
+it('状态连接中断撤销确认，恢复后重新预检', async () => {
+  vi.mocked(postCommand).mockResolvedValue({ data: { frames: 30, fps: 30, durationS: 1 } })
+  render(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="e" />)
+  await screen.findByText('30 帧 · 30 Hz · 1.0 秒')
+  const confirmation = screen.getByRole('checkbox', { name: /确认工作区/ })
+  fireEvent.click(confirmation)
+  vi.mocked(fetch).mockRejectedValueOnce(new Error('断线'))
+  expect(await screen.findByRole('alert')).toHaveTextContent('连接中断')
+  expect(confirmation).not.toBeChecked()
+  expect(confirmation).toBeDisabled()
+  await waitFor(() => expect(confirmation).toBeEnabled(), { timeout: 2000 })
+  expect(confirmation).not.toBeChecked()
+  expect(postCommand).toHaveBeenCalledTimes(2)
 })

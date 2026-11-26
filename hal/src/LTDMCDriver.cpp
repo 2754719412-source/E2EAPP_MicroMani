@@ -606,7 +606,8 @@ MotionState LTDMCDriver::readStateLocked() {
       }
       {
         MotionTimingScope call(timing_.cards[card].readCalls[2]);
-        state.axes[index].moving = dmcCheckDone(card, axisNo) == 0;
+        // 与 requireSideStopped 一致，只有明确返回 1 才可报告静止。
+        state.axes[index].moving = dmcCheckDone(card, axisNo) != 1;
       }
 #endif
       state.axes[index].pulse = pulse_[index];
@@ -1963,26 +1964,27 @@ void LTDMCDriver::stopTeleopSide(Side side) {
   const auto stopEpoch = commandEpoch();
   std::scoped_lock lock(mutex_);
   ensureInitialized();
+#if defined(_WIN32) && defined(APPSTATION_ENABLE_VENDOR_SDKS)
+  if (!dmcStop) throw std::runtime_error("dmc_stop unavailable for controlled stop");
+#endif
   const auto card = cardForSide(side);
   for (int axisIndex = 0; axisIndex < 6; ++axisIndex) {
     const auto axis = static_cast<SemanticAxis>(axisIndex);
     const auto index = stateIndex(side, axis);
 #if defined(_WIN32) && defined(APPSTATION_ENABLE_VENDOR_SDKS)
-    if (dmcStop) {
-      // stopTeleopSide 是“停止遥操作保持当前位置”，不是急停；停止后仍同步目标到当前位置。
-      const auto axisNo = static_cast<unsigned short>(physicalAxis(side, axis));
-      const auto retStop = dmcStop(card, axisNo, 0);
-      if (retStop != 0) {
-        throw std::runtime_error(dmcAxisFailureMessage("dmc_stop", retStop, card, axisNo));
-      }
-      if (dmcGetPosition) {
-        pulse_[index] = static_cast<double>(dmcGetPosition(card, axisNo));
-      }
-      if (dmcUpdateTargetPosition && commandEpochAllowed(stopEpoch)) {
-        const auto currentPulse = checkedMotionPulse(pulse_[index]);
-        updateTeleopTargetBestEffort(card, axisNo, currentPulse);
-        checkMotionCommand(stopEpoch);
-      }
+    // stopTeleopSide 是“停止遥操作保持当前位置”，不是急停；停止后仍同步目标到当前位置。
+    const auto axisNo = static_cast<unsigned short>(physicalAxis(side, axis));
+    const auto retStop = dmcStop(card, axisNo, 0);
+    if (retStop != 0) {
+      throw std::runtime_error(dmcAxisFailureMessage("dmc_stop", retStop, card, axisNo));
+    }
+    if (dmcGetPosition) {
+      pulse_[index] = static_cast<double>(dmcGetPosition(card, axisNo));
+    }
+    if (dmcUpdateTargetPosition && commandEpochAllowed(stopEpoch)) {
+      const auto currentPulse = checkedMotionPulse(pulse_[index]);
+      updateTeleopTargetBestEffort(card, axisNo, currentPulse);
+      checkMotionCommand(stopEpoch);
     }
 #else
     (void)card;

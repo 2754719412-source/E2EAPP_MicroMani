@@ -434,7 +434,7 @@ void testMotionAcknowledge() {
 
 void testForceConfigJson() {
   require(appstation::hal::jsonHealth({}, false, "").find(
-      "\"capabilities\":[\"force_calibration_state_v1\",\"control_lease_v1\",\"replay_absolute_target_v1\",\"record_participation_v1\",\"record_start_hold_v1\",\"policy_gripper_feedback_v1\",\"work_origin_instance_guard_v1\",\"home_preserve_counts_v1\"]") != std::string::npos,
+      "\"capabilities\":[\"force_calibration_state_v1\",\"control_lease_v1\",\"replay_absolute_target_v1\",\"record_participation_v1\",\"record_start_hold_v1\",\"policy_gripper_feedback_v1\",\"work_origin_instance_guard_v1\",\"home_preserve_counts_v1\",\"replay_controlled_stop_v1\"]") != std::string::npos,
       "health must advertise the implemented calibration and control lease contracts");
   require(
       appstation::hal::jsonForceRuntimeConfig("{}").source == "hkvl_serial",
