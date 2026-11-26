@@ -8,11 +8,11 @@
 | 环节 | 位置 | 说明 |
 | --- | --- | --- |
 | 读取 | `hal/src/JodellGripperWorker.cpp`、`hal/include/JodellModbusClient.h` | `gripper.workerTransport=modbus` 时，每侧 worker 独占串口。读取用一次 `0x04` 请求连读 `0x07D0` 起 3 个寄存器，位置、状态、gCU 来自同一次应答，共用同一个时间戳（请求发出到应答收齐的中点，取 steady_clock） |
-| 写命令 | `hal/include/JodellWorkerProtocol.h` | 拆成三个 worker 请求：`PREPARE`（读状态，有故障就拒绝；只有 `gACT/gSTA` 显示未使能时才写 `rACT=1`，手册说明使能可能带动手指）→ `AWAIT`（每片 100 ms 轮询使能是否完成，总计 1.5 s，不写寄存器）→ `MOVE`（只写运动帧并校验回显）。父进程在 `PREPARE` 前、每个 `AWAIT` 片之间、`MOVE` 前都检查运动授权，急停或代际变化后不再继续，避免在途命令在急停后写入运动帧。Modbus 模式拒绝单步 `COMMAND` |
+| 写命令 | `hal/include/JodellWorkerProtocol.h` | 拆成四类 worker 请求：`STATUS`（只读状态，有故障就拒绝，报告是否需要使能）→ `ACTIVATE`（只在 `gACT/gSTA` 显示未使能时发送，只写 `rACT=1`；手册说明使能可能带动手指）→ `AWAIT`（每片 100 ms 轮询使能是否完成，总计 1.5 s，不写寄存器）→ `MOVE`（只写运动帧并校验回显）。父进程在每个请求之前都检查运动授权，急停或代际变化后不再继续，避免在途命令在急停后写入使能或运动帧。Modbus 模式拒绝单步 `COMMAND` |
 | 默认路径 | 同上 | 默认 `dll`，行为与原来一致。DLL 遥操作只读位置（READPOS），没有电流；样本里电流标为无效 |
 | 编号与历史 | `hal/src/NativeTeleopController.cpp` | worker 一次应答可带多个读数（如使能等待期间），每次成功读数都分配该侧递增的 `seq`，与命令成败无关（运动前读到的故障码也会入历史）。按 worker 时间戳去重；时间戳不在请求窗口内时，改用 HAL 侧中点（`timestampSource=hal_midpoint`）。`seq` 只在同一 HAL 实例内单调，实例 ID 每次启动随机生成。状态 JSON 提供最新样本 `grippers.<side>.sample` 和 `sampleStats`（样本数、有效频率、最长断样） |
 | 采样间隔 | `gripper.sampleHz` → `gripperSampleIntervalMs` | 默认 30 Hz，不变。HAL 每次读完等这么久再读下一次，并夹紧到 5–1000 ms |
-| 拉取 | 只读命令 `gripper.samples` | 100 Hz DDS 遥测缓存只带最新样本，录制器每 0.1 s 用该命令按 `instanceId` + `afterSeq` 增量拉取（HAL 每侧保留最近 256 条）。走独立的 DDS 通道，不占控制命令容量，超时也不隔离控制传输 |
+| 拉取 | 只读命令 `gripper.samples` | 100 Hz DDS 遥测缓存只带最新样本，录制器在独立线程中每 0.1 s 用该命令按 `instanceId` + `afterSeq` 增量拉取（HAL 每侧保留最近 256 条），历史读取变慢不会拖住位置采样；保存 episode 前再按最后游标补读一次，避免两次轮询之间结束时丢掉尾部读数。走独立的 DDS 通道，不占控制命令容量，超时也不隔离控制传输 |
 | 收集 | `backend/services/gripper_raw_samples.py` | 按 `seq` 收入新读数。重复行丢弃；跳号计为 `missedSeq`（HAL 历史已滚动覆盖，样本确实丢失）。实例 ID 变化（HAL 重启）时清空已见序号，episode 元数据记 `halRestarts`；拉取失败记 `fetchErrors` |
 
 ## 新数据集格式
@@ -55,7 +55,7 @@
   - `gGTO=1` 且 `gOBJ=2`；
   - gCU 高于空载阈值。
 
-片段只在连续观测内成立：遇到 `seq` 跳号、HAL 重启，或相邻读数间隔超过 0.25 s 就切断，不会给缺样期间的训练帧打上接触标签。帧号按实际写入的帧数裁剪：完全落在最后一帧之后（停止录制、排空写队列期间）的片段丢弃，跨过末尾的片段截到最后一帧，并标记 `clippedToLastFrame`。
+片段只在连续观测内成立：遇到 `seq` 跳号、HAL 重启，或相邻读数间隔超过 0.25 s 就切断，不会给缺样期间的训练帧打上接触标签。帧号按实际写入的帧数裁剪：完全落在最后一帧之后（停止录制、排空写队列期间）的片段丢弃，跨过末尾的片段只保留尾帧以内的读数，结束时间、结束 seq、最小开口和电流峰值都按保留的读数重新计算，并标记 `clippedToLastFrame`。
 
 `gGTO` 不为 1 时不采用 `gOBJ`。既没有可用的 gOBJ、又没有电流阈值时，只有在开口已经停住（与上一读数相差 ≤ 0.05 mm）的情况下，才记为位置候选片段（`candidate=true`），供人工复核。
 

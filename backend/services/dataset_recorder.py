@@ -2314,22 +2314,38 @@ class DatasetRecorderService:
             thresholds[side] = float(value) if isinstance(value, (int, float)) else None
         return thresholds
 
-    def _poll_gripper_samples(
-        self, run: Callable[[Awaitable[Any]], Any], collector: gripper_raw_samples.GripperRawCollector
-    ) -> None:
-        """限频调用只读命令 gripper.samples 增量取读数；失败只计数，不影响位置采样和训练帧。"""
-        now_s = time.monotonic()
-        if now_s - getattr(self, "_gripper_samples_polled_at", 0.0) < GRIPPER_SAMPLES_POLL_S:
-            return
-        self._gripper_samples_polled_at = now_s
+    async def _fetch_gripper_samples(self, collector: gripper_raw_samples.GripperRawCollector) -> bool:
+        """调用只读命令 gripper.samples 增量取读数；失败只计数，不影响位置采样和训练帧。"""
         try:
-            result = run(self.hal.command("gripper.samples", collector.fetch_payload()))
+            result = await self.hal.command("gripper.samples", collector.fetch_payload())
             response = result.get("response") if isinstance(result, dict) else None
             if not isinstance(response, dict):
                 raise RuntimeError("gripper.samples response missing")
             collector.ingest(response)
+            return True
         except Exception:  # noqa: BLE001
             collector.note_fetch_error()
+            return False
+
+    def _gripper_samples_loop(self) -> None:
+        """独立线程每 GRIPPER_SAMPLES_POLL_S 拉一次读数；与位置采样线程互不等待。"""
+        collector = self._gripper_raw_collector()
+        with asyncio.Runner() as runner:
+            while self._session_active and not self._sampler_stop_event.is_set():
+                started = time.monotonic()
+                runner.run(self._fetch_gripper_samples(collector))
+                self._sampler_stop_event.wait(max(0.0, GRIPPER_SAMPLES_POLL_S - (time.monotonic() - started)))
+
+    def _start_gripper_samples_thread(self, config: dict[str, Any]) -> None:
+        selected = getattr(self, "_participation", None)
+        if not (selected and selected["grippers"] and self._using_real_hal_native_teleop(config)):
+            return
+        thread = getattr(self, "_gripper_samples_thread", None)
+        if thread is not None and thread.is_alive():
+            return
+        self._gripper_samples_thread = Thread(
+            target=self._gripper_samples_loop, name="dataset-gripper-samples", daemon=True)
+        self._gripper_samples_thread.start()
 
     def _gripper_raw_collector(self) -> gripper_raw_samples.GripperRawCollector:
         collector = getattr(self, "_gripper_raw", None)
@@ -2398,6 +2414,9 @@ class DatasetRecorderService:
                 self.logs.warning("[ORIGIN_MOVE]", f"episode snapshot failed: {exc}")
         gripper_raw: GripperRawWrite | None = None
         try:
+            # 封存前按最后游标补读一次，避免两次轮询之间结束时丢掉尾部读数。
+            if getattr(self, "hal", None) is not None:
+                await self._fetch_gripper_samples(self._gripper_raw_collector())
             gripper_raw = self._gripper_raw_episode_payload()
         except Exception as exc:  # noqa: BLE001
             # 旁路数据失败不能拖垮训练帧保存；元数据如实记下失败原因。
@@ -2522,10 +2541,15 @@ class DatasetRecorderService:
                     daemon=True,
                 )
                 self._sampler_threads[source].start()
+        self._start_gripper_samples_thread(config)
 
     async def _stop_sampler_tasks(self) -> None:
         """通知所有采样线程停止，并等待线程退出。"""
         self._sampler_stop_event.set()
+        samples_thread = getattr(self, "_gripper_samples_thread", None)
+        if samples_thread is not None:
+            # 拉取线程只读，可能正等 DDS 应答；短暂等待即可，下一轮循环会看到停止事件自行退出。
+            await asyncio.to_thread(samples_thread.join, 0.2)
         threads = [(source, thread) for source, thread in self._sampler_threads.items() if thread.is_alive()]
         for _source, thread in threads:
             await asyncio.to_thread(thread.join, 1.0)
@@ -2864,11 +2888,10 @@ class DatasetRecorderService:
                 if target_buffer is not None and target_ok:
                     # 目标用 DDS 状态时标，不能套用更早的夹爪位置 READ 时标。
                     target_buffer.append(TimedSample("gripper_target", stamp, targets))
-                # 记下当时的命令开口供接触片段检测；读数本身按 seq 另行增量拉取（遥测缓存只带最新样本）。
-                collector = self._gripper_raw_collector()
+                # 记下当时的命令开口供接触片段检测；读数本身由独立线程按 seq 增量拉取，
+                # 历史读取变慢不能拖住这里的位置样本（帧对齐只允许 70 ms 偏差）。
                 if target_ok and targets is not None:
-                    collector.ingest_targets(stamp, list(targets))
-                self._poll_gripper_samples(run, collector)
+                    self._gripper_raw_collector().ingest_targets(stamp, list(targets))
                 return self._gripper_source_sync(
                     config, target_s, record_quality=False, native_status=native_status)
             return self._gripper_source_sync(config, target_s, record_quality=False)

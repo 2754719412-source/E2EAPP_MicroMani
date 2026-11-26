@@ -394,30 +394,33 @@ def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_
             detected = detect_contact_events(
                 frames, min_gap_mm=min_gap_mm, current_threshold_raw=thresholds_raw.get(side))
             for event in detected:
-                first, last = samples[event["startFrame"]], samples[event["endFrame"]]
+                segment = samples[event["startFrame"]:event["endFrame"] + 1]
+                # 只保留落在已写入帧内的读数；结束时间、序号、最小开口和峰值都按保留的读数重新计算，
+                # 避免把录像以外（停止后排空期间）的峰值标到训练片段上。
+                kept = segment if last_frame is None else [
+                    sample for sample in segment if math.floor((sample.monotonic_s - start_s) * fps) <= last_frame]
+                if not kept:
+                    continue
+                first, last = kept[0], kept[-1]
+                currents = [sample for sample in kept if sample.current_valid]
+                peak = max(currents, key=lambda sample: sample.current_raw) if currents else None
                 start_t = first.monotonic_s - start_s
                 end_t = last.monotonic_s - start_s
-                start_frame = max(0, int(math.floor(start_t * fps)))
-                end_frame = max(0, int(math.floor(end_t * fps)))
-                if last_frame is not None:
-                    if last_frame < 0 or start_frame > last_frame:
-                        continue
-                clipped = last_frame is not None and end_frame > last_frame
                 events.append({
                     "hardwareSide": side,
                     "datasetSide": dataset_side_for_hardware[side],
                     "startS": round(start_t, 4),
                     "endS": round(end_t, 4),
-                    "startFrame": start_frame,
-                    "endFrame": min(end_frame, last_frame) if last_frame is not None else end_frame,
-                    "clippedToLastFrame": clipped,
+                    "startFrame": max(0, int(math.floor(start_t * fps))),
+                    "endFrame": max(0, int(math.floor(end_t * fps))),
+                    "clippedToLastFrame": len(kept) < len(segment),
                     "startSeq": first.seq,
                     "endSeq": last.seq,
                     "evidence": event["evidence"],
                     "candidate": event["candidate"],
-                    "minGapMm": round(event["minGapMm"], 4),
-                    "peakCurrentRaw": event["peakCurrentRaw"],
-                    "peakSeq": samples[event["peakCurrentFrame"]].seq if event["peakCurrentFrame"] is not None
-                    else None,
+                    "minGapMm": round(
+                        min(gap_mm_for_position_raw(sample.position_raw, stroke_mm) for sample in kept), 4),
+                    "peakCurrentRaw": float(peak.current_raw) if peak is not None else None,
+                    "peakSeq": peak.seq if peak is not None else None,
                 })
     return sorted(events, key=lambda item: (item["startS"], item["hardwareSide"]))

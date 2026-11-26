@@ -241,13 +241,10 @@ def test_recorder_collects_history_even_when_dds_status_cache_is_fresh() -> None
     cached = asyncio.run(recorder.hal.command("teleop.native.status", {}))["response"]
     assert raw.parse_sample_history(cached) == {}
 
-    recorder._poll_gripper_samples(asyncio.run, collector)
+    asyncio.run(recorder._fetch_gripper_samples(collector))
     assert [sample.seq for sample in collector.recent("left", 1.0)] == [1, 2, 3]
-    # 限频：0.1 s 内不重复请求；之后只请求更大的 seq。
-    recorder._poll_gripper_samples(asyncio.run, collector)
-    assert len(transport.requests) == 1
-    recorder._gripper_samples_polled_at = 0.0
-    recorder._poll_gripper_samples(asyncio.run, collector)
+    # 下一次只请求更大的 seq。
+    asyncio.run(recorder._fetch_gripper_samples(collector))
     assert json.loads(transport.requests[-1].payload_json)["afterSeqLeft"] == 3  # type: ignore[attr-defined]
 
 
@@ -263,7 +260,7 @@ def test_poll_failure_is_counted_without_raising() -> None:
     recorder.hal = Broken()
     collector = recorder._gripper_raw_collector()
     collector.begin_episode(0.0)
-    recorder._poll_gripper_samples(asyncio.run, collector)
+    assert asyncio.run(recorder._fetch_gripper_samples(collector)) is False
     assert collector.end_episode()["fetchErrors"] == 1
 
 
@@ -311,7 +308,93 @@ def test_contact_events_are_limited_to_written_frames() -> None:
     contact = {"pos": 140, "cur": 200, "gto": 1, "obj": 0}
     tail = [row(i, 10.0 + 0.55 + i * 0.01, **contact) for i in range(1, 5)]  # 0.56–0.59 s → 帧 16–17
     assert _events(_contact_snapshot(tail), frame_count=15) == []
-    spanning = [row(i, 10.4 + i * 0.03, **contact) for i in range(1, 9)]  # 0.43–0.64 s → 帧 12–19
+    # 0.43–0.64 s → 帧 12–19；电流逐条升高，峰值 220 在第 8 条读数（尾帧之后）。
+    rising = {"pos": 140, "gto": 1, "obj": 0}
+    spanning = [row(i, 10.4 + i * 0.03, cur=150 + i * 10, **rising) for i in range(1, 9)]
     events = _events(_contact_snapshot(spanning), frame_count=15)
     assert len(events) == 1 and events[0]["endFrame"] == 14 and events[0]["clippedToLastFrame"] is True
+    # 审查复现：结束时间、结束序号和峰值都只能来自第 14 帧以内（t < 0.5 s）的读数。
+    assert events[0]["endS"] < 0.5 and events[0]["endSeq"] == 3
+    assert (events[0]["peakCurrentRaw"], events[0]["peakSeq"]) == (180.0, 3)
     assert _events(_contact_snapshot(spanning), frame_count=0) == []
+
+
+def test_slow_history_fetch_does_not_delay_position_sampling() -> None:
+    """审查复现：历史读取延迟 300 ms 时，位置样本不能跟着等待（帧对齐只允许 70 ms）。"""
+    import time
+    from threading import Event
+
+    recorder = object.__new__(DatasetRecorderService)
+    recorder._participation = {"version": "appstation.participation.v1", "arms": ["left"], "grippers": ["left"]}
+    now_ms = time.time() * 1000
+    status = {"monotonic_s": time.monotonic(), "grippers": {
+        "right": {"positionMm": 13.0, "positionOk": True, "positionSampleTs": now_ms}}}
+    fetched = Event()
+
+    class Hal:
+        async def command(self, name: str, payload: dict[str, object]) -> dict[str, object]:
+            if name == "gripper.samples":
+                time.sleep(0.3)
+                fetched.set()
+                reply = native_status([], [row(1, time.monotonic())])
+                reply["gripperSampleInstanceId"] = "hal-a"
+                return {"response": reply}
+            return {"response": status}
+
+    recorder.hal = Hal()
+    recorder.teleop = SimpleNamespace(status=lambda: {"nativeStatus": status})
+    config = {"hal": {"mode": "real"}, "teleop": {"engine": "hal_native"}}
+    started = time.monotonic()
+    sample = recorder._sample_source_once_sync("gripper", config, time.monotonic())
+    assert time.monotonic() - started < 0.07
+    assert sample.value == [0.0, 13.0]
+
+    from threading import Event as StopEvent
+
+    recorder._session_active = True
+    recorder._sampler_stop_event = StopEvent()
+    recorder._start_gripper_samples_thread(config)
+    assert fetched.wait(2.0)
+    recorder._sampler_stop_event.set()
+    recorder._gripper_samples_thread.join(2.0)
+    assert [s.seq for s in recorder._gripper_raw_collector().recent("right", 5.0)] == [1]
+
+
+def test_save_fetches_tail_samples_before_sealing(tmp_path: Path) -> None:
+    """审查复现：两次轮询之间结束录制时，HAL 已有 seq 1–3，封存结果不能只有 seq 1。"""
+    import asyncio
+
+    recorder = object.__new__(DatasetRecorderService)
+    recorder._record_fps_hz = 30
+    recorder._episode_index = 0
+    recorder._episode_frames = 30
+    recorder._participation = {"version": "appstation.participation.v1", "arms": ["right"], "grippers": ["right"]}
+    recorder._native_live_episode_metadata = {}
+    recorder.logs = SimpleNamespace(warning=lambda *a: None)
+    config = default_config()
+    recorder._recording_config = lambda: config  # type: ignore[method-assign]
+    recorder._require_dataset_dir = lambda: tmp_path  # type: ignore[method-assign]
+    collector = recorder._gripper_raw_collector()
+    collector.begin_episode(10.0)
+    first = native_status([row(1, 10.0)])
+    first["gripperSampleInstanceId"] = "hal-a"
+    collector.ingest(first)
+    written: list[GripperRawWrite] = []
+
+    class Hal:
+        async def command(self, name: str, payload: dict[str, object]) -> dict[str, object]:
+            assert name == "gripper.samples" and payload["afterSeqLeft"] == 1
+            reply = native_status([row(2, 10.01), row(3, 10.02)])
+            reply["gripperSampleInstanceId"] = "hal-a"
+            return {"response": reply}
+
+    async def writer_command(kind: str, payload: object = None) -> object:
+        if kind == "write_gripper_raw":
+            written.append(payload)  # type: ignore[arg-type]
+        return {} if kind == "latest_episode_metadata" else 0
+
+    recorder.hal = Hal()
+    recorder._native_writer_command = writer_command  # type: ignore[method-assign]
+    asyncio.run(recorder._save_native_episode())
+    assert [row_["seq"] for row_ in written[0].rows] == [1, 2, 3]
+    assert recorder._episode_gripper_raw_meta["stats"]["left"]["missedSeq"] == 0
