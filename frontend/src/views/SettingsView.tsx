@@ -169,14 +169,20 @@ export function SettingsView() {
     setApplyingConfig(true)
     setConfigApplyStatus('正在应用配置')
     try {
-      const response = await queueSettingsWrite(() => applyConfig(config))
-      const current = useTelemetryStore.getState().config === config
-      if (current && response.data.config) {
-        appliedConfigRef.current = normalizeConfig(response.data.config)
-        useTelemetryStore.setState({ config: appliedConfigRef.current })
-      }
-      setConfigApplyStatus(current ? '配置已保存并应用' : '本次配置已应用；后续修改尚未应用')
-      injectLog('INFO', '配置已保存并应用', '[HAL]')
+      await queueSettingsWrite(async (previous) => {
+        const response = await applyConfig(previous ?? config)
+        const draft = useTelemetryStore.getState().config
+        const current = draft === config || draft === previous
+        const active = response.data.config && normalizeConfig(response.data.config)
+        if (current && active) {
+          appliedConfigRef.current = active
+          useTelemetryStore.setState({ config: active })
+        }
+        const message = current ? '配置已保存并应用' : '本次配置已应用；后续修改尚未应用'
+        setConfigApplyStatus(message)
+        injectLog('INFO', message, '[HAL]')
+        return active
+      })
     } catch (error) {
       const message = `配置应用失败：${commandErrorMessage(error)}`
       setConfigApplyStatus(message)

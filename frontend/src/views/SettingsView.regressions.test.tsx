@@ -239,6 +239,27 @@ describe('设置迁移回归', () => {
     expect(screen.queryByRole('status', { name: '配置应用状态' })).not.toBeInTheDocument()
   })
 
+  it('先选快照再应用配置，使用后端返回的快照值并保留随后编辑的草稿', async () => {
+    vi.spyOn(api, 'mockMode', 'get').mockReturnValue(false)
+    const snapshot = deferred<Awaited<ReturnType<typeof api.applyParameterSnapshotApi>>>()
+    const applying = deferred<Awaited<ReturnType<typeof api.applyConfig>>>()
+    vi.spyOn(api, 'applyParameterSnapshotApi').mockReturnValue(snapshot.promise)
+    const apply = vi.spyOn(api, 'applyConfig').mockReturnValue(applying.promise)
+    const saved = structuredClone(defaultConfig)
+    saved.teleop.motionProfileDecSec = 0.4
+    await show('storage')
+    act(() => useTelemetryStore.getState().applyParameterSnapshot('snapshot'))
+    fireEvent.click(screen.getByRole('button', { name: '应用配置' }))
+    expect(apply).not.toHaveBeenCalled()
+    await act(async () => snapshot.resolve({ ok: true, data: { config: saved } }))
+    expect(apply).toHaveBeenCalledTimes(1)
+    expect(apply.mock.calls[0][0]?.teleop.motionProfileDecSec).toBe(0.4)
+    fireEvent.change(screen.getByLabelText('数据集根目录'), { target: { value: 'D:/newer-edit' } })
+    await act(async () => applying.resolve({ ok: true, data: { config: saved } }))
+    expect(useTelemetryStore.getState().config.storage.datasetRoot).toBe('D:/newer-edit')
+    expect(screen.getByLabelText('配置应用状态')).toHaveTextContent('后续修改尚未应用')
+  })
+
   it('数据目录和录制 FPS 可编辑且不会覆盖相机采集 FPS', async () => {
     await show('storage')
     const card = within(document.getElementById('storage')!)

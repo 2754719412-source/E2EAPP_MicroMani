@@ -133,7 +133,7 @@ function returnedRecordResetState(session: RecordSessionState, side: RecordReset
   }
 }
 // 配置请求共用保存队列；追踪录制启动时，应同时检查它是否等待最近一次配置落盘。
-let configSaveQueue: Promise<unknown> = Promise.resolve()
+let configSaveQueue: Promise<AppConfig | undefined> | undefined
 const manualAxisOrder: ManualControlAxis[] = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw']
 const manualAxisKeys = ['x', 'y', 'z', 'roll', 'pitch', 'yaw'] as const
 const manualAxisDirectionSign = {
@@ -145,16 +145,31 @@ function manualAxisBusyKey(side: ManualControlState['selectedSide'], axis: Manua
   return `${side}-${axis}`
 }
 
-/** 设置写入共用一个串行队列：后端同一时刻只接受一个设置写入，并发者直接 409。 */
-export function queueSettingsWrite<T>(write: () => Promise<T>): Promise<T> {
-  const next = configSaveQueue.catch(() => undefined).then(write)
-  configSaveQueue = next.catch(() => undefined)
+/** 排队中的写入可取前一项生效的配置。队列清空后，下一次操作使用当时的草稿。 */
+export function queueSettingsWrite(write: (previous?: AppConfig) => Promise<AppConfig | undefined>) {
+  const next = (configSaveQueue ?? Promise.resolve(undefined)).catch(() => undefined).then(write)
+  configSaveQueue = next
+  const clear = () => {
+    if (configSaveQueue === next) configSaveQueue = undefined
+  }
+  void next.then(clear, clear)
   return next
 }
 
 /** 按顺序保存配置，避免录制启动早于最近一次参数写入。 */
 function queueConfigSave(config: AppConfig, confirmMappingSide?: 'left' | 'right') {
-  return queueSettingsWrite(() => confirmMappingSide ? putConfig(config, confirmMappingSide) : putConfig(config))
+  return queueSettingsWrite(async () => {
+    const saved = confirmMappingSide ? await putConfig(config, confirmMappingSide) : await putConfig(config)
+    const actual = saved.force.compliance
+    const draft = config.force.compliance
+    if (useTelemetryStore.getState().config === config && (actual.enabled !== draft.enabled
+      || actual.left.mappingConfirmed !== draft.left.mappingConfirmed || actual.right.mappingConfirmed !== draft.right.mappingConfirmed)) {
+      const active = normalizeConfig(saved)
+      useTelemetryStore.setState({ config: active })
+      return active
+    }
+    return saved
+  })
 }
 /** Convert UI units to pulse units for per-axis jog safety limits. */
 function manualAxisPulsePerUiUnit(
@@ -2637,13 +2652,7 @@ updateConfig: (patch, confirmMappingSide) => {
     const nextConfig = mergeConfig(get().config, patch)
     set({ config: nextConfig })
     if (!mockMode) {
-      void queueConfigSave(nextConfig, confirmMappingSide).then((saved) => {
-        if (get().config !== nextConfig) return
-        const actual = saved.force.compliance
-        const draft = nextConfig.force.compliance
-        if (actual.enabled !== draft.enabled || actual.left.mappingConfirmed !== draft.left.mappingConfirmed
-          || actual.right.mappingConfirmed !== draft.right.mappingConfirmed) set({ config: normalizeConfig(saved) })
-      }).catch((error) => {
+      void queueConfigSave(nextConfig, confirmMappingSide).catch((error) => {
         set((state) => ({
           logs: appendLog(state.logs, makeLog('ERROR', `settings save failed: ${String(error)}`, '[BACKEND]')),
         }))
@@ -2694,19 +2703,19 @@ saveParameterSnapshot: (scope, name) => {
 /** 应用对应配置或状态。 */
 applyParameterSnapshot: (id) => {
     if (!mockMode) {
-      void queueSettingsWrite(() => applyParameterSnapshotApi(id))
-        .then((response) => {
-          const data = response.data as { config?: AppConfig; snapshots?: ParameterSnapshot[] } | undefined
-          const patch: Partial<TelemetryStore> = {}
-          if (data?.config) patch.config = normalizeConfig(data.config)
-          if (data?.snapshots) patch.parameterSnapshots = data.snapshots
-          if (Object.keys(patch).length > 0) set(patch)
-        })
-        .catch((error) => {
-          set((state) => ({
-            logs: appendLog(state.logs, makeLog('ERROR', `snapshot apply failed: ${String(error)}`, '[BACKEND]')),
-          }))
-        })
+      void queueSettingsWrite(async () => {
+        const response = await applyParameterSnapshotApi(id)
+        const data: { config?: AppConfig; snapshots?: ParameterSnapshot[] } | undefined = response.data
+        const patch: Partial<TelemetryStore> = {}
+        if (data?.config) patch.config = normalizeConfig(data.config)
+        if (data?.snapshots) patch.parameterSnapshots = data.snapshots
+        if (Object.keys(patch).length > 0) set(patch)
+        return patch.config
+      }).catch((error) => {
+        set((state) => ({
+          logs: appendLog(state.logs, makeLog('ERROR', `snapshot apply failed: ${String(error)}`, '[BACKEND]')),
+        }))
+      })
       return
     }
     set((state) => {
