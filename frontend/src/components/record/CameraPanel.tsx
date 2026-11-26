@@ -28,9 +28,9 @@ const cameraResolution = (config: AppConfig, kind: keyof typeof cameraSpecs) => 
 }
 /** 计算对应的业务值或展示值。 */
 const getFpsColor = (hz: number) => {
-  if (hz >= 25) return '#52c41a'
-  if (hz >= 20) return '#E65100'
-  return '#cf1322'
+  if (hz >= 25) return 'var(--color-success)'
+  if (hz >= 20) return 'var(--color-warning)'
+  return 'var(--color-danger)'
 }
 
 interface CameraSlotProps {

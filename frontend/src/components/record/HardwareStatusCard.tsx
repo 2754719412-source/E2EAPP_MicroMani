@@ -10,10 +10,10 @@ import { useTelemetryStore } from '../../stores/telemetry'
 import { UiCard } from '../ui'
 
 const toneColor: Record<HardwareStatusTone, string> = {
-  ok: '#3B6D11',
-  warn: '#E65100',
-  error: '#C62828',
-  unknown: '#8c8c8c',
+  ok: 'var(--color-success-text)',
+  warn: 'var(--color-warning-text)',
+  error: 'var(--color-danger-text)',
+  unknown: 'var(--color-text-muted)',
 }
 
 function dotStyle(tone: HardwareStatusTone): React.CSSProperties {
@@ -63,7 +63,7 @@ export default function HardwareStatusCard() {
           >
             <div style={dotStyle(row.tone)} />
             <span style={{ flex: 1, color: toneColor[row.tone] }}>{row.name}</span>
-            <span style={{ fontFamily: 'monospace', color: '#8c8c8c', fontSize: 10 }}>{row.value}</span>
+            <span style={{ fontFamily: 'monospace', color: 'var(--color-text-muted)', fontSize: 10 }}>{row.value}</span>
           </div>
         ))}
       </div>

@@ -230,7 +230,9 @@ function ArmHardwarePanel({
         <span><Bot size={17} />{label}</span>
         <UiSpace size={6} wrap>
           <UiTag tone={stateTone(motionState)}>运动控制卡 {cardNo}</UiTag>
-          <MetricPill state={forceState} label={forceModel} />
+          {/* 型号用中性色，力传感器状态由圆点和单独的状态标签表达。 */}
+          <UiTag className="metric-pill" tone="muted"><span className={`status-dot status-dot-${forceState}`} />{forceModel}</UiTag>
+          {forceState !== 'ok' && <UiTag tone={stateTone(forceState)}>{stateText(forceState)}</UiTag>}
           <MetricPill state={safetyState} label="安全" />
         </UiSpace>
       </div>

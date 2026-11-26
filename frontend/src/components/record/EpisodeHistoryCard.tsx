@@ -106,7 +106,7 @@ export default function EpisodeHistoryCard() {
       }
     >
       {recent.length === 0 ? (
-        <div style={{ color: '#8c8c8c', fontSize: 11, textAlign: 'center', padding: '8px 0' }}>
+        <div style={{ color: 'var(--color-text-muted)', fontSize: 11, textAlign: 'center', padding: '8px 0' }}>
           {emptyMessage}
         </div>
       ) : (
@@ -121,11 +121,11 @@ export default function EpisodeHistoryCard() {
                 gap: 6,
                 padding: '4px 6px',
                 borderRadius: 4,
-                background: '#f8fafc',
+                background: 'var(--color-bg-muted)',
               }}
             >
               <span style={{ fontWeight: 500, fontSize: 12 }}>{ep.label}</span>
-              <span style={{ overflow: 'hidden', fontSize: 11, color: '#8c8c8c', fontFamily: 'monospace', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ overflow: 'hidden', fontSize: 11, color: 'var(--color-text-muted)', fontFamily: 'monospace', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {ep.frameCount} 帧 / {ep.durationS.toFixed(1)}s
               </span>
               <UiTag
@@ -137,7 +137,7 @@ export default function EpisodeHistoryCard() {
             </div>
           ))}
           {loadFailed && (
-            <div style={{ color: '#cf1322', fontSize: 10, textAlign: 'center', paddingTop: 2 }}>
+            <div style={{ color: 'var(--color-danger-text)', fontSize: 10, textAlign: 'center', paddingTop: 2 }}>
               后端历史读取失败，仅显示本次会话记录
             </div>
           )}

@@ -1028,7 +1028,7 @@ const openHubUpload = () => {
             <header className="ui-modal-head"><strong>Hugging Face Hub 上传</strong></header>
             <div className="ui-modal-body">
               <label style={{ display: 'block', marginBottom: 10 }}>
-                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7a8b9c', marginBottom: 4 }}>上传开关</span>
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4 }}>上传开关</span>
                 <label className="ui-switch">
                   <input
                     aria-label="Hub 上传开关"
@@ -1040,7 +1040,7 @@ const openHubUpload = () => {
                 </label>
               </label>
               <label style={{ display: 'block', marginBottom: 10 }}>
-                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7a8b9c', marginBottom: 4 }}>Repo ID</span>
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4 }}>Repo ID</span>
                 <input
                   className="ui-input"
                   style={{ width: '100%' }}
@@ -1050,7 +1050,7 @@ const openHubUpload = () => {
                 />
               </label>
               <label style={{ display: 'block', marginBottom: 10 }}>
-                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7a8b9c', marginBottom: 4 }}>Local path</span>
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4 }}>Local path</span>
                 <input
                   className="ui-input"
                   style={{ width: '100%' }}
@@ -1061,7 +1061,7 @@ const openHubUpload = () => {
                 />
               </label>
               <label style={{ display: 'block', marginBottom: 10 }}>
-                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#7a8b9c', marginBottom: 4 }}>HF Token</span>
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 4 }}>HF Token</span>
                 <input
                   type="password"
                   className="ui-input"

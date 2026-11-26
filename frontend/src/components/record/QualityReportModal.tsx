@@ -13,9 +13,9 @@ type Recommendation = 'accept' | 'review' | 'rerecord'
 type MetricTone = 'good' | 'warn' | 'bad'
 
 const toneStyle: Record<MetricTone, CSSProperties> = {
-  good: { borderColor: '#9fdcc4', background: '#f1fbf5', color: '#16794c' },
-  warn: { borderColor: '#f0d09a', background: '#fff9ed', color: '#98651b' },
-  bad: { borderColor: '#f5b4bc', background: '#fff3f4', color: '#b42332' },
+  good: { borderColor: 'var(--color-success-border)', background: 'var(--color-success-light)', color: 'var(--color-success-text)' },
+  warn: { borderColor: 'var(--color-warning-border)', background: 'var(--color-warning-light)', color: 'var(--color-warning-text)' },
+  bad: { borderColor: 'var(--color-danger-border)', background: 'var(--color-danger-light)', color: 'var(--color-danger-text)' },
 }
 
 function metricTone(value: number, reviewAt: number, rerecordAt: number): MetricTone {
