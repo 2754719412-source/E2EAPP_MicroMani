@@ -51,7 +51,7 @@ HAL_COMMANDS: dict[str, HalCommandSpec] = {
 _LONG_RUNNING_COMMANDS = {"motion.home_all", "motion.home_origin_side", "motion.home_side", "motion.return_home_reference"}
 # 仅只读和停止操作允许自动重试；未收到应答不代表运动、使能或确认未执行。
 _RETRY_SAFE_COMMANDS = {
-    "hal.reconnect", "teleop.native.status", "gripper.samples",
+    "hal.reconnect", "teleop.native.status",
     "motion.emergency_stop",
     "motion.disable_side", "motion.teleop_stop_side", "teleop.native.stop",
     "omega7.zero_force_feedback",

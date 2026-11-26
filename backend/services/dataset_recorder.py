@@ -54,6 +54,7 @@ from backend.core.force_config import hal_force_config_payload
 from backend.core.logging import LogService, now_ms, stable_config_hash
 from backend.core.motion_safety import MotionSafetyGate, motion_operation
 from backend.core.units import lerobot_to_ui_state, motion_pulse_per_unit, pulses_to_ui_state
+from backend.hal_client.bounded_lane import ChannelBusyError
 from backend.hal_client.client import HalClient
 from backend.services.hardware_service import HardwareService
 from backend.services.gripper_backend import hal_gripper_sampling_fields, native_teleop_enabled
@@ -128,8 +129,8 @@ GRIPPER_RAW_COLUMNS = {
 }
 # HAL 每侧保留最近 256 条读数；按 10 Hz 增量拉取，100 Hz 采样时也有约 2.5 s 余量。
 GRIPPER_SAMPLES_POLL_S = 0.1
-# 封存补读：通道可能仍被刚超时的读取占用，最多重试几次，每次间隔很短。
-GRIPPER_TAIL_FETCH_ATTEMPTS = 5
+# 等待在途读取和尾部补读共用时限，为主数据写盘留出时间。
+GRIPPER_TAIL_FETCH_TIMEOUT_S = 1.0
 GRIPPER_TAIL_FETCH_RETRY_S = 0.05
 GRIPPER_CURRENT_FEATURE_NAMES = ("operator_left.gcu_raw", "operator_right.gcu_raw")
 GRIPPER_CURRENT_VALID_FEATURE_NAMES = ("operator_left.gcu_valid", "operator_right.gcu_valid")
@@ -2319,23 +2320,35 @@ class DatasetRecorderService:
         return thresholds
 
     async def _fetch_gripper_samples(
-        self, collector: gripper_raw_samples.GripperRawCollector, generation: int | None = None
+        self, collector: gripper_raw_samples.GripperRawCollector, generation: int | None = None,
+        *, deadline: float | None = None,
     ) -> bool:
         """调用只读命令 gripper.samples 增量取读数；失败只计数，不影响位置采样和训练帧。
 
         generation 为后台线程所属会话的代际；会话已结束时迟到的应答直接丢弃，不进入新会话的收集器。
         """
+        if generation is None:
+            generation = collector.generation
         try:
-            result = await self.hal.command("gripper.samples", collector.fetch_payload())
+            payload = collector.fetch_payload()
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                raise TimeoutError
+            async with asyncio.timeout(remaining):
+                while True:
+                    try:
+                        result = await self.hal.command("gripper.samples", payload)
+                        break
+                    except ChannelBusyError:
+                        if deadline is None:
+                            raise
+                        await asyncio.sleep(GRIPPER_TAIL_FETCH_RETRY_S)
             response = result.get("response") if isinstance(result, dict) else None
             if not isinstance(response, dict):
                 raise RuntimeError("gripper.samples response missing")
-            if generation is not None and generation != getattr(self, "_gripper_samples_generation", 0):
-                return False
-            collector.ingest(response)
-            return True
+            return collector.ingest(response, generation=generation, request=payload) is not None
         except Exception:  # noqa: BLE001
-            collector.note_fetch_error()
+            collector.note_fetch_error(generation)
             return False
 
     def _gripper_fetch_lock(self) -> Lock:
@@ -2353,8 +2366,7 @@ class DatasetRecorderService:
         """独立线程每 GRIPPER_SAMPLES_POLL_S 拉一次读数；与位置采样线程互不等待。"""
         collector = self._gripper_raw_collector()
         with asyncio.Runner() as runner:
-            while (self._session_active and not stop.is_set()
-                   and generation == getattr(self, "_gripper_samples_generation", 0)):
+            while self._session_active and not stop.is_set():
                 started = time.monotonic()
                 with self._gripper_fetch_lock():
                     if stop.is_set():
@@ -2367,9 +2379,8 @@ class DatasetRecorderService:
         self._retire_gripper_samples_thread()
         if not self._gripper_samples_enabled(config):
             return
-        generation = getattr(self, "_gripper_samples_generation", 0) + 1
+        generation = self._gripper_raw_collector().generation
         stop = Event()
-        self._gripper_samples_generation = generation
         self._gripper_samples_stop = stop
         self._gripper_samples_thread = Thread(
             target=self._gripper_samples_loop, args=(stop, generation), name="dataset-gripper-samples", daemon=True)
@@ -2380,20 +2391,24 @@ class DatasetRecorderService:
         stop = getattr(self, "_gripper_samples_stop", None)
         if stop is not None:
             stop.set()
-        self._gripper_samples_generation = getattr(self, "_gripper_samples_generation", 0) + 1
+        self._gripper_raw_collector().retire_session()
         self._gripper_samples_stop = None
         return getattr(self, "_gripper_samples_thread", None)
 
     def _fetch_gripper_tail_blocking(self) -> str:
         """封存前补读：先取单飞锁（等在途读取完成入库），再按最新游标读到当前；通道暂忙时短暂重试。"""
         collector = self._gripper_raw_collector()
-        with self._gripper_fetch_lock():
-            for attempt in range(GRIPPER_TAIL_FETCH_ATTEMPTS):
-                if asyncio.run(self._fetch_gripper_samples(collector)):
-                    return "ok"
-                if attempt + 1 < GRIPPER_TAIL_FETCH_ATTEMPTS:
-                    time.sleep(GRIPPER_TAIL_FETCH_RETRY_S)
-        return "failed"
+        generation = collector.generation
+        deadline = time.monotonic() + GRIPPER_TAIL_FETCH_TIMEOUT_S
+        lock = self._gripper_fetch_lock()
+        if not lock.acquire(timeout=max(0.0, deadline - time.monotonic())):
+            collector.note_fetch_error(generation)
+            return "failed"
+        try:
+            ok = asyncio.run(self._fetch_gripper_samples(collector, generation, deadline=deadline))
+            return "ok" if ok else "failed"
+        finally:
+            lock.release()
 
     def _gripper_raw_collector(self) -> gripper_raw_samples.GripperRawCollector:
         collector = getattr(self, "_gripper_raw", None)

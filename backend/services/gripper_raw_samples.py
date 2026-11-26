@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
-from backend.core.gripper_contact import ContactFrame, detect_contact_events, evidence_summary, frame_evidences
+from backend.core.gripper_contact import ContactFrame, detect_contact_events
 from backend.core.jodell_modbus import GOBJ_CONTACT_CLOSING, GOBJ_CONTACT_OPENING, gap_mm_for_position_raw
 
 GRIPPER_SAMPLE_HISTORY_FORMAT = "seq_monotonicUs_halTs_pv_sv_cv_pos_cur_act_gto_sta_obj_fault_v1"
@@ -85,6 +85,30 @@ def parse_sample_history(native_status: Any) -> dict[str, list[GripperRawSample]
     return parsed
 
 
+def _validate_history_reply(
+    response: Mapping[str, Any], parsed: Mapping[str, list[GripperRawSample]], request: Mapping[str, Any],
+) -> None:
+    """专用读取须能解析双侧全部行，并到达 HAL 声明的最新序号。空增量也须与游标一致。"""
+    if not all(side in parsed for side in HARDWARE_SIDES):
+        raise ValueError("unsupported or incomplete gripper.samples history")
+    instance = response.get("gripperSampleInstanceId")
+    latest = response.get("latestSeq")
+    if (not isinstance(instance, str) or not instance.strip()
+            or not isinstance(latest, list) or len(latest) != 2
+            or not all(type(seq) is int and seq >= 0 for seq in latest)):
+        raise ValueError("invalid gripper.samples cursor")
+    for index, side in enumerate(HARDWARE_SIDES):
+        rows = response["gripperSampleHistory"][side]
+        samples = parsed[side]
+        if len(samples) != len(rows) or any(type(value) is not int for row in rows for value in row):
+            raise ValueError(f"invalid gripper.samples {side} row")
+        cursor_key = "afterSeqLeft" if side == "left" else "afterSeqRight"
+        after = request[cursor_key] if instance == request["instanceId"] else 0
+        last = samples[-1].seq if samples else after
+        if last != latest[index] or (samples and samples[0].seq <= after):
+            raise ValueError(f"inconsistent gripper.samples {side} cursor")
+
+
 def sample_in_contact_state(sample: GripperRawSample) -> bool:
     """gOBJ 只在 gGTO=1（正在执行到位命令）时有效；1/2 表示手指因接触物体停止。"""
     return sample.status_valid and sample.gGTO == 1 and sample.gOBJ in (GOBJ_CONTACT_OPENING, GOBJ_CONTACT_CLOSING)
@@ -95,6 +119,7 @@ class GripperRawCollector:
 
     def __init__(self) -> None:
         self._lock = Lock()
+        self._generation = 0
         self._samples: dict[str, list[GripperRawSample]] = {side: [] for side in HARDWARE_SIDES}
         self._times: dict[str, list[float]] = {side: [] for side in HARDWARE_SIDES}
         self._last_seq: dict[str, int] = {side: 0 for side in HARDWARE_SIDES}
@@ -112,9 +137,20 @@ class GripperRawCollector:
             return {"instanceId": self._instance_id or "", "afterSeqLeft": self._last_seq["left"],
                     "afterSeqRight": self._last_seq["right"]}
 
-    def note_fetch_error(self) -> None:
+    @property
+    def generation(self) -> int:
         with self._lock:
-            self._fetch_errors += 1
+            return self._generation
+
+    def retire_session(self) -> None:
+        """与应答入库和错误计数使用同一把锁，阻止已结束会话的读取改变收集器。"""
+        with self._lock:
+            self._generation += 1
+
+    def note_fetch_error(self, generation: int) -> None:
+        with self._lock:
+            if generation == self._generation:
+                self._fetch_errors += 1
 
     def ingest_targets(self, target_stamp_s: float, targets: Sequence[float]) -> None:
         self.ingest({}, target_stamp_s=target_stamp_s, targets=targets)
@@ -125,12 +161,18 @@ class GripperRawCollector:
         *,
         target_stamp_s: float | None = None,
         targets: Sequence[float] | None = None,
-    ) -> int:
-        """收入新的读数和当时的命令开口（硬件侧），返回新增读数条数。"""
+        generation: int | None = None,
+        request: Mapping[str, Any] | None = None,
+    ) -> int | None:
+        """返回新增读数条数。会话已结束时丢弃本次结果并返回 None。"""
         parsed = parse_sample_history(native_status)
+        if request is not None:
+            _validate_history_reply(native_status, parsed, request)
         instance = native_status.get("gripperSampleInstanceId") if isinstance(native_status, Mapping) else None
         added = 0
         with self._lock:
+            if generation is not None and generation != self._generation:
+                return None
             if isinstance(instance, str) and instance and instance != self._instance_id:
                 if self._instance_id is not None:
                     # HAL 重启：seq 从 1 重新计数，旧序号作废；新旧之间的读数无法计数，按中断记录。
@@ -356,7 +398,7 @@ def _contiguous_segments(samples: Sequence[GripperRawSample]) -> list[list[Gripp
     segments: list[list[GripperRawSample]] = []
     for sample in samples:
         if (segments and sample.seq == segments[-1][-1].seq + 1
-                and sample.monotonic_s - segments[-1][-1].monotonic_s <= CONTACT_MAX_GAP_S):
+                and 0 <= sample.monotonic_s - segments[-1][-1].monotonic_s <= CONTACT_MAX_GAP_S):
             segments[-1].append(sample)
         else:
             segments.append([sample])
@@ -375,12 +417,15 @@ def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_
     start_s = snapshot.get("startS") or 0.0
     targets = snapshot["targets"]
     stamps = [stamp for stamp, _ in targets]
-    last_frame = frame_count - 1 if frame_count is not None else None
     events: list[dict[str, Any]] = []
     for side in sides:
         index = HARDWARE_SIDES.index(side)
         valid = [s for s in snapshot["samples"].get(side, []) if s.position_valid]
         for samples in _contiguous_segments(valid):
+            limit = None if frame_count is None else bisect.bisect_left(
+                samples, frame_count, key=lambda s: math.floor((s.monotonic_s - start_s) * fps))
+            if limit == 0:
+                continue
             frames = [
                 ContactFrame(
                     gap_mm=gap_mm_for_position_raw(sample.position_raw, stroke_mm),
@@ -392,20 +437,11 @@ def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_
                 for sample in samples
             ]
             threshold = thresholds_raw.get(side)
-            detected = detect_contact_events(frames, min_gap_mm=min_gap_mm, current_threshold_raw=threshold)
-            evidences = frame_evidences(frames, min_gap_mm=min_gap_mm, current_threshold_raw=threshold)
+            detected = detect_contact_events(frames, min_gap_mm=min_gap_mm, current_threshold_raw=threshold,
+                                             sample_limit=limit)
             for event in detected:
-                segment = samples[event["startFrame"]:event["endFrame"] + 1]
-                # 只保留落在已写入帧内的读数；结束时间、序号、最小开口和峰值都按保留的读数重新计算，
-                # 避免把录像以外（停止后排空期间）的峰值标到训练片段上。
-                kept = segment if last_frame is None else [
-                    sample for sample in segment if math.floor((sample.monotonic_s - start_s) * fps) <= last_frame]
-                if not kept:
-                    continue
+                kept = samples[event["startFrame"]:event["endFrame"] + 1]
                 first, last = kept[0], kept[-1]
-                # 证据与候选标志也只按保留的读数重算：录像结束后的 gOBJ/电流不能改变录像内片段的标签。
-                kept_evidence, kept_candidate = evidence_summary(
-                    evidences[event["startFrame"]:event["startFrame"] + len(kept)])
                 currents = [sample for sample in kept if sample.current_valid]
                 peak = max(currents, key=lambda sample: sample.current_raw) if currents else None
                 start_t = first.monotonic_s - start_s
@@ -417,11 +453,11 @@ def contact_events(snapshot: Mapping[str, Any], sides: Iterable[str], *, stroke_
                     "endS": round(end_t, 4),
                     "startFrame": max(0, int(math.floor(start_t * fps))),
                     "endFrame": max(0, int(math.floor(end_t * fps))),
-                    "clippedToLastFrame": len(kept) < len(segment),
+                    "clippedToLastFrame": event.get("clippedToLastFrame", False),
                     "startSeq": first.seq,
                     "endSeq": last.seq,
-                    "evidence": kept_evidence,
-                    "candidate": kept_candidate,
+                    "evidence": event["evidence"],
+                    "candidate": event["candidate"],
                     "minGapMm": round(
                         min(gap_mm_for_position_raw(sample.position_raw, stroke_mm) for sample in kept), 4),
                     "peakCurrentRaw": float(peak.current_raw) if peak is not None else None,

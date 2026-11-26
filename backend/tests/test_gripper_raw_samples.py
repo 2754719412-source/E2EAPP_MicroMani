@@ -227,6 +227,7 @@ def test_recorder_collects_history_even_when_dds_status_cache_is_fresh() -> None
             history = native_status([r for r in [row(1, 10.0, cur=40), row(2, 10.01, cur=41), row(3, 10.02, cur=42)]
                                      if r[0] > after])
             history["gripperSampleInstanceId"] = "hal-a"
+            history["latestSeq"] = [3, 0]
             self.replies[request.request_id] = HalCommandReply(  # type: ignore[attr-defined]
                 request_id=request.request_id, ok=True, result_json=json.dumps(history), error="")  # type: ignore[attr-defined]
 
@@ -329,15 +330,14 @@ def test_slow_history_fetch_does_not_delay_position_sampling() -> None:
     now_ms = time.time() * 1000
     status = {"monotonic_s": time.monotonic(), "grippers": {
         "right": {"positionMm": 13.0, "positionOk": True, "positionSampleTs": now_ms}}}
-    fetched = Event()
 
     class Hal:
         async def command(self, name: str, payload: dict[str, object]) -> dict[str, object]:
             if name == "gripper.samples":
                 time.sleep(0.3)
-                fetched.set()
                 reply = native_status([], [row(1, time.monotonic())])
                 reply["gripperSampleInstanceId"] = "hal-a"
+                reply["latestSeq"] = [0, 1]
                 return {"response": reply}
             return {"response": status}
 
@@ -349,14 +349,17 @@ def test_slow_history_fetch_does_not_delay_position_sampling() -> None:
     assert time.monotonic() - started < 0.07
     assert sample.value == [0.0, 13.0]
 
-    from threading import Event as StopEvent
-
     recorder._session_active = True
-    recorder._sampler_stop_event = StopEvent()
+    recorder._sampler_stop_event = Event()
     recorder._start_gripper_samples_thread(config)
-    assert fetched.wait(2.0)
-    recorder._retire_gripper_samples_thread().join(2.0)
-    assert [s.seq for s in recorder._gripper_raw_collector().recent("right", 5.0)] == [1]
+    collector = recorder._gripper_raw_collector()
+    try:
+        deadline = time.monotonic() + 2
+        while not collector.recent("right", 5.0) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert [s.seq for s in collector.recent("right", 5.0)] == [1]
+    finally:
+        recorder._retire_gripper_samples_thread().join(2.0)
 
 
 def test_save_fetches_tail_samples_before_sealing(tmp_path: Path) -> None:
@@ -385,6 +388,7 @@ def test_save_fetches_tail_samples_before_sealing(tmp_path: Path) -> None:
             assert name == "gripper.samples" and payload["afterSeqLeft"] == 1
             reply = native_status([row(2, 10.01), row(3, 10.02)])
             reply["gripperSampleInstanceId"] = "hal-a"
+            reply["latestSeq"] = [3, 0]
             return {"response": reply}
 
     async def writer_command(kind: str, payload: object = None) -> object:
@@ -427,6 +431,7 @@ class _BlockingHalTransport:
         after = int(payload.get("afterSeqLeft", 0))
         reply = native_status([r for r in self.available if r[0] > after])
         reply["gripperSampleInstanceId"] = "hal-a"
+        reply["latestSeq"] = [self.available[-1][0], 0]
         self.requests.append(request)
         self.replies[request.request_id] = HalCommandReply(  # type: ignore[attr-defined]
             request_id=request.request_id, ok=True, result_json=json.dumps(reply), error="")  # type: ignore[attr-defined]
@@ -545,3 +550,132 @@ def test_contact_evidence_ignores_readings_after_last_frame() -> None:
     event = events[0]
     assert event["endSeq"] == 5 and event["clippedToLastFrame"] is True
     assert event["evidence"] == ["position_only"] and event["candidate"] is True
+
+
+@pytest.mark.parametrize("failure", ["no_reply", "inflight", "rejected"])
+def test_save_bounds_tail_fetch_and_still_saves_frames(tmp_path: Path, monkeypatch, failure: str) -> None:
+    import asyncio
+    import time
+    from threading import Timer
+
+    from backend.services import dataset_recorder
+
+    class Transport(_BlockingHalTransport):
+        def wait_for_command_reply(self, request_id: str, timeout_s: float) -> object | None:
+            if failure == "rejected":
+                from backend.hal_client.dds_types import HalCommandReply
+
+                return HalCommandReply(request_id=request_id, ok=False, error="unsupported", result_json="")
+            time.sleep(timeout_s)
+            return None
+
+    transport = Transport()
+    recorder = _recorder_with_dds(tmp_path, transport, ["right"])
+    recorder.hal.reply_timeout_s = 0.4
+    monkeypatch.setattr(dataset_recorder, "GRIPPER_TAIL_FETCH_TIMEOUT_S", 0.18, raising=False)
+    recorder._gripper_raw_collector().begin_episode(9.0)
+    commands = []
+
+    async def writer(kind, payload=None):
+        commands.append(kind)
+        return {} if kind == "latest_episode_metadata" else 1
+
+    recorder._native_writer_command = writer
+    if failure == "inflight":
+        lock = recorder._gripper_fetch_lock()
+        lock.acquire()
+        Timer(0.8, lock.release).start()  # 旧实现会等到释放后才开始补读。
+    started = time.monotonic()
+    asyncio.run(recorder._save_native_episode())
+    assert time.monotonic() - started < 0.36
+    assert len(transport.requests) == (0 if failure == "inflight" else 1)
+    assert "save_episode" in commands
+    assert recorder._episode_gripper_raw_meta["tailFetch"] == "failed"
+    assert recorder._episode_gripper_raw_meta["fetchErrors"] == 1
+
+
+@pytest.mark.parametrize("late_error", [False, True])
+def test_retired_fetch_cannot_change_next_episode(tmp_path: Path, monkeypatch, late_error: bool) -> None:
+    from threading import Event
+
+    transport = _BlockingHalTransport()
+    transport.release.set()
+    recorder = _recorder_with_dds(tmp_path, transport, ["right"])
+    collector = recorder._gripper_raw_collector()
+    collector.begin_episode(9.0)
+    entered, release = Event(), Event()
+    parse_history = raw.parse_sample_history
+
+    def paused_parse(status, **kwargs):
+        entered.set()
+        assert release.wait(2.0)
+        return parse_history(status, **kwargs)
+
+    async def late_failure(*args):
+        entered.set()
+        assert release.wait(2.0)
+        raise RuntimeError("previous session timed out")
+
+    if late_error:
+        monkeypatch.setattr(recorder.hal, "command", late_failure)
+    else:
+        monkeypatch.setattr(raw, "parse_sample_history", paused_parse)
+    recorder._start_gripper_samples_thread(recorder._recording_config())
+    old = recorder._gripper_samples_thread
+    try:
+        assert entered.wait(2.0)
+        recorder._retire_gripper_samples_thread()
+        collector.end_episode()
+        recorder._participation["grippers"] = []
+        recorder._start_gripper_samples_thread(recorder._recording_config())
+        collector.begin_episode(11.0)
+    finally:
+        release.set()
+        old.join(2.0)
+    assert not old.is_alive()
+    assert collector.fetch_payload() == {"instanceId": "", "afterSeqLeft": 0, "afterSeqRight": 0}
+    snapshot = collector.end_episode()
+    assert snapshot["fetchErrors"] == 0 and snapshot["samples"]["left"] == []
+
+
+def test_post_video_contact_cannot_bridge_a_release_inside_video() -> None:
+    visible = [row(1, 10.43, pos=140, gto=1, obj=2), row(2, 10.47, pos=140, gto=1, obj=0)]
+    tail = row(3, 10.53, pos=140, gto=1, obj=2)
+    before, = _events(_contact_snapshot(visible), frame_count=15)
+    after, = _events(_contact_snapshot([*visible, tail]), frame_count=15)
+    assert before["endFrame"] == 12 and before["endSeq"] == 1
+    assert after == {**before, "clippedToLastFrame": True}
+
+
+@pytest.mark.parametrize("invalid", ["format", "missing_side", "bad_row", "missing_instance", "missing_latest",
+                                     "unexplained_seq", "valid_empty"])
+def test_tail_fetch_validates_history_before_advancing_cursor(tmp_path: Path, invalid: str) -> None:
+    recorder = _recorder_with_dds(tmp_path, _BlockingHalTransport(), ["right"])
+    collector = recorder._gripper_raw_collector()
+    collector.begin_episode(9.0)
+    collector.ingest({**native_status([row(1, 10.0)]), "gripperSampleInstanceId": "hal-a"})
+    reply = {**native_status([]), "gripperSampleInstanceId": "hal-a", "latestSeq": [1, 0]}
+    if invalid == "format":
+        reply.update(gripperSampleHistoryFormat="vNext", gripperSampleInstanceId="hal-b", latestSeq=[3, 0])
+    elif invalid == "missing_side":
+        reply["gripperSampleHistory"] = {"left": []}
+    elif invalid == "bad_row":
+        reply["gripperSampleHistory"] = {"left": [row(2, 10.1), [3, 0]], "right": []}
+        reply["latestSeq"] = [3, 0]
+    elif invalid == "missing_instance":
+        del reply["gripperSampleInstanceId"]
+    elif invalid == "missing_latest":
+        del reply["latestSeq"]
+    elif invalid == "unexplained_seq":
+        reply["latestSeq"] = [3, 0]
+
+    async def command(*args):
+        return {"response": reply}
+
+    recorder.hal = SimpleNamespace(command=command)
+    ok = invalid == "valid_empty"
+    assert recorder._fetch_gripper_tail_blocking() == ("ok" if ok else "failed")
+    assert collector.fetch_payload() == {"instanceId": "hal-a", "afterSeqLeft": 1, "afterSeqRight": 0}
+    snapshot = collector.end_episode()
+    assert snapshot["fetchErrors"] == (0 if ok else 1)
+    assert snapshot["halRestarts"] == 0

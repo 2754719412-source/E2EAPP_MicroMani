@@ -12,7 +12,7 @@
 | 默认路径 | 同上 | 默认 `dll`，行为与原来一致。DLL 遥操作只读位置（READPOS），没有电流；样本里电流标为无效 |
 | 编号与历史 | `hal/src/NativeTeleopController.cpp` | worker 一次应答可带多个读数（如使能等待期间），每次成功读数都分配该侧递增的 `seq`，与命令成败无关（运动前读到的故障码也会入历史）。按 worker 时间戳去重；时间戳不在请求窗口内时，改用 HAL 侧中点（`timestampSource=hal_midpoint`）。`seq` 只在同一 HAL 实例内单调，实例 ID 每次启动随机生成。状态 JSON 提供最新样本 `grippers.<side>.sample` 和 `sampleStats`（样本数、有效频率、最长断样） |
 | 采样间隔 | `gripper.sampleHz` → `gripperSampleIntervalMs` | 默认 30 Hz，不变。HAL 每次读完等这么久再读下一次，并夹紧到 5–1000 ms |
-| 拉取 | 只读命令 `gripper.samples` | 100 Hz DDS 遥测缓存只带最新样本，录制器在独立线程中每 0.1 s 用该命令按 `instanceId` + `afterSeq` 增量拉取（HAL 每侧保留最近 256 条），历史读取变慢不会拖住位置采样。每个会话一个拉取线程，各有停止事件和代际，上一会话的迟到应答直接丢弃。拉取是单飞的：保存 episode 前先等在途读取入库，再按最新游标补读到当前（通道暂忙时短暂重试），结果记在 `gripperRaw.tailFetch`（`ok` / `failed` / `skipped_no_grippers`）；未选夹爪的录制不补读。走独立的 DDS 通道，不占控制命令容量，超时也不隔离控制传输 |
+| 拉取 | 只读命令 `gripper.samples` | 100 Hz DDS 遥测缓存只带最新样本，录制器在独立线程中每 0.1 s 用该命令按 `instanceId` + `afterSeq` 增量拉取（HAL 每侧保留最近 256 条），历史读取变慢不会拖住位置采样。每个会话一个拉取线程，各有停止事件和代际，上一会话的迟到应答直接丢弃。拉取是单飞的：保存 episode 时，等待在途读取和按最新游标补读共用 1 秒。只有 DDS 通道暂忙且请求尚未发出时才重试。超时或应答不符合历史格式时记为失败，继续保存训练帧，结果记在 `gripperRaw.tailFetch`（`ok` / `failed` / `skipped_no_grippers`）；未选夹爪的录制不补读。走独立的 DDS 通道，不占控制命令容量，超时也不隔离控制传输 |
 | 收集 | `backend/services/gripper_raw_samples.py` | 按 `seq` 收入新读数。重复行丢弃；跳号计为 `missedSeq`（HAL 历史已滚动覆盖，样本确实丢失）。实例 ID 变化（HAL 重启）时清空已见序号，episode 元数据记 `halRestarts`；拉取失败记 `fetchErrors` |
 
 ## 新数据集格式
@@ -55,7 +55,7 @@
   - `gGTO=1` 且 `gOBJ=2`；
   - gCU 高于空载阈值。
 
-片段只在连续观测内成立：遇到 `seq` 跳号、HAL 重启，或相邻读数间隔超过 0.25 s 就切断，不会给缺样期间的训练帧打上接触标签。帧号按实际写入的帧数裁剪：完全落在最后一帧之后（停止录制、排空写队列期间）的片段丢弃，跨过末尾的片段只保留尾帧以内的读数，结束时间、结束 seq、最小开口、电流峰值、证据和候选标志都按保留的读数重新计算，并标记 `clippedToLastFrame`。
+片段只在连续观测内成立：遇到 `seq` 跳号、HAL 重启，或相邻读数间隔超过 0.25 s 就切断，不会给缺样期间的训练帧打上接触标签。以实际写入的帧数确定录像时间窗。片段的结束帧、结束 seq、开口、电流峰值和证据都取自窗内。只有判断 `clippedToLastFrame` 时会查看窗外读数，确认末段接触是否在释放去抖窗口内延续。
 
 `gGTO` 不为 1 时不采用 `gOBJ`。既没有可用的 gOBJ、又没有电流阈值时，只有在开口已经停住（与上一读数相差 ≤ 0.05 mm）的情况下，才记为位置候选片段（`candidate=true`），供人工复核。
 

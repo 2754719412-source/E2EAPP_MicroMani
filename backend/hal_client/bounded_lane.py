@@ -15,6 +15,10 @@ class BlockingCallTimeout(RuntimeError):
     pass
 
 
+class ChannelBusyError(RuntimeError):
+    """通道容量已满，请求尚未发出。"""
+
+
 class BoundedLane:
     """独立、无等待队列的阻塞调用通道；超时任务返回前始终占用容量。"""
 
@@ -65,7 +69,7 @@ class BoundedLane:
             if self._closed:
                 raise RuntimeError(f"{self.name} channel is closed")
             if not self._slots.acquire(blocking=False):
-                raise RuntimeError(f"{self.name} channel is busy; request was not queued")
+                raise ChannelBusyError(f"{self.name} channel is busy; request was not queued")
             self._active += 1
         result: Future[T] = Future()
         deadline = time.monotonic() + timeout_s
