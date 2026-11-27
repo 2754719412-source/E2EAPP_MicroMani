@@ -338,6 +338,30 @@ describe('设置迁移回归', () => {
     expect(log).toHaveBeenCalledWith('[FORCE]', expect.stringContaining('方向标定已保存'), 'INFO')
   })
 
+  it('力觉阈值输入完成才保存：逐键输入不提交，失焦提交一次，Esc 放弃', async () => {
+    await show('safety')
+    const input = screen.getByLabelText('Fz 急停 N（暂按量程）')
+    const saved = () => useTelemetryStore.getState().config.safety.fzStopN
+    const before = saved()
+    fireEvent.change(input, { target: { value: '1' } })
+    fireEvent.change(input, { target: { value: '15' } })
+    expect(saved()).toBe(before)
+    expect(input).toHaveValue(15)
+    fireEvent.blur(input)
+    expect(saved()).toBe(15)
+    fireEvent.change(input, { target: { value: '9' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(input).toHaveValue(15)
+    fireEvent.blur(input)
+    expect(saved()).toBe(15)
+  })
+
+  it('自动保存失败时在应用配置旁显示原因', async () => {
+    useTelemetryStore.setState({ configSaveError: 'force configuration requires all axes stopped and servos disabled' })
+    await show('safety')
+    expect(screen.getByRole('alert', { name: '设置保存失败' })).toHaveTextContent('设置未保存：force configuration requires')
+  })
+
   it('数据目录和录制 FPS 可编辑且不会覆盖相机采集 FPS', async () => {
     await show('storage')
     const card = within(document.getElementById('storage')!)

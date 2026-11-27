@@ -218,6 +218,7 @@ function queueConfigSave(edit: ConfigEdit, optimistic: boolean, confirmMappingSi
     } finally {
       pendingConfigEdits.delete(edit)
     }
+    if (optimistic) useTelemetryStore.setState({ configSaveError: null })
     return publishSavedConfig(active)
   }, optimistic ? edit : undefined)
   if (optimistic) {
@@ -453,6 +454,8 @@ interface TelemetryStore {
   frameCount: number
   logPanelOpen: boolean
   dangerOverride: number | null
+  /** 最近一次单项设置自动保存失败的原因；下次保存成功后清除。 */
+  configSaveError: string | null
   controlSafety: ControlSafetyState
   controlLease: ControlLeaseState
   observerMode: boolean
@@ -1553,6 +1556,7 @@ export const useTelemetryStore = create<TelemetryStore>((set, get) => ({
     set({ controlLease: { ...initialControlLease(required), status: 'expired', reason } })
   },
   dangerOverride: null,
+  configSaveError: null,
   qualityReport: null,
   recordSession: initialRecordSession,
   manualControl: initialManualState,
@@ -2737,6 +2741,7 @@ updateConfig: (patch, confirmMappingSide) => {
     }
     void queueConfigSave((active) => rebaseConfigValue(before, draft, active) as AppConfig, true, confirmMappingSide).catch((error) => {
       set((state) => ({
+        configSaveError: error instanceof Error ? error.message : String(error),
         logs: appendLog(state.logs, makeLog('ERROR', `settings save failed: ${String(error)}`, '[BACKEND]')),
       }))
     })

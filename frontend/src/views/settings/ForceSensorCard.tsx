@@ -249,7 +249,7 @@ export function ForceSensorCard({
                 onChange={(checked) => updateConfig({ force: { ...config.force, lowpassEnabled: checked } })}
               />
             </UiField>
-            <UiField label="低通截止 Hz"><UiNumber min={0} value={config.force.lowpassCutoffHz} onChange={(value) => updateConfig({ force: { ...config.force, lowpassCutoffHz: Number(value ?? 10) } })} /></UiField>
+            <UiField label="低通截止 Hz"><UiNumber commitOnBlur min={0} value={config.force.lowpassCutoffHz} onChange={(value) => updateConfig({ force: { ...config.force, lowpassCutoffHz: Number(value ?? 10) } })} /></UiField>
             {!isHkvl && <UiField label="标定证书">
               <UiSwitch
                 aria-label="标定证书"
@@ -362,6 +362,7 @@ export function ForceSensorCard({
                             key={index}
                             step={0.1}
                             value={value}
+                            commitOnBlur
                             onChange={(next) => updateComplianceArray('matrix', index, next)}
                           />
                         ))}
@@ -381,6 +382,7 @@ export function ForceSensorCard({
                               key={index}
                               min={0}
                               value={value}
+                              commitOnBlur
                               onChange={(next) => updateComplianceArray(key, index, next)}
                             />
                           ))}

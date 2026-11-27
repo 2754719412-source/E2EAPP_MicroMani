@@ -429,6 +429,8 @@ describe('AppStation M0 frontend', () => {
     const matrix = await screen.findByLabelText('左臂映射矩阵 1')
     fireEvent.change(matrix, { target: { value: '-2' } })
     const compliance = () => useTelemetryStore.getState().config.force.compliance
+    expect(compliance().right.matrix[0]).not.toBe(-2)  // 输入完成前不保存，避免逐键重配力觉
+    fireEvent.blur(matrix)
     expect(compliance().right.matrix[0]).toBe(-2)
     expect(compliance().right.mappingConfirmed).toBe(false)
     expect(compliance().left.mappingConfirmed).toBe(true)

@@ -139,6 +139,7 @@ export function SettingsView() {
   const parameterSnapshots = useTelemetryStore((state) => state.parameterSnapshots)
   const saveParameterSnapshot = useTelemetryStore((state) => state.saveParameterSnapshot)
   const applyParameterSnapshot = useTelemetryStore((state) => state.applyParameterSnapshot)
+  const configSaveError = useTelemetryStore((state) => state.configSaveError)
   const deleteParameterSnapshot = useTelemetryStore((state) => state.deleteParameterSnapshot)
 
   const [pendingComparison, setPendingComparison] = useState<PendingComparison | null>(null)
@@ -232,6 +233,7 @@ export function SettingsView() {
             应用配置
           </UiButton>
           {configApplyStatus && <span role="status" aria-label="配置应用状态">{configApplyStatus}</span>}
+          {configSaveError && <span role="alert" aria-label="设置保存失败">设置未保存：{configSaveError}</span>}
           {mockMode && <UiButton danger icon={<AlertTriangle size={16} />} onClick={() => setDangerOverride(0.9)}>
             模拟危险
           </UiButton>}

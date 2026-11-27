@@ -92,28 +92,28 @@ export function SafetyCard({
 
       <div className="hardware-form-grid hardware-form-grid-compact ui-form">
         <UiField label="Fx/Fy 警告 N">
-          <UiNumber min={0} step={0.1} value={config.safety.fxyWarnN} onChange={(value) => updateSafety({ fxyWarnN: Number(value ?? 2) })} />
+          <UiNumber commitOnBlur min={0} step={0.1} value={config.safety.fxyWarnN} onChange={(value) => updateSafety({ fxyWarnN: Number(value ?? 2) })} />
         </UiField>
         <UiField label="Fx/Fy 急停 N（暂按量程）">
-          <UiNumber min={0} step={0.1} value={config.safety.fxyStopN} onChange={(value) => updateSafety({ fxyStopN: Number(value ?? 30) })} />
+          <UiNumber commitOnBlur min={0} step={0.1} value={config.safety.fxyStopN} onChange={(value) => updateSafety({ fxyStopN: Number(value ?? 30) })} />
         </UiField>
         <UiField label="Fz 警告 N">
-          <UiNumber min={0} step={0.1} value={config.safety.fzWarnN} onChange={(value) => updateSafety({ fzWarnN: Number(value ?? 3) })} />
+          <UiNumber commitOnBlur min={0} step={0.1} value={config.safety.fzWarnN} onChange={(value) => updateSafety({ fzWarnN: Number(value ?? 3) })} />
         </UiField>
         <UiField label="Fz 急停 N（暂按量程）">
-          <UiNumber min={0} step={0.1} value={config.safety.fzStopN} onChange={(value) => updateSafety({ fzStopN: Number(value ?? 30) })} />
+          <UiNumber commitOnBlur min={0} step={0.1} value={config.safety.fzStopN} onChange={(value) => updateSafety({ fzStopN: Number(value ?? 30) })} />
         </UiField>
         <UiField label="Moment 警告 Nm">
-          <UiNumber min={0} step={0.001} value={config.safety.momentWarnNm} onChange={(value) => updateSafety({ momentWarnNm: Number(value ?? 0.02) })} />
+          <UiNumber commitOnBlur min={0} step={0.001} value={config.safety.momentWarnNm} onChange={(value) => updateSafety({ momentWarnNm: Number(value ?? 0.02) })} />
         </UiField>
         <UiField label="Moment 急停 Nm">
-          <UiNumber min={0} step={0.001} value={config.safety.momentStopNm} onChange={(value) => updateSafety({ momentStopNm: Number(value ?? 1) })} />
+          <UiNumber commitOnBlur min={0} step={0.001} value={config.safety.momentStopNm} onChange={(value) => updateSafety({ momentStopNm: Number(value ?? 1) })} />
         </UiField>
         <UiField label="Yaw 软限位 °">
           <UiNumber min={0} max={90} step={0.5} value={config.safety.yawSoftLimitDeg} onChange={(value) => updateSafety({ yawSoftLimitDeg: Number(value ?? 7) })} />
         </UiField>
         <UiField label="Watchdog ms">
-          <UiNumber min={10} max={500} value={config.safety.watchdogMs} onChange={(value) => updateSafety({ watchdogMs: Number(value ?? 50) })} />
+          <UiNumber commitOnBlur min={10} max={500} value={config.safety.watchdogMs} onChange={(value) => updateSafety({ watchdogMs: Number(value ?? 50) })} />
         </UiField>
       </div>
 

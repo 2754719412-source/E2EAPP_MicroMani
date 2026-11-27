@@ -22,6 +22,7 @@ async function rejectStopThreshold(error: () => Error) {
   store.getState().updateConfig({ safety: { ...store.getState().config.safety, fzStopN: 1 } })
   await vi.waitFor(() => expect(store.getState().logs.some((log) => log.level === 'ERROR')).toBe(true))
   await new Promise((resolve) => setTimeout(resolve, 0))  // 等队列排空
+  expect(store.getState().configSaveError).toBeTruthy()
   return bodies
 }
 
@@ -32,6 +33,7 @@ it('后端明确拒绝后再改无关字段，保存不携带被拒值，界面�
   expect(bodies[1].safety.fzStopN).toBe(defaultConfig.safety.fzStopN)
   expect(bodies[1].storage.datasetRoot).toBe('D:/unrelated')
   await vi.waitFor(() => expect(store.getState().config.safety.fzStopN).toBe(defaultConfig.safety.fzStopN))
+  expect(store.getState().configSaveError).toBeNull()
 })
 
 it('被拒后继续修改同一字段，以新输入为准', async () => {

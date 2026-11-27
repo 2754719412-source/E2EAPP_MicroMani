@@ -4,7 +4,7 @@
  * 先看：UiButton → UiTag → UiSpace → UiText。
  */
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from 'react'
-import { memo } from 'react'
+import { memo, useState } from 'react'
 
 type ButtonVariant = 'default' | 'primary' | 'danger' | 'text'
 
@@ -269,6 +269,7 @@ export function UiNumber({
   disabled,
   style,
   className,
+  commitOnBlur,
   'aria-label': ariaLabel,
 }: {
   value?: number | null
@@ -279,28 +280,42 @@ export function UiNumber({
   disabled?: boolean
   style?: CSSProperties
   className?: string
+  /** 输入完成（失焦或回车）才提交，避免逐键保存触发昂贵的后端重配置；Esc 放弃本次输入。 */
+  commitOnBlur?: boolean
   'aria-label'?: string
 }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const parse = (raw: string) => {
+    if (raw === '') return null
+    const next = Number(raw)
+    return Number.isFinite(next) ? next : null
+  }
+  const commit = () => {
+    if (draft === null) return
+    setDraft(null)
+    const next = parse(draft)
+    if (next !== value) onChange?.(next)
+  }
   return (
     <input
       type="number"
       className={['ui-input', className ?? ''].filter(Boolean).join(' ')}
       style={style}
       aria-label={ariaLabel}
-      value={value == null || Number.isNaN(value) ? '' : String(value)}
+      value={draft ?? (value == null || Number.isNaN(value) ? '' : String(value))}
       min={min}
       max={max}
       step={step}
       disabled={disabled}
       onChange={(event) => {
-        const raw = event.target.value
-        if (raw === '') {
-          onChange?.(null)
-          return
-        }
-        const next = Number(raw)
-        onChange?.(Number.isFinite(next) ? next : null)
+        if (commitOnBlur) setDraft(event.target.value)
+        else onChange?.(parse(event.target.value))
       }}
+      onBlur={commitOnBlur ? commit : undefined}
+      onKeyDown={commitOnBlur ? (event) => {
+        if (event.key === 'Enter') commit()
+        if (event.key === 'Escape') setDraft(null)
+      } : undefined}
     />
   )
 }
