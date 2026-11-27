@@ -294,3 +294,16 @@ def test_replay_only_safety_change_does_not_reach_hal(recovery):
     assert response.status_code == 200, response.text
     assert calls == []
     assert client.get("/api/settings").json()["safety"]["replayTrackingLimitUm"] == 800
+
+
+def test_legacy_snapshot_replay_threshold_is_migrated_on_apply_and_snapshot_kept(recovery):
+    """旧全量快照里的字符串回放阈值在应用时迁移；快照文件本身保持原样。"""
+    app, client, current, calls = recovery
+    candidate = deepcopy(current)
+    candidate["safety"]["replayTrackingLimitUm"] = "750"
+    response = request_change(client, candidate, "snapshot")
+    assert response.status_code == 200, response.text
+    assert client.get("/api/settings").json()["safety"]["replayTrackingLimitUm"] == 750.0
+    assert calls == []
+    snapshots = client.get("/api/settings/snapshots").json()
+    assert any(item["config"]["safety"]["replayTrackingLimitUm"] == "750" for item in snapshots)

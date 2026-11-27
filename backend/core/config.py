@@ -544,10 +544,12 @@ class SettingsService:
                     force["tareSamples"] = 0
                     self.logs.warning("[FORCE]", f"旧 HKVL Tare 样本数 {old_samples!r} 不再支持，已改为默认 200")
             # 同理只迁移回放跟踪阈值，避免严格校验让设置无法修复或触发整份配置重置。
-            for note in migrate_replay_tracking_limits(merged.get("safety")):
+            replay_notes = migrate_replay_tracking_limits(merged.get("safety"))
+            for note in replay_notes:
                 self.logs.warning("[BACKEND]", note)
             validated = AppConfig.model_validate(merged).model_dump(mode="json")
-            if merged != data:
+            # True == 1.0 在 Python 中相等，按迁移记录决定写回，确保磁盘上的旧值也被修正。
+            if merged != data or replay_notes:
                 return self.save_config(validated, emit_log=False, source="startup")
             elif key is not None:
                 # 读取期间若有 save_config，本次结果可能是旧内容，不存缓存。
@@ -744,6 +746,9 @@ class SettingsService:
         active = self.get_config()
         if snapshot.scope == "all":
             candidate = AppConfig.model_validate(snapshot.config).model_dump(mode="json")
+            # 旧全量快照可能含字符串回放阈值：只迁移候选副本，快照文件保持原样。
+            for note in migrate_replay_tracking_limits(candidate.get("safety")):
+                self.logs.warning("[BACKEND]", f"快照“{snapshot.name}”{note}")
             invalidate_changed_force_mappings(active, candidate)
             return candidate
         motion_config = MotionCardSnapshotConfig.model_validate(snapshot.config)

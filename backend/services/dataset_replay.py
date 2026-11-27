@@ -286,6 +286,8 @@ class DatasetReplayService:
                 raise RuntimeError(f"{side} 侧回放目标的控制卡应答未确认：{codes}")
             self._check(token)
             if include_grippers and side in hardware_sides(self._participation, "grippers"):
+                # 回放结束时末帧夹爪可能仍在移动：与手动命令共用按侧待确认，断线时须取得停止反馈。
+                self.svc.commands.note_gripper_motion(side)
                 await self.svc.hal.command("gripper.replay_target", native_gripper_payload(config, side, gap))
 
     async def _settle(self, target, config, token):
@@ -473,13 +475,23 @@ class DatasetReplayService:
         feedback_deadline = time.monotonic() + 2.
         while True:
             self._check(token)
+            # 用剩余时间限制本次读取；不取消在途 DDS 读取，只放弃其结果。
+            reading = asyncio.create_task(self._observe(config))
+            done, _ = await asyncio.wait({reading}, timeout=max(0., feedback_deadline - time.monotonic()))
+            if not done:
+                reading.add_done_callback(lambda task: task.cancelled() or task.exception())
+                raise RuntimeError("回放准备阶段 2 秒内未取得有效的运动与夹爪反馈")
             try:
-                observed = await self._observe(config)
-                break
+                observed = reading.result()
             except RuntimeError as exc:
                 if "夹爪反馈" not in str(exc) or time.monotonic() >= feedback_deadline:
                     raise
                 await asyncio.sleep(.05)
+                continue
+            # 慢读即使成功返回，超过时限也不采用。
+            if time.monotonic() > feedback_deadline:
+                raise RuntimeError("回放准备阶段 2 秒内未取得有效的运动与夹爪反馈：本次读取超时返回")
+            break
         initial = data["rows"][0]["observation.state"]
         for side, offset in (("right", 0), ("left", 7)):
             if side not in hardware_sides(self._participation):

@@ -231,3 +231,17 @@ def test_legacy_replay_tracking_limit_is_migrated_without_resetting_config(tmp_p
     saved = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
     assert saved["safety"]["replayTrackingLimitUm"] == expected
     validate_force_config(restored)
+
+
+def test_legacy_boolean_replay_threshold_is_written_back_even_when_equal_in_python(tmp_path: Path) -> None:
+    """True == 1.0 在 Python 中相等；迁移记录必须驱动写回，磁盘上不能残留 true。"""
+    config = SettingsService(tmp_path, LogService(emit_startup=False)).get_config()
+    config["safety"]["replayTrackingLimitDeg"] = True
+    (tmp_path / "config.json").write_text(json.dumps(config), encoding="utf-8")
+
+    restored = SettingsService(tmp_path, LogService(emit_startup=False)).get_config()
+
+    saved = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert restored["safety"]["replayTrackingLimitDeg"] == 1.0
+    assert saved["safety"]["replayTrackingLimitDeg"] is not True
+    assert saved["safety"]["replayTrackingLimitDeg"] == 1.0

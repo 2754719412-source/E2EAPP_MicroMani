@@ -699,6 +699,55 @@ def test_start_alignment_rejects_gripper_sample_from_before_prepare(setup_replay
     asyncio.run(run())
 
 
+def test_replay_gripper_targets_stay_pending_until_stop_feedback_after_disconnect(setup_replay):
+    """回放直接下发夹爪目标：结束后按侧保留待确认，断线时夹爪仍在动就不能判为空闲。"""
+    from backend.core.logging import now_ms
+    app, replay, _data, _config = setup_replay
+    async def run():
+        await replay.start('d', 'e', 1.)
+        await replay.task
+        assert replay.status()['phase'] == 'completed', replay.status()
+    asyncio.run(run())
+    sent = {c.args[1]['side'] for c in app.state.hal.command.call_args_list
+            if c.args[0] == 'gripper.replay_target' and 'side' in c.args[1]}
+    pending = set(app.state.commands.unconfirmed_gripper_sides())
+    assert pending and pending >= sent
+
+    async def motion_state():
+        return {"timestamp_ms": now_ms() + 1, "moving": [False] * 12}
+    app.state.hal.motion_state = motion_state
+    grippers = app.state.hal.command.return_value['response']['grippers']
+    for gobj, expected in ((0, False), (3, True)):
+        for detail in grippers.values():
+            detail['positionSampleTs'] = now_ms() + 1
+            detail['sample'] = {'statusValid': True, 'gGTO': 1, 'gOBJ': gobj}
+        assert asyncio.run(app.state.control_watchdog.axes_stationary()) is expected
+    assert app.state.commands.unconfirmed_gripper_sides() == {}
+
+
+def test_slow_preparation_feedback_read_is_rejected_before_enabling_motion(setup_replay, monkeypatch):
+    """准备阶段一次读取超过 2 秒才返回：即使成功也不采用，不能继续使能。"""
+    from backend.services import dataset_replay as replay_module
+    app, replay, _data, _config = setup_replay
+    clock = [0.]
+    monkeypatch.setattr(replay_module, 'time', SimpleNamespace(monotonic=lambda: clock[0], time=time.time))
+    original = replay._observe
+    calls = []
+    async def slow(config):
+        calls.append(1)
+        if len(calls) == 1:
+            clock[0] += 2.2
+        return await original(config)
+    replay._observe = slow
+    async def run():
+        await replay.start('d', 'e', 1.)
+        await replay.task
+        status = replay.status()
+        assert status['phase'] == 'failed' and '2 秒内未取得有效' in status['error'], status
+        app.state.commands.enable_motion_side.assert_not_called()
+    asyncio.run(run())
+
+
 def test_replay_tracking_limits_follow_settings_and_reject_invalid_values():
     from backend.services.dataset_replay import replay_tracking_limits
     config = {'safety': {'replayTrackingLimitUm': 2000, 'replayTrackingLimitDeg': 3}}

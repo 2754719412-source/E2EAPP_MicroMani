@@ -126,6 +126,10 @@ class CommandService:
     def gripper_motion_inflight(self) -> bool:
         return self._gripper_motion_inflight > 0
 
+    def note_gripper_motion(self, side: str) -> None:
+        """手动命令与回放目标共用：记下该侧最近一次运动命令，待其后的停止反馈确认。"""
+        self._gripper_unconfirmed_since_ms[side] = now_ms()
+
     def unconfirmed_gripper_sides(self) -> dict[str, int]:
         """下发过开合/到位命令、尚未收到其后停止反馈的硬件侧及命令时刻；反馈缺失时一直保留。"""
         return dict(self._gripper_unconfirmed_since_ms)
@@ -1186,7 +1190,7 @@ class CommandService:
             if request.command not in GRIPPER_MOTION_COMMANDS:
                 return await self._dispatch_real_gripper_command(config, request)
             self._gripper_motion_inflight += 1
-            self._gripper_unconfirmed_since_ms[request.side] = now_ms()
+            self.note_gripper_motion(request.side)
             try:
                 return await self._dispatch_real_gripper_command(config, request)
             finally:
