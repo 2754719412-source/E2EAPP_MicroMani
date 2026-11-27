@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any, Protocol, runtime_checkable
 
 from backend.core.gripper_protection import icf_target_min_gap_mm, icf_target_protection_enabled
@@ -87,6 +88,15 @@ def gripper_serial_ports(config: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def native_gripper_payload(config: dict[str, Any], side: str, target_mm: float) -> dict[str, object]:
+    return {**native_gripper_config_payload(config), "side": side, "targetMm": target_mm}
+
+
+def gripper_port_reserved(port: object) -> bool:
+    reserved = os.environ.get("APPSTATION_JODELL_EXTERNAL_PORT", "").strip().upper()
+    return bool(reserved and reserved == str(port).strip().upper())
+
+
+def native_gripper_config_payload(config: dict[str, Any]) -> dict[str, object]:
     gripper = config.get("gripper", {}) if isinstance(config.get("gripper"), dict) else {}
     teleop = config.get("teleop", {}) if isinstance(config.get("teleop"), dict) else {}
     gripper_teleop = teleop.get("gripperTeleop", {}) if isinstance(teleop.get("gripperTeleop"), dict) else {}
@@ -94,8 +104,6 @@ def native_gripper_payload(config: dict[str, Any], side: str, target_mm: float) 
     if worker_timeout is None:
         worker_timeout = float(gripper.get("workerCommandTimeoutSec", 2.0)) * 1000.0
     return {
-        "side": side,
-        "targetMm": target_mm,
         "leftPort": str(gripper.get("leftPort", "COM8")),
         "rightPort": str(gripper.get("rightPort", "COM9")),
         "leftSlaveId": int(gripper.get("leftSlaveId", 10)),
@@ -164,6 +172,16 @@ def native_status_to_gripper_status(config: dict[str, Any], mapper_status: dict[
             except (TypeError, ValueError):
                 position_mm = positions[side]
         positions[side] = position_mm
+        sample = detail.get("sample")
+        published_ms = native_status.get("dds_stamp_monotonic_ms") if isinstance(native_status, dict) else None
+        if isinstance(sample, dict) and isinstance(published_ms, int):
+            # HAL 可持续发布最后一次读数；按同一单调时钟检查实际采样时间。
+            stamp_us = sample.get("monotonicUs")
+            stale_ms = targets.get("sampleStaleMs", 500)
+            if not isinstance(stale_ms, (int, float)) or not stale_ms > 0:
+                stale_ms = 500
+            if not isinstance(stamp_us, int) or not 0 <= published_ms - stamp_us // 1000 <= stale_ms:
+                sample = None
         sides[side] = {
             "ok": side_ok,
             "message": message,
@@ -172,7 +190,7 @@ def native_status_to_gripper_status(config: dict[str, Any], mapper_status: dict[
             "targetMm": detail.get("targetMm", positions[side]),
             "lastCommandTs": command_ts,
             # HAL 结构化读数（gCU/gOBJ/gGTO/故障/有效标志）与采样统计，供界面显示夹爪力感知；旧 HAL 没有时为 None。
-            "sample": detail.get("sample") if isinstance(detail.get("sample"), dict) else None,
+            "sample": sample if isinstance(sample, dict) else None,
             "sampleStats": detail.get("sampleStats") if isinstance(detail.get("sampleStats"), dict) else None,
         }
     command = native_status.get("gripperCommand") if isinstance(native_status, dict) else None
@@ -209,6 +227,10 @@ class NativeGripperAdapter:
 
     async def status(self, config: dict[str, Any]) -> dict[str, Any]:
         mapper_status = await asyncio.to_thread(self._teleop_mapper.status, config)
+        # 独立夹爪采样期间遥操作会话可以为空，实时反馈以 HAL 发布的主题为准。
+        read_latest = getattr(self._hal, "latest_native_teleop_status", None)
+        if callable(read_latest):
+            mapper_status = {**mapper_status, "nativeStatus": await read_latest() or {}}
         return native_status_to_gripper_status(config, mapper_status)
 
     async def position(self, config: dict[str, Any], side: str) -> GripperResult:

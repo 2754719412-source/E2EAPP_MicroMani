@@ -5,6 +5,7 @@
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 import { memo, useEffect, useMemo, useRef } from 'react'
+import type { JodellRow } from '../views/settings/useJodellCapture'
 import { axisHues, axisNames, forceChannels } from '../data'
 import { recentForceHistory } from '../forceDisplay'
 import type { TelemetrySample } from '../types'
@@ -33,6 +34,7 @@ interface SeriesSpec {
 
 interface LiveLineChartProps {
   series: SeriesSpec[]
+  times?: number[]
   height?: number
   yUnit?: string
   yMin?: number
@@ -45,6 +47,7 @@ interface LiveLineChartProps {
 /** 轻量多序列折线图：直接在 Canvas 上绘制，避免 ECharts 在高频更新时的重渲染成本。 */
 function LiveLineChart({
   series,
+  times,
   height = 120,
   yUnit,
   yMin,
@@ -148,11 +151,19 @@ function LiveLineChart({
         ctx.lineJoin = 'round'
         ctx.setLineDash(item.dashed ? [5, 3] : [])
         ctx.beginPath()
+        let connected = false
         for (let i = 0; i < n; i += 1) {
-          const x = padLeft + (plotW * i) / (n - 1)
+          if (!Number.isFinite(item.values[i])) {
+            connected = false
+            continue
+          }
+          const fraction = times && times[n - 1] > times[0]
+            ? (times[i] - times[0]) / (times[n - 1] - times[0]) : i / (n - 1)
+          const x = padLeft + plotW * fraction
           const y = padTop + plotH * (1 - (item.values[i] - min) / range)
-          if (i === 0) ctx.moveTo(x, y)
-          else ctx.lineTo(x, y)
+          if (connected) ctx.lineTo(x, y)
+          else ctx.moveTo(x, y)
+          connected = true
         }
         ctx.stroke()
       }
@@ -171,7 +182,7 @@ function LiveLineChart({
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => draw()) : null
     ro?.observe(canvas)
     return () => ro?.disconnect()
-  }, [series, height, bounds, yUnit, showXLabels])
+  }, [series, times, height, bounds, yUnit, showXLabels])
 
   return (
     <div
@@ -287,26 +298,54 @@ export const QueueChart = memo(function QueueChart({ history, height = 160 }: Hi
   return <LiveLineChart series={series} height={height} yMin={0} yMax={100} />
 })
 
+export const JodellOfficialChart = memo(function JodellOfficialChart({ rows }: { rows: JodellRow[] }) {
+  const series = useMemo(() => [
+    { name: '位置原码', color: '#1683d5', values: rows.map(row => row[1]) },
+    { name: 'gCU 电流原码', color: '#598813', values: rows.map(row => row[2]) },
+    { name: '速度原码', color: '#be7410', values: rows.map(row => row[3]) },
+  ], [rows])
+  const times = useMemo(() => {
+    let offset = 0
+    let previous = 0
+    const stamps: number[] = []
+    for (const [time] of rows) {
+      const [h, m, s, ms] = time.split(/[:.]/).map(Number)
+      const value = ((h * 60 + m) * 60 + s) * 1000 + ms
+      if (previous - value > 12 * 3600 * 1000) offset += 24 * 3600 * 1000
+      previous = value
+      stamps.push(offset + value)
+    }
+    return stamps
+  }, [rows])
+  return <LiveLineChart series={series} times={times} height={170} yMin={0} yMax={255}
+    testId="jodell-official-chart" dataAttrs={{ 'data-points': String(rows.length) }} />
+})
+
 /** 夹爪 gCU 电流原码曲线（0–255），可叠加标定得到的空载阈值参考线。 */
 export const GripperCurrentChart = memo(function GripperCurrentChart({
   values,
+  positions,
   thresholdRaw,
   height = 150,
   side,
 }: {
   values: number[]
+  positions: number[]
   thresholdRaw?: number | null
   height?: number
   side: 'left' | 'right'
 }) {
   const series = useMemo(() => {
     // 固定 0–255 量程时左上角单位会与顶部刻度重叠，单位写进序列名。
-    const items: SeriesSpec[] = [{ name: 'gCU 原码', color: palette[0], values }]
+    const items: SeriesSpec[] = [
+      { name: '位置原码', color: '#1683d5', values: positions },
+      { name: 'gCU 电流原码', color: '#598813', values },
+    ]
     if (typeof thresholdRaw === 'number') {
       items.push({ name: '空载阈值', color: referenceColor, dashed: true, values: values.map(() => thresholdRaw) })
     }
     return items
-  }, [values, thresholdRaw])
+  }, [values, positions, thresholdRaw])
   return (
     <LiveLineChart
       series={series}

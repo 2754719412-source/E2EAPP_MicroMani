@@ -17,6 +17,27 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows 现场启动器")
+def test_start_stack_reserves_bound_port_while_vendor_tool_runs(tmp_path):
+    source = (REPO_ROOT / "scripts/start-stack.ps1").read_text(encoding="utf-8-sig")
+    begin = source.index("$jodellBinding =")
+    block = source[begin:source.index("$backend = Start-Process", begin)]
+    (tmp_path / "frontend").mkdir()
+    (tmp_path / "frontend/.env.local").write_text("APPSTATION_JODELL_CAPTURE_PORT=COM9\n")
+    script = tmp_path / "check.ps1"
+    script.write_text("""
+$repo = $PSScriptRoot
+$env:APPSTATION_JODELL_EXTERNAL_PORT = $null
+function Get-Process { return $script:vendorRunning }
+$script:vendorRunning = $false
+""" + block + """
+if ($env:APPSTATION_JODELL_EXTERNAL_PORT) { exit 1 }
+$script:vendorRunning = $true
+""" + block + """
+if ($env:APPSTATION_JODELL_EXTERNAL_PORT -ne 'COM9') { exit 2 }
+""", encoding="utf-8-sig")
+    subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)], check=True)
+
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows 进程生命周期")
 def test_formal_worker_survives_closing_its_invoker(tmp_path):

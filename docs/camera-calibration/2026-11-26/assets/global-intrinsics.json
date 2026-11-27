@@ -1,0 +1,250 @@
+{
+  "schema": "appstation.camera_calibration.v1",
+  "kind": "intrinsics",
+  "camera": "global",
+  "createdAt": "2026-11-26T19:15:13+08:00",
+  "method": "zhang_planar_chessboard",
+  "opencvVersion": "4.13.0",
+  "imageDir": "output\\camera-calibration-20261126-190658\\global\\images",
+  "cameraInfo": {
+    "source": "api",
+    "baseUrl": "http://127.0.0.1:18082",
+    "identity": "20250606105",
+    "descriptor": "IMX335 / index 0",
+    "resolution": "640x480",
+    "fps": 30,
+    "tuning": {
+      "autoExposure": true,
+      "exposure": -5.5,
+      "gain": 0,
+      "autoWhiteBalance": true
+    }
+  },
+  "board": {
+    "type": "chessboard",
+    "innerCorners": [
+      9,
+      6
+    ],
+    "squareMm": 20.0
+  },
+  "imageSize": {
+    "width": 640,
+    "height": 480
+  },
+  "distortionModel": "opencv_k1_k2_p1_p2_k3",
+  "fixK3": true,
+  "cameraMatrix": [
+    [
+      504.5238279800834,
+      0.0,
+      345.22556819579705
+    ],
+    [
+      0.0,
+      504.95691469675245,
+      242.74246280784183
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distCoeffs": [
+    0.0070282050237763195,
+    -0.06157248155553125,
+    -0.0039609980586160255,
+    -0.00038331243917481963,
+    0.0
+  ],
+  "fx": 504.5238279800834,
+  "fy": 504.95691469675245,
+  "cx": 345.22556819579705,
+  "cy": 242.74246280784183,
+  "stdDev": {
+    "fx": 2.215238,
+    "fy": 2.258551,
+    "cx": 1.333507,
+    "cy": 1.244877,
+    "k1": 0.003199,
+    "k2": 0.006863,
+    "p1": 0.000601,
+    "p2": 0.000753,
+    "k3": 0.0
+  },
+  "rmsPx": 0.3609,
+  "views": [
+    {
+      "image": "global_20261126_190728_135969.png",
+      "errorPx": 0.2799,
+      "tiltDeg": 6.66
+    },
+    {
+      "image": "global_20261126_190743_410751.png",
+      "errorPx": 0.3974,
+      "tiltDeg": 30.94
+    },
+    {
+      "image": "global_20261126_190750_893335.png",
+      "errorPx": 0.6965,
+      "tiltDeg": 30.35
+    },
+    {
+      "image": "global_20261126_190755_919616.png",
+      "errorPx": 0.8017,
+      "tiltDeg": 33.7
+    },
+    {
+      "image": "global_20261126_190803_401985.png",
+      "errorPx": 0.2363,
+      "tiltDeg": 14.68
+    },
+    {
+      "image": "global_20261126_190809_509704.png",
+      "errorPx": 0.212,
+      "tiltDeg": 13.16
+    },
+    {
+      "image": "global_20261126_190815_986973.png",
+      "errorPx": 0.3713,
+      "tiltDeg": 21.71
+    },
+    {
+      "image": "global_20261126_190820_752488.png",
+      "errorPx": 0.238,
+      "tiltDeg": 16.06
+    },
+    {
+      "image": "global_20261126_190827_142595.png",
+      "errorPx": 0.1887,
+      "tiltDeg": 17.54
+    },
+    {
+      "image": "global_20261126_190831_186899.png",
+      "errorPx": 0.2096,
+      "tiltDeg": 17.26
+    },
+    {
+      "image": "global_20261126_190834_497374.png",
+      "errorPx": 0.1499,
+      "tiltDeg": 24.59
+    },
+    {
+      "image": "global_20261126_190836_567961.png",
+      "errorPx": 0.1755,
+      "tiltDeg": 25.47
+    },
+    {
+      "image": "global_20261126_190839_484988.png",
+      "errorPx": 0.2092,
+      "tiltDeg": 19.78
+    },
+    {
+      "image": "global_20261126_190841_581991.png",
+      "errorPx": 0.2463,
+      "tiltDeg": 24.81
+    },
+    {
+      "image": "global_20261126_190849_965631.png",
+      "errorPx": 0.3877,
+      "tiltDeg": 32.13
+    },
+    {
+      "image": "global_20261126_190859_839992.png",
+      "errorPx": 0.6624,
+      "tiltDeg": 40.98
+    },
+    {
+      "image": "global_20261126_190902_546345.png",
+      "errorPx": 0.1494,
+      "tiltDeg": 4.82
+    },
+    {
+      "image": "global_20261126_190905_995088.png",
+      "errorPx": 0.2565,
+      "tiltDeg": 4.48
+    },
+    {
+      "image": "global_20261126_190907_895362.png",
+      "errorPx": 0.3423,
+      "tiltDeg": 5.75
+    },
+    {
+      "image": "global_20261126_190910_269869.png",
+      "errorPx": 0.3078,
+      "tiltDeg": 1.93
+    },
+    {
+      "image": "global_20261126_190912_546077.png",
+      "errorPx": 0.1396,
+      "tiltDeg": 4.9
+    },
+    {
+      "image": "global_20261126_190915_410944.png",
+      "errorPx": 0.1573,
+      "tiltDeg": 10.93
+    },
+    {
+      "image": "global_20261126_190919_367896.png",
+      "errorPx": 0.2046,
+      "tiltDeg": 13.79
+    },
+    {
+      "image": "global_20261126_190922_627826.png",
+      "errorPx": 0.4502,
+      "tiltDeg": 22.93
+    },
+    {
+      "image": "global_20261126_190930_159398.png",
+      "errorPx": 0.4265,
+      "tiltDeg": 17.69
+    }
+  ],
+  "rejected": [],
+  "undetected": [],
+  "coverage": {
+    "grid": 4,
+    "fraction": 1.0,
+    "cells": [
+      [
+        1,
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1,
+        1
+      ]
+    ],
+    "reachesEdges": {
+      "left": true,
+      "right": true,
+      "top": true,
+      "bottom": false
+    }
+  },
+  "tiltDeg": {
+    "min": 1.93,
+    "max": 40.98,
+    "tiltedViews": 15
+  },
+  "verdict": "ok",
+  "warnings": [],
+  "notes": []
+}

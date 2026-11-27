@@ -522,10 +522,13 @@ void NativeTeleopController::stopGripperFeedback() {
 }
 
 void NativeTeleopController::gripperFeedbackLoop(Side side) {
+  auto nextSampleAt = std::chrono::steady_clock::now();
   while (gripperFeedbackRunning_.load()) {
     sampleGripperPosition(side, true);
+    nextSampleAt = nextGripperSampleAt(nextSampleAt, std::chrono::microseconds(gripperSampleIntervalUs_.load()),
+        std::chrono::steady_clock::now());
     std::unique_lock lock(gripperFeedbackMutex_);
-    gripperFeedbackCv_.wait_for(lock, std::chrono::microseconds(gripperSampleIntervalUs_.load()),
+    gripperFeedbackCv_.wait_until(lock, nextSampleAt,
         [this]() { return !gripperFeedbackRunning_.load(); });
   }
 }
@@ -799,7 +802,8 @@ void NativeTeleopController::gripperLoop(int targetIndex) {
         participating = config_.gripperParticipating[targetIndex];
       }
       if (participating) sampleGripperPosition(side);
-      nextSampleAt = std::chrono::steady_clock::now() + std::chrono::microseconds(gripperSampleIntervalUs_.load());
+      nextSampleAt = nextGripperSampleAt(nextSampleAt, std::chrono::microseconds(gripperSampleIntervalUs_.load()),
+          std::chrono::steady_clock::now());
       // READ 期间可能收到多个目标，只取此刻最新的一个。
       std::scoped_lock lock(gripperMutex_);
       command = pendingGripperCommands_[targetIndex];
@@ -832,7 +836,8 @@ void NativeTeleopController::gripperLoop(int targetIndex) {
     // 发送后采样本侧反馈；下一次发送仍在采样结束后取得最新目标。
     if (std::chrono::steady_clock::now() >= nextSampleAt && gripperWorkerRunning_.load()) {
       sampleGripperPosition(side);
-      nextSampleAt = std::chrono::steady_clock::now() + std::chrono::microseconds(gripperSampleIntervalUs_.load());
+      nextSampleAt = nextGripperSampleAt(nextSampleAt, std::chrono::microseconds(gripperSampleIntervalUs_.load()),
+          std::chrono::steady_clock::now());
     }
   }
 }

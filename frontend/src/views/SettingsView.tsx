@@ -37,6 +37,7 @@ import { CameraCard } from './settings/CameraCard'
 import { WristCameraIdentification } from '../components/WristCameraIdentification'
 import { ForceSensorCard } from './settings/ForceSensorCard'
 import { GripperForceCard } from './settings/GripperForceCard'
+import { useJodellCapture } from './settings/useJodellCapture'
 import { ManualControlPanel } from './settings/ManualControlPanel'
 import { HalCard } from './settings/HalCard'
 import { SafetyCard } from './settings/SafetyCard'
@@ -69,6 +70,7 @@ const hashLabels: Record<string, string> = {
   'camera-right': '右腕相机',
   'force-left': '左臂六维力',
   'force-right': '右臂六维力',
+  'force-grippers': '双侧夹爪力感知',
   'gripper-left': '左夹爪',
   'gripper-right': '右夹爪',
   'teleop-left': '左 Omega.7',
@@ -114,7 +116,13 @@ export function SettingsView() {
   const gripperPositions = useFrameField((frame) => activeTab === 'motion' || activeTab === 'teleop' ? frame.gripperPositions : emptyValues, numberArrayEqual)
   const cameras = useTelemetryStore((state) => activeTab === 'vision' ? state.frame.cameras : emptyCameras)
   const forceStatus = useTelemetryStore((state) => activeTab === 'force' ? state.frame.forceStatus : undefined)
-  const gripperStatus = useTelemetryStore((state) => activeTab === 'force' ? state.frame.gripperStatus : undefined)
+  const gripperStatus = useTelemetryStore((state) => activeTab === 'force' && state.telemetryLink.state === 'live' ? state.frame.gripperStatus : undefined)
+  const capture = useJodellCapture(activeTab === 'force' && !mockMode)
+  useEffect(() => {
+    if (activeTab === 'force' && focusHash.startsWith('force-gripper')) {
+      document.getElementById(focusHash)?.scrollIntoView?.({ block: 'start' })
+    }
+  }, [activeTab, focusHash])
   const teleopFrame = useFrameField(
     (frame) => activeTab === 'teleop' ? teleopHandFrameSlice(frame) : null,
     (a, b) => a === b || (a !== null && b !== null && teleopHandFrameEqual(a, b)),
@@ -313,12 +321,12 @@ export function SettingsView() {
               ))}
             </div>
           </div>
-          <div className="module-group">
+          <div className="module-group" id="force-grippers">
             <div className="module-group-head">
               夹爪力感知
-              <small>Jodell EPG26-006 · gCU 电流 · 夹持力标定</small>
+              <small>Jodell EPG26-006 · 双侧实时 gCU（0–255）</small>
             </div>
-            <div className="hardware-settings-grid">
+            <div className="hardware-settings-grid jodell-card-grid">
               {sideOrder.map((side) => (
                 <GripperForceCard
                   key={side}
@@ -327,6 +335,7 @@ export function SettingsView() {
                   updateConfig={updateConfig}
                   focusHash={focusHash}
                   gripperStatus={gripperStatus}
+                  capture={capture}
                 />
               ))}
             </div>

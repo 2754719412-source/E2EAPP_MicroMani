@@ -129,6 +129,14 @@ $env:APPSTATION_HAL_MODE = "real"
 $env:APPSTATION_HAL_BASE_URL = "http://127.0.0.1:$activeHalPort"
 $env:APPSTATION_HAL_TRANSPORT = "dds"
 if (-not $env:APPSTATION_DDS_DOMAIN_ID) { $env:APPSTATION_DDS_DOMAIN_ID = "42" }
+$jodellBinding = Join-Path $repo "frontend\.env.local"
+if (-not $env:APPSTATION_JODELL_EXTERNAL_PORT -and (Test-Path -LiteralPath $jodellBinding) -and
+    (Get-Process -Name 'clawControlTool*' -ErrorAction SilentlyContinue)) {
+  # 厂商工具独占已绑定串口，启动时仅在另一侧恢复 HAL 采样。
+  $boundPort = Select-String -LiteralPath $jodellBinding -Pattern '^\s*APPSTATION_JODELL_CAPTURE_PORT\s*=\s*(COM\d+)\s*$' |
+    Select-Object -Last 1
+  if ($boundPort) { $env:APPSTATION_JODELL_EXTERNAL_PORT = $boundPort.Matches[0].Groups[1].Value }
+}
 $backend = Start-Process `
   -FilePath (Join-Path $repo "backend\.venv\Scripts\python.exe") `
   -ArgumentList @("-m", "uvicorn", "backend.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "$BackendPort") `

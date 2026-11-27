@@ -8,6 +8,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -34,10 +35,17 @@ struct JodellGripperConfig {
   double workerCommandTimeoutMs{2000.0};
   // worker 访问夹爪的方式："dll" 走 vendor DLL；"modbus" 由 worker 独占串口直接 Modbus RTU 读写。
   std::string transport{"dll"};
-  // 反馈读取间隔：每次读完再等这么久；由后端 gripper.sampleHz 换算下发，HAL 夹紧到 [5, 1000] ms。
+  // 反馈采样周期包含读取耗时，由 gripper.sampleHz 换算，HAL 夹紧到 [5, 1000] ms。
   double sampleIntervalMs{33.333};
   bool operator==(const JodellGripperConfig&) const = default;
 };
+
+// 按原定时刻推进。若已落后整整一个额外周期，则丢弃积压，从当前时刻重新排期。
+inline auto nextGripperSampleAt(std::chrono::steady_clock::time_point scheduled,
+    std::chrono::microseconds period, std::chrono::steady_clock::time_point finished) {
+  const auto next = scheduled + period;
+  return finished >= next + period ? finished : next;
+}
 
 // JodellGripperDriver 封装久德夹爪 DLL/串口协议。默认通过独立 worker 进程执行命令，
 // 避免左右夹爪共用同一 vendor DLL 状态时发生串口切换干扰。

@@ -8,7 +8,7 @@ from typing import Any
 
 from backend.core.data_contract import dataset_side_to_hardware_side
 from backend.core.logging import now_ms
-from backend.services.gripper_backend import native_gripper_payload
+from backend.services.gripper_backend import native_gripper_config_payload
 
 
 POLICY_GRIPPER_MAX_AGE_MS = 200
@@ -45,9 +45,7 @@ class PolicyGripperObservation:
             native = response.get("response", {})
             participating = ["left" in hardware, "right" in hardware]
             if ensure_sampling:
-                payload = native_gripper_payload(config, next(iter(hardware)), 0.0)
-                payload.pop("targetMm")
-                payload.pop("side")
+                payload = native_gripper_config_payload(config)
                 payload.update(leftGripperParticipating=participating[0], rightGripperParticipating=participating[1])
                 # 已有录制/回放读数可被观察；只读请求不切换它们的控制模式。
                 legacy_sampling = native.get("gripperCommandWorkerRunning") is True

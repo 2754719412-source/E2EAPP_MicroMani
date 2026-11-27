@@ -5,6 +5,8 @@
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
 import { createReadStream, existsSync, statSync } from 'node:fs'
+import { parseEnv } from 'node:util'
+import { readJodellCapture } from './jodell-capture.mjs'
 import { readFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { extname, join, normalize, resolve } from 'node:path'
@@ -27,6 +29,11 @@ for (let index = 2; index < process.argv.length; index += 1) {
 const host = args.get('--host') || '0.0.0.0'
 const port = Number(args.get('--port') || 4173)
 const root = resolve('dist')
+const localEnv = existsSync('.env.local') ? parseEnv(await readFile('.env.local', 'utf8')) : {}
+const env = { ...localEnv, ...process.env }
+const jodellFile = env.APPSTATION_JODELL_CAPTURE_FILE
+const jodellPort = env.APPSTATION_JODELL_CAPTURE_PORT
+const jodellSlaveId = Number(env.APPSTATION_JODELL_CAPTURE_SLAVE)
 
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -63,6 +70,25 @@ function sendFile(response, filePath) {
 const server = createServer(async (request, response) => {
   try {
     const requestUrl = new URL(request.url || '/', `http://${host}:${port}`)
+    if (requestUrl.pathname === '/station/jodell-capture') {
+      if (request.method !== 'GET') {
+        response.writeHead(405, { Allow: 'GET' }).end()
+        return
+      }
+      try {
+        const capture = jodellFile && /^COM\d+$/i.test(jodellPort || '') && Number.isInteger(jodellSlaveId) && jodellSlaveId >= 1 && jodellSlaveId <= 247
+          ? await readJodellCapture(jodellFile, request.headers['if-none-match'])
+          : { file: null, samples: [] }
+        if (capture.tag) response.setHeader('ETag', capture.tag)
+        response.setHeader('Cache-Control', 'no-cache')
+        if (!capture.samples) response.writeHead(304).end()
+        else response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' }).end(JSON.stringify({ ...capture, port: jodellPort, slaveId: jodellSlaveId }))
+      } catch (error) {
+        response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        response.end(JSON.stringify({ message: error.message === 'format' ? '采集文件列名与 EPG 工具格式不符' : '暂时无法读取钧舵采集目录' }))
+      }
+      return
+    }
     let filePath = safePath(requestUrl.pathname)
     if (!filePath.startsWith(root)) {
       response.writeHead(403)

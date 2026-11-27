@@ -65,7 +65,7 @@ from backend.services.command_service import (
 from backend.services.dataset_recorder import DatasetSaveError, RecordingBlocksOriginReturn
 from backend.services.dataset_replay import DatasetReplayService
 from backend.services.control_watchdog import ControlLeaseUnavailable, ControlWatchdog
-from backend.services.gripper_backend import native_teleop_enabled
+from backend.services.gripper_backend import gripper_port_reserved, native_gripper_config_payload, native_teleop_enabled
 from backend.services.pico_network import PicoNetworkDetectionError, detect_pico_network
 from backend.services.policy_bridge import build_policy_action_plan, lerobot_motion_from_ui, lerobot_state_from_ui
 from backend.services.policy_gripper_observation import PolicyGripperObservation, PolicyGripperFeedbackUnavailable
@@ -708,6 +708,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             logs.error("[HAL]", f"teleop disconnect stop mapped {hardware_side} failed: {exc}")
         if not bool(teleop_config.get("leftConnected", False)) and not bool(teleop_config.get("rightConnected", False)):
             await teleop_mapper.stop("teleop-connect")
+            await restore_idle_gripper_sampling(config)
             logs.info("[HAL]", f"{side} Omega.7 logical disconnect background stop completed")
             return
         if native_teleop_enabled(config):
@@ -933,21 +934,43 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         # Uvicorn 在全部 startup 完成后才接受控制 WS，避免操作中首次加载 Torch/LeRobot。
         await recorder.prepare_native_runtime(await get_config_async())
 
+    async def restore_idle_gripper_sampling(config: dict[str, Any], *, check_status: bool = False) -> None:
+        gripper = config.get("gripper", {})
+        if not (_real_hardware_mode(config) and native_teleop_enabled(config)
+                and gripper.get("workerTransport") == "modbus" and gripper.get("processWorkersEnabled", True)):
+            return
+        payload = native_gripper_config_payload(config)
+        for side in ("left", "right"):
+            port = gripper.get(f"{side}Port")
+            payload[f"{side}GripperParticipating"] = bool(port and not gripper_port_reserved(port))
+        try:
+            if check_status:
+                # 上次保存的主手连接可跨后端重启；以 HAL 当前三种工作状态决定是否恢复只读采样。
+                status = (await hal.command("teleop.native.status", {})).get("response", {})
+                busy_flags = ("running", "gripperCommandWorkerRunning", "gripperFeedbackSampling")
+                if not isinstance(status, dict) or any(status.get(key) is not False for key in busy_flags):
+                    return
+            # HAL 在遥操作或回放运行时会拒绝切换为只读模式。
+            await hal.command("gripper.feedback.configure", payload)
+        except RuntimeError as exc:
+            logs.warning("[GRIPPER]", f"idle feedback sampling unavailable: {exc}")
+
     @app.on_event("startup")
     async def reconcile_startup_hal_state() -> None:
         config = await get_config_async()
         teleop = config.get("teleop", {}) if isinstance(config.get("teleop"), dict) else {}
-        if (
-            native_teleop_enabled(config)
-            and not bool(teleop.get("leftConnected", False))
-            and not bool(teleop.get("rightConnected", False))
-        ):
+        if not native_teleop_enabled(config):
+            return
+        saved_connection = bool(teleop.get("leftConnected") or teleop.get("rightConnected"))
+        if not saved_connection:
             try:
                 await hal.command("teleop.native.stop", {})
                 await teleop_mapper.stop("teleop-connect")
                 logs.info("[HAL]", "startup cleared stale HAL-native teleop controller")
             except RuntimeError as exc:
                 logs.warning("[HAL]", f"startup stale HAL-native teleop cleanup skipped: {exc}")
+                return
+        await restore_idle_gripper_sampling(config, check_status=saved_connection)
 
     @app.on_event("shutdown")
     async def shutdown_runtime_services() -> None:

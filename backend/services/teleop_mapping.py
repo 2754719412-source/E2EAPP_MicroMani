@@ -24,7 +24,7 @@ from backend.core.participation import scoped_config
 from backend.core.config import SettingsService
 from backend.core.defaults import ICF_KINEMATICS_DEFAULTS, ICF_TELEOP_DEFAULTS
 from backend.core.gripper_force import effective_grip_torque
-from backend.services.gripper_backend import hal_gripper_sampling_fields
+from backend.services.gripper_backend import gripper_port_reserved, hal_gripper_sampling_fields
 from backend.core.logging import LogService, now_ms
 from backend.core.motion_safety import MotionSafetyGate, MotionSafetyToken, motion_operation
 from backend.core.motion_limits import (
@@ -1470,8 +1470,8 @@ class TeleopMappingService:
             "motionProfileAccSec": self._motion_profile_acc_sec(config),
             "motionProfileDecSec": self._motion_profile_dec_sec(config),
             "gripperTeleopEnabled": self._native_gripper_teleop_enabled(config),
-            "leftGripperParticipating": bool(teleop.get("leftGripperParticipating", True)),
-            "rightGripperParticipating": bool(teleop.get("rightGripperParticipating", True)),
+            "leftGripperParticipating": bool(teleop.get("leftGripperParticipating", True)) and not gripper_port_reserved(gripper.get("leftPort", "COM8")),
+            "rightGripperParticipating": bool(teleop.get("rightGripperParticipating", True)) and not gripper_port_reserved(gripper.get("rightPort", "COM9")),
             "leftPort": str(gripper.get("leftPort", "COM8")),
             "rightPort": str(gripper.get("rightPort", "COM9")),
             "leftSlaveId": int(gripper.get("leftSlaveId", 10)),

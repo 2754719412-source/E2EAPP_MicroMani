@@ -152,7 +152,7 @@ class DdsHalClient(HalClient):
         if self._control_transport_failed and (not stop_or_read or name == "hal.reconnect"):
             raise RuntimeError("DDS control transport is quarantined after a blocked call; restart required")
         if name == "teleop.native.status":
-            cached_status = await self._teleop_state_lane.run(self._read_cached_native_teleop_status, self.state_timeout_s)
+            cached_status = await self.latest_native_teleop_status()
             if cached_status is not None:
                 return {"mode": "real", "transport": "dds", "command": name, "response": cached_status}
 
@@ -273,6 +273,9 @@ class DdsHalClient(HalClient):
         return await self._omega_state_lane.run(
             lambda: self._read_cached_payload(TOPIC_HAL_OMEGA_STATE), self.state_timeout_s,
         )
+
+    async def latest_native_teleop_status(self) -> dict[str, Any] | None:
+        return await self._teleop_state_lane.run(self._read_cached_native_teleop_status, self.state_timeout_s)
 
     async def force_state(self) -> dict[str, Any]:
         return await self._force_state_lane.run(
