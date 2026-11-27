@@ -180,7 +180,7 @@ def _set_home_reference_to_origin(config: dict[str, Any]) -> None:
 @pytest.mark.parametrize("initially_latched", [False, True])
 def test_hkvl_self_check_preserves_latch_and_hal_statistics(monkeypatch: pytest.MonkeyPatch, initially_latched: bool) -> None:
     monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
-    calibration = {"state": "ready_for_ack", "progress": 100, "completedAtUnixMs": 1234,
+    calibration = {"state": "ready", "progress": 100, "completedAtUnixMs": 1234,
                    "sides": {"left": {"bias": [1.0] * 6, "residualMean": [0.001] * 6}}}
 
     class CalibrationHal(RecordingHal):
@@ -236,7 +236,7 @@ def test_hkvl_self_check_does_not_accept_result_after_new_estop(monkeypatch) -> 
     class InterruptedHal(RecordingHal):
         async def command(self, name, payload=None):
             service.safety.interrupt(emergency=True)
-            return {"response": {"ok": True, "calibration": {"state": "ready_for_ack"}}}
+            return {"response": {"ok": True, "calibration": {"state": "ready"}}}
 
     service = _service_with_hal(default_config(), LogService(emit_startup=False), InterruptedHal())
     with pytest.raises(RuntimeError, match="newer stop"):

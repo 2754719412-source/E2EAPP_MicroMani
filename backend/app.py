@@ -1897,10 +1897,16 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
     # 对所有力传感器执行去皮。
     @app.post("/api/sensors/tare")
     async def tare_sensors(payload: dict[str, Any] | None = None) -> ApiEnvelope:
+        def tare_readiness() -> None:
+            control_watchdog.require_ack_ready()
+            # HAL 去皮不再先急停，需由后端拒绝仍可能产生运动的遥操作、回放和自动执行。
+            if replay.active or teleop_mapper.control_active() or policy.dispatch_active():
+                raise RuntimeError("stop teleoperation, dataset replay and automatic execution before force self-check")
+
         try:
             return envelope(await commands.tare_force(
                 unloaded_confirmed=(payload or {}).get("unloadedConfirmed") is True,
-                readiness_check=control_watchdog.require_ack_ready,
+                readiness_check=tare_readiness,
             ))
         except ControlLeaseUnavailable as exc:
             raise HTTPException(status_code=409, detail={"code": "CONTROL_LEASE_UNAVAILABLE", "message": str(exc)}) from exc
