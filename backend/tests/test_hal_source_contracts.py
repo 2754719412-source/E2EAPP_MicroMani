@@ -1283,11 +1283,16 @@ def test_manual_axis_direction_corrections_are_backend_authoritative() -> None:
     store = (REPO_ROOT / "frontend" / "src" / "stores" / "telemetry.ts").read_text(encoding="utf-8")
     command_service = (REPO_ROOT / "backend" / "services" / "command_service.py").read_text(encoding="utf-8")
     normalized = " ".join(store.split())
-    real_mode_body = store.split("issueManualAxisMove: (side, axis, direction) => {", 1)[1].split(
+    issue_body = store.split("issueManualAxisMove: (side, axis, direction) => {", 1)[1].split(
         "issueManualGripperMove:",
         1,
     )[0]
+    # 真实模式点动（含随动使能后的补发）统一经 sendManualAxisMove 下发。
+    send_body = store.split("function sendManualAxisMove(", 1)[1].split("\nfunction autoEnableThenJog(", 1)[0]
+    real_mode_body = issue_body + send_body
 
+    assert "sendManualAxisMove(get, set, side, axis, direction, rawStep, speedMode)" in issue_body
+    assert "manualAxisMoveApi(" not in issue_body
     assert "left: [1, 1, 1, 1, 1, 1]" in normalized
     assert "right: [1, 1, 1, 1, 1, 1]" in normalized
     assert '"left": [1, -1, 1, 1, 1, 1]' in command_service
