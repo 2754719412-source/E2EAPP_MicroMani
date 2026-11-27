@@ -54,6 +54,7 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
   const generation = useRef(0)
   const statusRevision = useRef(0)
   const commandSequence = useRef(0)
+  const inspectInFlight = useRef<Promise<unknown> | null>(null)
   const [confirmed, setConfirmed] = useState(false)
   const [speed, setSpeed] = useState('0.25')
   const [pending, setPending] = useState(false)
@@ -108,8 +109,13 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
     let disposed = false
     const requestGeneration = generation.current
     const inspect = async () => {
+      // 同一时刻只发一次预检；等待期间参数又变了就跳过，只校验最新参数，避免后端重复读取整段数据。
+      await inspectInFlight.current?.catch(() => undefined)
+      if (disposed) return
+      const request = postCommand(`${replayPath}/inspect`, { participation: selected, speed: Number(speed) })
+      inspectInFlight.current = request
       try {
-        const { data } = await postCommand(`${replayPath}/inspect`, { participation: selected, speed: Number(speed) }) as {
+        const { data } = await request as {
           data: { frames: number; fps: number; durationS: number; timing?: ReplayTiming }
         }
         if (!disposed && requestGeneration === generation.current) {
@@ -117,7 +123,8 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
         }
       } catch (cause) {
         if (!disposed && requestGeneration === generation.current)
-          setInspection({ key, error: cause instanceof Error ? cause.message || '回放数据校验失败' : '回放数据校验失败' })
+          setInspection({ key, error: cause instanceof CommandTimeoutError ? '回放预检超时，未发送任何运动命令，请重新校验。'
+            : cause instanceof Error ? cause.message || '回放数据校验失败' : '回放数据校验失败' })
       }
     }
     const timer = setTimeout(() => void inspect(), 200)

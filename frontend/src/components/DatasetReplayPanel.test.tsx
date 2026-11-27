@@ -289,13 +289,24 @@ it.each(['成功', '失败'])('改倍率后忽略旧请求迟到的%s结果', as
   render(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="e" />)
   await waitFor(() => expect(postCommand).toHaveBeenCalledTimes(1))
   fireEvent.click(screen.getByRole('radio', { name: '1 倍速' }))
-  await screen.findByText('40 帧 · 10 Hz · 4.0 秒')
-  fireEvent.click(screen.getByRole('checkbox', { name: /确认工作区/ }))
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)) })
+  expect(postCommand).toHaveBeenCalledTimes(1)  // 旧预检未结束前不重复读取整段数据
   await act(async () => finishOld())
+  await screen.findByText('40 帧 · 10 Hz · 4.0 秒')
+  expect(screen.queryByText('10 帧 · 10 Hz · 1.0 秒')).not.toBeInTheDocument()
+  expect(vi.mocked(postCommand).mock.calls[1][1]).toMatchObject({ speed: 1 })
+  fireEvent.click(screen.getByRole('checkbox', { name: /确认工作区/ }))
   expect(screen.getByLabelText('回放时间规划')).toHaveTextContent('请求 1×')
   expect(screen.getByRole('checkbox', { name: /确认工作区/ })).toBeChecked()
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   expect(postCommand).toHaveBeenCalledTimes(2)
+})
+
+it('预检超时提示未发送运动命令', async () => {
+  vi.mocked(postCommand).mockRejectedValueOnce(new CommandTimeoutError('请求超时，执行结果未知；请重新连接核验，禁止自动重发运动'))
+  render(<DatasetReplayPanel recordedParticipation={dualParticipation} datasetId="local" episodeId="e" />)
+  expect(await screen.findByRole('alert')).toHaveTextContent('回放预检超时，未发送任何运动命令')
+  expect(screen.queryByText(/禁止自动重发运动/)).not.toBeInTheDocument()
 })
 
 it('状态连接中断撤销确认，恢复后重新预检', async () => {
