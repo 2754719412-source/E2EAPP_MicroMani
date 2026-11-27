@@ -8,7 +8,6 @@ import type { Participation } from '../types'
 import { create } from 'zustand'
 import { forceSampleReady, isForceVoltage } from '../forceDisplay'
 import {
-  installControlCommandTimeoutHandler,
   installControlSessionProvider,
   acknowledgeSafety as acknowledgeSafetyApi,
   autoConfigurePicoNetwork as autoConfigurePicoNetworkApi,
@@ -3255,4 +3254,3 @@ const motionCommands = createMotionCommandController(
 installControlCommandGuard(() => controlSafetyBlockReason(useTelemetryStore.getState(), !mockMode))
 installForceSelfCheckGuard(() => forceSelfCheckBlockReason(useTelemetryStore.getState(), !mockMode))
 installControlSessionProvider(() => useTelemetryStore.getState().controlLease.sessionId)
-installControlCommandTimeoutHandler((reason) => useTelemetryStore.getState().revokeControlLease(reason))

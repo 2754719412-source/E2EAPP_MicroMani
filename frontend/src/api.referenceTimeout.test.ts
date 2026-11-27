@@ -9,11 +9,9 @@ it('正限位参考超过十秒仍等待原请求，并拒绝重复定位', asyn
   vi.stubGlobal('fetch', fetcher)
   const api = await import('./api')
   api.installControlSessionProvider(() => 'owner')
-  const revoke = vi.fn(); api.installControlCommandTimeoutHandler(revoke)
   const pending = api.referencePositiveLimitSide('left', ['X', 'Y'])
   const result = pending.then((value) => ({ value }), (error: unknown) => ({ error }))
   await vi.advanceTimersByTimeAsync(35_000)
-  expect(revoke).not.toHaveBeenCalled()
   await expect(api.referencePositiveLimitSide('left', ['Y'])).rejects.toThrow('已有回原点操作')
   await expect(api.returnHardwareReferenceSide('left', ['Z'])).rejects.toThrow('已有回原点操作')
   expect(fetcher).toHaveBeenCalledOnce()
@@ -21,16 +19,17 @@ it('正限位参考超过十秒仍等待原请求，并拒绝重复定位', asyn
   await expect(result).resolves.toEqual({ value: { ok: true } })
 })
 
-it('正限位参考达到长超时仍撤权，且不会自动重发', async () => {
+it('正限位参考达到长超时才报执行结果未知，且不会自动重发', async () => {
   vi.resetModules(); vi.stubEnv('MODE', 'development'); vi.useFakeTimers()
   const fetcher = vi.fn(() => new Promise<Response>(() => undefined)); vi.stubGlobal('fetch', fetcher)
   const api = await import('./api'); api.installControlSessionProvider(() => 'owner')
-  const revoke = vi.fn(); api.installControlCommandTimeoutHandler(revoke)
   const failed = expect(api.referencePositiveLimitSide('left', ['Y'])).rejects.toThrow('执行结果未知')
+  let settled = false
+  void failed.finally(() => { settled = true })
   await vi.advanceTimersByTimeAsync(79_999)
-  expect(revoke).not.toHaveBeenCalled()
+  expect(settled).toBe(false)
   await vi.advanceTimersByTimeAsync(2); await failed
-  expect(revoke).toHaveBeenCalledOnce(); expect(fetcher).toHaveBeenCalledOnce()
+  expect(fetcher).toHaveBeenCalledOnce()
 })
 
 

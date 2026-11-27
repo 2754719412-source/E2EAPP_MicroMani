@@ -13,22 +13,19 @@ it('配置保存将 HAL 拒绝方向标定的具体原因传给设置卡', async
   await expect(putConfig(defaultConfig)).rejects.toThrow(detail.message)
 })
 
-it('请求超时即撤权并结束等待；Abort 不表示服务端动作已取消', async () => {
+it('请求超时结束等待但不撤销控制会话；Abort 不表示服务端动作已取消', async () => {
   vi.resetModules()
   vi.stubEnv('MODE', 'development')
   vi.useFakeTimers()
   const fetcher = vi.fn(() => new Promise<Response>(() => undefined))
   vi.stubGlobal('fetch', fetcher)
   const api = await import('./api')
-  const revoke = vi.fn()
-  api.installControlCommandTimeoutHandler(revoke)
   api.installControlSessionProvider(() => 'owner')
   const pending = api.enableMotionSide('left')
   const rejected = expect(pending).rejects.toThrow('执行结果未知')
   await vi.advanceTimersByTimeAsync(10_001)
   await rejected
   await expect(pending).rejects.toBeInstanceOf(api.CommandTimeoutError)
-  expect(revoke).toHaveBeenCalledOnce()
   expect(fetcher).toHaveBeenCalledOnce()
   const options = (fetcher.mock.calls[0] as unknown as [string, RequestInit])[1]
   expect(options.signal?.aborted).toBe(true)

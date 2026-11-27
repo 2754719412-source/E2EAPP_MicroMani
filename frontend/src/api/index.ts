@@ -36,7 +36,6 @@ export const mockMode = import.meta.env.MODE === 'test'
 let controlCommandBlockedReason: () => string | null = () => null
 let forceSelfCheckBlockedReason: () => string | null = () => '力觉自检控制状态尚未就绪'
 let forceSelfCheckPending = false
-let controlCommandUncertain: (reason: string) => void = () => undefined
 let controlSessionId: () => string | null = () => null
 let returnOriginPending = false
 export function installControlSessionProvider(read: () => string | null) { controlSessionId = read }
@@ -55,10 +54,6 @@ export function installForceSelfCheckGuard(read: () => string | null) {
 function isConfirmedForceSelfCheck(path: string, body: unknown): boolean {
   return path === '/api/sensors/tare' && Boolean(body && typeof body === 'object'
     && 'unloadedConfirmed' in body && body.unloadedConfirmed === true)
-}
-
-export function installControlCommandTimeoutHandler(handler: (reason: string) => void) {
-  controlCommandUncertain = handler
 }
 
 function commandRequiresSafetyClear(path: string, body: unknown): boolean {
@@ -351,13 +346,9 @@ export async function postCommand(path: string, body?: unknown) {
       exchange(),
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
-          const reason = '请求超时，执行结果未知；请重新连接核验，禁止自动重发运动'
+          // 只结束等待并提示，不撤销控制会话；是否停机由后端按“运动中断开才急停”判断。
           controller.abort()
-          try {
-            if (commandRequiresSafetyClear(apiPath, body)) controlCommandUncertain(reason)
-          } finally {
-            reject(new CommandTimeoutError(reason))
-          }
+          reject(new CommandTimeoutError('请求超时，执行结果未知；请核对设备状态后再操作，不会自动重发'))
         }, timeoutMs)
       }),
     ])
