@@ -39,7 +39,9 @@ from backend.core.defaults import (
     default_config,
     rotation_work_limits_from_soft_limits,
 )
-from backend.core.force_config import hkvl_tare_sample_count, invalidate_changed_force_mappings, validate_force_config
+from backend.core.force_config import (
+    hkvl_tare_sample_count, invalidate_changed_force_mappings, migrate_replay_tracking_limits, validate_force_config,
+)
 from backend.core.logging import LogService, now_ms, stable_config_hash
 from backend.core.work_origin import axis_instance_ids, offset_reference_kinds
 from backend.core.motion_limits import (
@@ -541,6 +543,9 @@ class SettingsService:
                     old_samples = force.get("tareSamples")
                     force["tareSamples"] = 0
                     self.logs.warning("[FORCE]", f"旧 HKVL Tare 样本数 {old_samples!r} 不再支持，已改为默认 200")
+            # 同理只迁移回放跟踪阈值，避免严格校验让设置无法修复或触发整份配置重置。
+            for note in migrate_replay_tracking_limits(merged.get("safety")):
+                self.logs.warning("[BACKEND]", note)
             validated = AppConfig.model_validate(merged).model_dump(mode="json")
             if merged != data:
                 return self.save_config(validated, emit_log=False, source="startup")

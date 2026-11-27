@@ -550,12 +550,16 @@ def test_real_gripper_motion_command_is_tracked_while_in_flight(monkeypatch) -> 
         pending = asyncio.create_task(commands.gripper_command(GripperCommandRequest(side="left", command="close")))
         await asyncio.wait_for(entered.wait(), 2)
         assert commands.gripper_motion_inflight()
-        assert commands.recent_gripper_motion_sides(10_000) == {"left"}
+        since = commands.unconfirmed_gripper_sides()["left"]
         release.set()
         await pending
         assert not commands.gripper_motion_inflight()
-        assert commands.recent_gripper_motion_sides(10_000) == {"left"}
+        # 命令应答不等于停止：一直保留待确认，直到收到晚于命令的停止样本。
         await commands.gripper_command(GripperCommandRequest(side="right", command="stop"))
-        assert commands.recent_gripper_motion_sides(10_000) == {"left"}
+        assert set(commands.unconfirmed_gripper_sides()) == {"left"}
+        commands.confirm_gripper_stopped("left", since)
+        assert set(commands.unconfirmed_gripper_sides()) == {"left"}
+        commands.confirm_gripper_stopped("left", since + 1)
+        assert commands.unconfirmed_gripper_sides() == {}
 
     asyncio.run(exercise())

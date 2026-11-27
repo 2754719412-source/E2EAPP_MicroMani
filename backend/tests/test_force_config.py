@@ -208,3 +208,26 @@ def test_replay_tracking_limits_default_and_can_be_raised() -> None:
     assert config["safety"]["replayTrackingLimitDeg"] == 1.0
     config["safety"].update(replayTrackingLimitUm=3000, replayTrackingLimitDeg=5)
     validate_force_config(config)
+
+
+@pytest.mark.parametrize("legacy,expected", [("500", 500.0), (" 750.5 ", 750.5), (True, 500.0), ("abc", 500.0), (-3, 500.0)])
+def test_legacy_replay_tracking_limit_is_migrated_without_resetting_config(tmp_path: Path, legacy: object, expected: float) -> None:
+    """旧版允许字符串阈值：读取时只迁移该项，缺少默认字段触发迁移保存时也不能整份重置。"""
+    config = default_config()
+    config["safety"]["replayTrackingLimitUm"] = legacy
+    config["safety"]["replayTrackingLimitDeg"] = "2"
+    config["cameras"]["globalIdentity"] = "custom-camera-identity"
+    config["motion"].pop("workOriginStrategyVersion", None)  # 需要补齐/迁移的字段，迫使读取后落盘
+    (tmp_path / "config.json").write_text(json.dumps(config), encoding="utf-8")
+    logs = LogService(emit_startup=False)
+
+    restored = SettingsService(tmp_path, logs).get_config()
+
+    assert restored["safety"]["replayTrackingLimitUm"] == expected
+    assert restored["safety"]["replayTrackingLimitDeg"] == 2.0
+    assert restored["cameras"]["globalIdentity"] == "custom-camera-identity"
+    assert not any("default config restored" in entry.msg for entry in logs.list_entries())
+    assert any("replayTrackingLimitUm" in entry.msg for entry in logs.list_entries())
+    saved = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert saved["safety"]["replayTrackingLimitUm"] == expected
+    validate_force_config(restored)

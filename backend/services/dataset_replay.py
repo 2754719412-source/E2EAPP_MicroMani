@@ -96,6 +96,8 @@ class DatasetReplayService:
         self._stop_decel_s = 0.
         self._max_error = list(MAX_ERROR)
         self._stale_gripper_warned: set[str] = set()
+        # gripper.prepare_replay 应答时刻（Unix ms）；起点确认只接受其后的夹爪采样，排除准备前的 DDS 缓存。
+        self._gripper_fresh_after_ms: float | None = None
         self._status: dict[str, Any] = {"phase": "idle", "active": False, "frame": 0, "totalFrames": 0, "error": ""}
 
     @property
@@ -189,6 +191,7 @@ class DatasetReplayService:
         self._controlled_stop_available = False
         self._max_error = list(MAX_ERROR)
         self._stale_gripper_warned = set()
+        self._gripper_fresh_after_ms = None
         self._stop_task = self._emergency_task = None
         self.task = asyncio.create_task(self._run(dataset_id, episode_id, speed, token, selected), name="dataset-replay")
         return self.status()
@@ -231,6 +234,9 @@ class DatasetReplayService:
             sample_age = time.time() * 1000 - sample_ts
             if sample_age < 0:
                 raise RuntimeError(f"{label}夹爪反馈时间戳无效：采样时间晚于当前时间，请检查系统时钟")
+            if (self._gripper_fresh_after_ms is not None and sample_ts <= self._gripper_fresh_after_ms
+                    and self._status.get("phase") not in GRIPPER_STALE_TOLERATED_PHASES):
+                raise RuntimeError(f"{label}夹爪反馈尚未在回放准备后更新：起点确认需要准备之后的新采样")
             if sample_age > GRIPPER_FEEDBACK_STALE_WARN_MS and self._status.get("phase") not in GRIPPER_STALE_TOLERATED_PHASES:
                 # 准备与起点对齐要以本次有效采样确认到位，陈旧读数不能当作已对齐。
                 raise RuntimeError(f"{label}夹爪反馈超时：距最近成功采样 {sample_age / 1000:.2f} 秒，起点对齐要求不超过 1 秒")
@@ -463,6 +469,7 @@ class DatasetReplayService:
             payload = native_gripper_payload(config, grippers[0], 0.)
             payload.update(leftGripperParticipating="left" in grippers, rightGripperParticipating="right" in grippers)
             await self.svc.hal.command("gripper.prepare_replay", payload)
+            self._gripper_fresh_after_ms = time.time() * 1000
         feedback_deadline = time.monotonic() + 2.
         while True:
             self._check(token)

@@ -52,11 +52,18 @@ def setup_replay(tmp_path, monkeypatch):
     svc.commands.stop_motion_side = AsyncMock(return_value={"response": {"ok": True}})
     svc.commands.emergency_stop = AsyncMock()
     native = {'running': False, 'grippers': {side: {'ok': True, 'positionMm': 0., 'positionOk': True, 'positionSampleTs': time.time()*1000} for side in ('left', 'right')}}
+    # 模拟 HAL 持续采样：未被测试改写的夹爪时间戳在每次读取时推进；测试显式设置的值保持不变。
+    auto_ts = {side: detail['positionSampleTs'] for side, detail in native['grippers'].items()}
     def command_reply(name, payload):
         if name == 'motion.replay_absolute_target':
             return {'response': {'ok': True, 'side': payload['side'], 'updateReturn': [0] * 6}}
+        if name == 'teleop.native.status':
+            grippers = command_mock.return_value['response'].get('grippers', {})
+            for side, detail in grippers.items():
+                if isinstance(detail, dict) and detail.get('positionSampleTs') == auto_ts.get(side):
+                    auto_ts[side] = detail['positionSampleTs'] = time.time() * 1000
         return DEFAULT
-    svc.hal.command = AsyncMock(side_effect=command_reply, return_value={'response': native})
+    command_mock = svc.hal.command = AsyncMock(side_effect=command_reply, return_value={'response': native})
     return app, replay, data, config
 
 
@@ -220,6 +227,9 @@ def in_flight_replay(setup_replay):
         if name == "motion.teleop_stop_side":
             events.append(("stop", payload["side"]))
             return {"response": {"ok": case.stop_ok}}
+        if name == "teleop.native.status":
+            for detail in native["response"]["grippers"].values():
+                detail["positionSampleTs"] = time.time() * 1000  # 夹爪持续采样
         return native
 
     async def emergency():
@@ -672,6 +682,23 @@ def test_stale_gripper_feedback_blocks_preparation_and_start_alignment(setup_rep
     asyncio.run(run())
 
 
+def test_start_alignment_rejects_gripper_sample_from_before_prepare(setup_replay):
+    """DDS 可能一直返回准备命令之前的缓存：起点确认须等到准备之后的新样本，否则不能进入逐帧回放。"""
+    app, replay, _data, _config = setup_replay
+    before_prepare = time.time() * 1000 - 200
+    for detail in app.state.hal.command.return_value['response']['grippers'].values():
+        detail['positionSampleTs'] = before_prepare  # 显式设置，夹具不会推进
+    async def run():
+        await replay.start('d', 'e', 1.)
+        await replay.task
+        status = replay.status()
+        assert status['phase'] == 'failed', status
+        assert '准备后更新' in status['error']
+        assert not any(c.args[0] == 'motion.replay_absolute_target' for c in app.state.hal.command.call_args_list)
+        app.state.commands.enable_motion_side.assert_not_called()
+    asyncio.run(run())
+
+
 def test_replay_tracking_limits_follow_settings_and_reject_invalid_values():
     from backend.services.dataset_replay import replay_tracking_limits
     config = {'safety': {'replayTrackingLimitUm': 2000, 'replayTrackingLimitDeg': 3}}
@@ -1011,9 +1038,7 @@ def test_tracking_fault_keeps_trigger_sample_before_stop_and_logs_after_stop(set
     for row, factor in zip(data['rows'], [.25, 1.3, .1]):
         row['action'][offset + axis] = limit * factor
     motion_ts = time.time() * 1000 - 100
-    gripper_ts = motion_ts + 50
     app.state.hal.motion_state.return_value['timestamp_ms'] = motion_ts
-    app.state.hal.command.return_value['response']['grippers'][hardware_side]['positionSampleTs'] = gripper_ts
     logger = Mock()
     monkeypatch.setattr(app.state.services.logs, 'error', logger)
     stop_snapshots = []

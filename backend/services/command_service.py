@@ -119,17 +119,22 @@ class CommandService:
         if self.gripper_router is None:
             self.gripper_router = GripperRouter(native=NativeGripperAdapter(hal, teleop))
         self._origin_mutation_locked = origin_mutation_locked or (lambda: False)
-        # 夹爪运动不在 12 轴 moving 标志内；断线判定需要在途命令数和最近运动命令时刻。
+        # 夹爪运动不在 12 轴 moving 标志内；断线判定需要在途命令数，以及按侧尚未确认停止的运动命令时刻。
         self._gripper_motion_inflight = 0
-        self._gripper_motion_commanded_ms: dict[str, int] = {}
+        self._gripper_unconfirmed_since_ms: dict[str, int] = {}
 
     def gripper_motion_inflight(self) -> bool:
         return self._gripper_motion_inflight > 0
 
-    def recent_gripper_motion_sides(self, window_ms: int) -> set[str]:
-        """返回在 window_ms 内下发过开合/到位命令的硬件侧，供断线时核对夹爪已停止。"""
-        cutoff = now_ms() - window_ms
-        return {side for side, stamp in self._gripper_motion_commanded_ms.items() if stamp >= cutoff}
+    def unconfirmed_gripper_sides(self) -> dict[str, int]:
+        """下发过开合/到位命令、尚未收到其后停止反馈的硬件侧及命令时刻；反馈缺失时一直保留。"""
+        return dict(self._gripper_unconfirmed_since_ms)
+
+    def confirm_gripper_stopped(self, side: str, sample_ts: float) -> None:
+        """只有晚于最近一次运动命令的有效停止样本才能清除待确认状态。"""
+        since = self._gripper_unconfirmed_since_ms.get(side)
+        if since is not None and sample_ts > since:
+            self._gripper_unconfirmed_since_ms.pop(side, None)
 
     def set_origin_mutation_lock_checker(self, checker: Callable[[], bool]) -> None:
         self._origin_mutation_locked = checker
@@ -1181,7 +1186,7 @@ class CommandService:
             if request.command not in GRIPPER_MOTION_COMMANDS:
                 return await self._dispatch_real_gripper_command(config, request)
             self._gripper_motion_inflight += 1
-            self._gripper_motion_commanded_ms[request.side] = now_ms()
+            self._gripper_unconfirmed_since_ms[request.side] = now_ms()
             try:
                 return await self._dispatch_real_gripper_command(config, request)
             finally:

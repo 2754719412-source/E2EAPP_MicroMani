@@ -790,7 +790,7 @@ def test_app_stationary_check_only_trusts_samples_taken_after_disconnect(tmp_pat
         moving = [False] * 12
         if scenario == "fresh_moving_then_stopped" and len(calls) == 1:
             moving[3] = True
-        stamp = cached_stamp if scenario == "pre_disconnect_cache" else now_ms()
+        stamp = cached_stamp if scenario == "pre_disconnect_cache" else now_ms() + 1  # 新读卡完成于检查开始之后
         return {"timestamp_ms": stamp, "moving": moving}
 
     monkeypatch.setattr(app.state.hal, "motion_state", motion_state)
@@ -814,20 +814,22 @@ def test_app_stationary_check_requires_recently_commanded_gripper_to_be_stopped(
     from backend.core.logging import now_ms
 
     app = _app_for_stationary_check(tmp_path, monkeypatch)
-    app.state.commands._gripper_motion_commanded_ms["left"] = now_ms()
+    app.state.commands._gripper_unconfirmed_since_ms["left"] = now_ms() - 60_000  # 远早于断线，不依赖时间窗
 
     async def motion_state():
-        return {"timestamp_ms": now_ms(), "moving": [False] * 12}
+        return {"timestamp_ms": now_ms() + 1, "moving": [False] * 12}
 
     async def command(name, payload=None):
         assert name == "teleop.native.status"
-        stamp = now_ms() - (5000 if detail.get("stale") else 0)
+        stamp = now_ms() - 5000 if detail.get("stale") else now_ms() + 1
         return {"response": {"grippers": {"left": {"positionSampleTs": stamp, "sample": detail["sample"]}}}}
 
     monkeypatch.setattr(app.state.hal, "motion_state", motion_state)
     monkeypatch.setattr(app.state.hal, "command", command)
     try:
         assert asyncio.run(app.state.control_watchdog.axes_stationary()) is expected
+        # 确认停止后清除待确认；否则保留到下次断线继续核对。
+        assert ("left" in app.state.commands.unconfirmed_gripper_sides()) is (not expected)
     finally:
         app.state.telemetry.shutdown()
 
@@ -839,5 +841,23 @@ def test_app_motion_activity_includes_inflight_gripper_command(tmp_path, monkeyp
         assert watchdog.motion_active() is False
         app.state.commands._gripper_motion_inflight = 1
         assert watchdog.motion_active() is True
+    finally:
+        app.state.telemetry.shutdown()
+
+
+def test_app_stationary_check_rejects_sample_in_same_millisecond_as_check_start(tmp_path, monkeypatch) -> None:
+    """整数毫秒下同一毫秒的样本无法证明晚于断线；时间戳不推进时必须判为未确认。"""
+    import backend.app as app_module
+
+    app = _app_for_stationary_check(tmp_path, monkeypatch)
+    frozen = 1_800_000_000_000
+    monkeypatch.setattr(app_module, "now_ms", lambda: frozen)
+
+    async def motion_state():
+        return {"timestamp_ms": frozen, "moving": [False] * 12}
+
+    monkeypatch.setattr(app.state.hal, "motion_state", motion_state)
+    try:
+        assert asyncio.run(app.state.control_watchdog.axes_stationary()) is False
     finally:
         app.state.telemetry.shutdown()

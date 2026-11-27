@@ -81,8 +81,6 @@ AXIS_NAMES = ("X", "Y", "Z", "Roll", "Pitch", "Yaw")
 BACKEND_STARTED_AT = time.time()
 TELEOP_GRAVITY_SCALE_DEFAULTS = {"left": 0.45, "right": 1.0}
 REQUIRED_HAL_CAPABILITIES = ("force_calibration_state_v1",)
-# 断线时需要核对已停止的夹爪：最近这段时间内下发过开合/到位命令的侧。
-GRIPPER_MOTION_SETTLE_WINDOW_MS = 10_000
 
 
 def hal_capability_status(health: Any) -> dict[str, Any]:
@@ -491,8 +489,9 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
                 or teleop_mapper.control_active() or policy.dispatch_active())
 
     def sample_after(stamp: object, requested_at: int) -> bool:
+        # 整数毫秒下，与检查开始同一毫秒的样本无法证明晚于断线，须严格更晚。
         return (isinstance(stamp, (int, float)) and not isinstance(stamp, bool) and math.isfinite(stamp)
-                and requested_at <= stamp <= now_ms() + 100)
+                and requested_at < stamp <= now_ms() + 100)
 
     def gripper_stopped(detail: object, requested_at: int) -> bool | None:
         """None 表示尚无断线后的有效样本；gGTO=1 且 gOBJ=0 表示手指仍在移动。"""
@@ -505,11 +504,11 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
 
     async def control_axes_stationary() -> bool:
         # 只认检查开始后的新采样：读卡缓存可能早于刚下发的点动。新采样明确在动立即判运动，
-        # 仅读取失败或尚无新样本时在 0.5 s 内重试；最近下发过开合命令的夹爪同样要新样本确认已停。
+        # 仅读取失败或尚无新样本时在 0.5 s 内重试；尚未确认停止的夹爪同样要新样本确认已停。
         requested_at = now_ms()
         deadline = time.monotonic() + 0.5
         arms_stopped = False
-        pending_grippers = commands.recent_gripper_motion_sides(GRIPPER_MOTION_SETTLE_WINDOW_MS)
+        pending_grippers = set(commands.unconfirmed_gripper_sides())
         while True:
             if not arms_stopped:
                 try:
@@ -528,10 +527,12 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
                     status = {}
                 grippers = status.get("grippers") if isinstance(status, dict) else None
                 for side in tuple(pending_grippers):
-                    stopped = gripper_stopped(grippers.get(side) if isinstance(grippers, dict) else None, requested_at)
+                    detail = grippers.get(side) if isinstance(grippers, dict) else None
+                    stopped = gripper_stopped(detail, requested_at)
                     if stopped is False:
                         return False
                     if stopped:
+                        commands.confirm_gripper_stopped(side, detail["positionSampleTs"])
                         pending_grippers.discard(side)
             if arms_stopped and not pending_grippers:
                 return True

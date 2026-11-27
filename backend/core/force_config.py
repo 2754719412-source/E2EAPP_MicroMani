@@ -87,6 +87,33 @@ def replay_tracking_limit_values(safety: object) -> tuple[float, float]:
     return values[0], values[1]
 
 
+def migrate_replay_tracking_limits(safety: object) -> list[str]:
+    """旧版曾允许把回放阈值存成字符串：数字字符串转为数值，其他非法值恢复默认；返回迁移说明。"""
+    if not isinstance(safety, dict):
+        return []
+    notes = []
+    for key, default in REPLAY_TRACKING_LIMIT_DEFAULTS.items():
+        if key not in safety:
+            continue
+        value = safety[key]
+        try:
+            replay_tracking_limit_values({key: value})
+            continue
+        except ValueError:
+            pass
+        migrated = default
+        if isinstance(value, str):
+            try:
+                parsed = float(value.strip())
+            except ValueError:
+                parsed = math.nan
+            if math.isfinite(parsed) and parsed > 0:
+                migrated = parsed
+        safety[key] = migrated
+        notes.append(f"safety.{key} 旧值 {value!r} 已迁移为 {migrated:g}")
+    return notes
+
+
 # safety 中随 force.configure 下发到 HAL 的力安全参数；其余 safety 键（如回放跟踪阈值）只在后端使用。
 FORCE_SAFETY_KEYS = frozenset({
     "fxyWarnN", "fxyStopN", "fzWarnN", "fzStopN", "momentWarnNm", "momentStopNm", "watchdogMs",
