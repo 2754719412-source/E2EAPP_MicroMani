@@ -136,6 +136,19 @@ function returnedRecordResetState(session: RecordSessionState, side: RecordReset
 let configSaveQueue: Promise<{ active: AppConfig; draft: AppConfig }> | undefined
 type ConfigEdit = (config: AppConfig) => AppConfig
 const pendingConfigEdits = new Set<ConfigEdit>()
+let rejectedEditsUndo: ConfigEdit | undefined
+
+// 仍显示为被拒值的字段换回拒绝前的生效值；之后又改过或已被后端刷新的字段保持当前值。
+function restoreRejectedValue(rejected: unknown, confirmed: unknown, current: unknown): unknown {
+  const record = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+  if (record(rejected) && record(confirmed) && record(current)) {
+    const result = { ...current }
+    for (const key of Object.keys(rejected)) result[key] = restoreRejectedValue(rejected[key], confirmed[key], current[key])
+    return result
+  }
+  return JSON.stringify(current) === JSON.stringify(rejected) ? confirmed : current
+}
 const manualAxisOrder: ManualControlAxis[] = ['X', 'Y', 'Z', 'Roll', 'Pitch', 'Yaw']
 const manualAxisKeys = ['x', 'y', 'z', 'roll', 'pitch', 'yaw'] as const
 const manualAxisDirectionSign = {
@@ -153,11 +166,17 @@ export function queueSettingsWrite(
   rejectedDraft?: ConfigEdit,
 ) {
   const current = useTelemetryStore.getState().config
-  const previous = configSaveQueue ?? Promise.resolve({ active: current, draft: current })
+  // 队列已排空时，被后端明确拒绝的值仍留在草稿里；单项编辑以拒绝前的生效值为基准，避免连带失败。
+  const base = rejectedEditsUndo ? rejectedEditsUndo(current) : current
+  const previous = configSaveQueue ?? Promise.resolve({ active: base, draft: current })
   const next = previous.then(({ active, draft }) => write(active, draft))
   // 后续单项编辑从生效值开始。显式应用或录制前保存仍可重试刚才的草稿。
   const tail = next.then(
-    (saved) => saved ? { active: saved, draft: saved } : previous,
+    (saved) => {
+      if (!saved) return previous
+      rejectedEditsUndo = undefined
+      return { active: saved, draft: saved }
+    },
     () => previous.then(({ active }) => ({ active, draft: rejectedDraft ? rejectedDraft(active) : active })),
   )
   configSaveQueue = tail
@@ -188,6 +207,14 @@ function queueConfigSave(edit: ConfigEdit, optimistic: boolean, confirmMappingSi
     let active: AppConfig
     try {
       active = normalizeConfig(confirmMappingSide ? await putConfig(candidate, confirmMappingSide) : await putConfig(candidate))
+    } catch (error) {
+      // 后端明确拒绝（校验失败或 HAL 拒绝）时记住拒绝前的生效值；写锁冲突、租约或网络等暂时失败仍随下次保存重试。
+      const { status, code } = error as { status?: number; code?: string }
+      if (optimistic && (status === 400 || status === 422 || code === 'HAL_REJECTED')) {
+        const earlier = rejectedEditsUndo
+        rejectedEditsUndo = (config) => restoreRejectedValue(candidate, previous, earlier ? earlier(config) : config) as AppConfig
+      }
+      throw error
     } finally {
       pendingConfigEdits.delete(edit)
     }
