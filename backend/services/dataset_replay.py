@@ -19,7 +19,7 @@ from backend.core.motion_limits import effective_limit_arrays
 from backend.core.work_origin import require_current_work_origin
 from backend.core.operator_view import operator_side_for_hardware_side, hardware_side_for_operator_side
 from backend.core.units import motion_pulse_per_unit, pulse_to_lerobot, pulse_to_ui
-from backend.services.gripper_backend import gripper_port_reserved, native_gripper_config_payload, native_gripper_payload
+from backend.services.gripper_backend import idle_gripper_feedback_payload, native_gripper_payload
 
 AXES = ("X", "Y", "Z", "Roll", "Pitch", "Yaw")
 # 单位为数据集 um / mdeg / mm；用于到位判定和跟踪偏差拒绝。
@@ -585,27 +585,25 @@ class DatasetReplayService:
         self._check(token)
 
     async def _resume_gripper_feedback(self, config):
-        # native.stop 也会退出采样线程；断线检查仍需每个待确认夹爪的新状态。
+        # native.stop 会停止两侧采样。恢复日常遥测，停止确认仍只跟踪收到运动目标的侧。
         pending = self.svc.commands.unconfirmed_gripper_sides()
-        if not pending:
-            return
-        payload = native_gripper_config_payload(config)
-        available = {side for side in pending if not gripper_port_reserved(payload[f"{side}Port"])}
-        for side in ("left", "right"):
-            payload[f"{side}GripperParticipating"] = side in available
+        payload = idle_gripper_feedback_payload(config)
+        available = {side for side in ("left", "right") if payload[f"{side}GripperParticipating"]}
         unavailable_reason = ""
         if not payload["gripperProcessWorkersEnabled"]:
+            if not pending:
+                return
             unavailable_reason = "只读采样需要启用独立夹爪 worker"
         else:
             if pending.keys() - available:
-                unavailable_reason = "部分夹爪串口已被外部保留"
+                unavailable_reason = "待确认夹爪的串口未配置或已被外部保留"
             if available:
                 try:
                     await self.svc.hal.command("gripper.feedback.configure", payload)
                 except (RuntimeError, TimeoutError) as exc:
                     unavailable_reason = str(exc) or type(exc).__name__
         if unavailable_reason:
-            warning = f"回放结束后夹爪只读采样未完全恢复，停止状态仍待确认：{unavailable_reason}"
+            warning = f"回放结束后夹爪只读采样未完全恢复：{unavailable_reason}"
             self._status["warning"] = "；".join(filter(None, (self._status.get("warning"), warning)))
             self.svc.logs.warning("[HAL]", warning)
 

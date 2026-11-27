@@ -96,6 +96,14 @@ def gripper_port_reserved(port: object) -> bool:
     return bool(reserved and reserved == str(port).strip().upper())
 
 
+def idle_gripper_feedback_payload(config: dict[str, Any]) -> dict[str, object]:
+    payload = native_gripper_config_payload(config)
+    for side in ("left", "right"):
+        port = config.get("gripper", {}).get(f"{side}Port")
+        payload[f"{side}GripperParticipating"] = bool(port and not gripper_port_reserved(port))
+    return payload
+
+
 def native_gripper_config_payload(config: dict[str, Any]) -> dict[str, object]:
     gripper = config.get("gripper", {}) if isinstance(config.get("gripper"), dict) else {}
     teleop = config.get("teleop", {}) if isinstance(config.get("teleop"), dict) else {}

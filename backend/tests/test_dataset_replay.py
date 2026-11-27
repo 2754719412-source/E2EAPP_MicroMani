@@ -740,7 +740,8 @@ def test_replay_gripper_targets_stay_pending_until_stop_feedback_after_disconnec
         await replay.task
         assert replay.status()['phase'] == 'completed', replay.status()
         assert transitions == ["teleop.native.stop", "gripper.feedback.configure"]
-        assert sampling == hardware == set(app.state.commands.unconfirmed_gripper_sides())
+        assert sampling == {"left", "right"}
+        assert set(app.state.commands.unconfirmed_gripper_sides()) == hardware
         hal.motion_state = stopped_axes
         assert await app.state.control_watchdog.axes_stationary() is False
         assert set(app.state.commands.unconfirmed_gripper_sides()) == hardware
@@ -771,6 +772,25 @@ def test_idle_sampler_failure_leaves_grippers_unconfirmed(setup_replay, monkeypa
         hal.command = AsyncMock(return_value={"response": {"grippers": {}}})
         assert await app.state.control_watchdog.axes_stationary() is False
         assert set(app.state.commands.unconfirmed_gripper_sides()) == {"left", "right"}
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("reserved,expected", [("", {"left", "right"}), ("COM8", {"right"})])
+def test_arms_only_replay_restores_available_idle_gripper_ports(setup_replay, monkeypatch, reserved, expected):
+    app, replay, data, _ = setup_replay
+    monkeypatch.setenv("APPSTATION_JODELL_EXTERNAL_PORT", reserved)
+    data["episode"]["participation"]["grippers"] = []
+
+    async def run():
+        await replay.start("d", "e", 1.)
+        await replay.task
+        assert replay.status()["phase"] == "completed", replay.status()
+        payload, = [call.args[1] for call in app.state.hal.command.call_args_list
+                    if call.args[0] == "gripper.feedback.configure"]
+        assert {side for side in ("left", "right") if payload[f"{side}GripperParticipating"]} == expected
+        assert "targetMm" not in payload and "side" not in payload
+        assert app.state.commands.unconfirmed_gripper_sides() == {}
+
     asyncio.run(run())
 
 

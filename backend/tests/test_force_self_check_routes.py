@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 import pytest
+from backend.core.logging import now_ms
 
 from backend.app import create_app
 from backend.services.control_watchdog import ControlLeaseUnavailable
@@ -74,6 +75,29 @@ def test_tare_rejects_active_motion_sources_without_reaching_hal(tmp_path, monke
     if source != "replay":
         assert "stop teleoperation, dataset replay and automatic execution" in response.text
     assert calls == []
+
+
+@pytest.mark.parametrize("gobj,fresh,allowed", [(0, True, False), (3, False, False), (3, True, True)])
+def test_tare_requires_new_stopped_feedback_for_commanded_gripper(tmp_path, monkeypatch, gobj, fresh, allowed):
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+    app = create_app(tmp_path)
+    calls = []
+    async def command(name, payload):
+        calls.append(name)
+        if name == "teleop.native.status":
+            return {"response": {"grippers": {"right": {
+                "positionSampleTs": now_ms() + (1 if fresh else -5000),
+                "sample": {"statusValid": True, "gGTO": 1, "gOBJ": gobj},
+            }}}}
+        return {"response": {"ok": True}}
+    app.state.commands.note_gripper_motion("right")
+    monkeypatch.setattr(app.state.hal, "command", command)
+    monkeypatch.setattr(app.state.commands, "_real_hardware_mode", lambda config: True)
+    monkeypatch.setattr(app.state.control_watchdog, "require_ack_ready", lambda: None)
+    response = TestClient(app).post("/api/sensors/tare", json={"unloadedConfirmed": True})
+    assert response.status_code == (200 if allowed else 503)
+    assert ("force.tare" in calls) == allowed
+    assert ("right" in app.state.commands.unconfirmed_gripper_sides()) != allowed
 
 
 @pytest.mark.parametrize("record_state", ["_recording", "_session_starting", "_session_active"])

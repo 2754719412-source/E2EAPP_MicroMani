@@ -217,7 +217,7 @@ function queueConfigSave(edit: ConfigEdit, optimistic: boolean, confirmMappingSi
     } finally {
       pendingConfigEdits.delete(edit)
     }
-    if (optimistic) useTelemetryStore.setState({ configSaveError: null })
+    useTelemetryStore.setState({ configSaveError: null })
     return publishSavedConfig(active)
   }, optimistic ? edit : undefined)
   if (optimistic) {
@@ -2732,7 +2732,9 @@ updateConfig: (patch, confirmMappingSide) => {
       set({ config: draft })
       return
     }
-    void queueConfigSave((active) => rebaseConfigValue(before, draft, active) as AppConfig, true, confirmMappingSide).catch((error) => {
+    const replayLimitsChanged = before.safety.replayTrackingLimitUm !== draft.safety.replayTrackingLimitUm
+      || before.safety.replayTrackingLimitDeg !== draft.safety.replayTrackingLimitDeg
+    void queueConfigSave((active) => rebaseConfigValue(before, draft, active) as AppConfig, !replayLimitsChanged, confirmMappingSide).catch((error) => {
       set((state) => ({
         configSaveError: error instanceof Error ? error.message : String(error),
         logs: appendLog(state.logs, makeLog('ERROR', `settings save failed: ${String(error)}`, '[BACKEND]')),

@@ -53,6 +53,56 @@ def request_change(client, candidate, route):
 
 
 @pytest.mark.parametrize("route", ["put", "apply", "snapshot"])
+@pytest.mark.parametrize("key", ["replayTrackingLimitUm", "replayTrackingLimitDeg"])
+def test_replay_limits_cannot_change_during_replay(recovery, monkeypatch, route, key):
+    app, client, current, calls = recovery
+    monkeypatch.setattr(type(app.state.replay), "active", property(lambda _self: True))
+    candidate = deepcopy(current)
+    candidate["safety"][key] /= 2
+    response = request_change(client, candidate, route)
+    assert response.status_code == 409 and "回放" in response.text
+    assert client.get("/api/settings").json()["safety"][key] == current["safety"][key]
+    assert calls == []
+
+
+def test_replay_start_waits_for_settings_to_finish_before_retry(recovery, monkeypatch):
+    from httpx import ASGITransport, AsyncClient
+    from threading import Event
+    from unittest.mock import AsyncMock
+
+    app, _, current, _ = recovery
+    entered, release = Event(), Event()
+    save = app.state.settings.save_config
+    def slow_save(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return save(*args, **kwargs)
+
+    monkeypatch.setattr(app.state.settings, "save_config", slow_save)
+    start = AsyncMock(return_value={"active": True})
+    monkeypatch.setattr(app.state.replay, "start", start)
+    candidate = deepcopy(current)
+    candidate["safety"]["replayTrackingLimitUm"] /= 2
+
+    async def exercise():
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
+            saving = asyncio.create_task(http.put("/api/settings", json=candidate))
+            path = "/api/datasets/d/episodes/0/replay/start"
+            try:
+                assert await asyncio.to_thread(entered.wait, 3)
+                assert (await http.post(path, json={"confirmMotion": True})).status_code == 409
+                start.assert_not_awaited()
+            finally:
+                release.set()
+                response = await saving
+            assert response.status_code == 200
+            assert (await http.post(path, json={"confirmMotion": True})).status_code == 200
+            start.assert_awaited_once()
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("route", ["put", "apply", "snapshot"])
 @pytest.mark.parametrize("change", ["port", "nidaq", "same"])
 def test_force_only_recovery_keeps_latch_and_never_restores_motion(recovery, route, change):
     app, client, current, calls = recovery

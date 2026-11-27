@@ -66,6 +66,7 @@ class ControlWatchdog:
         self._task: asyncio.Task[None] | None = None
         self._stop_task: asyncio.Task[None] | None = None
         self._disconnect_task: asyncio.Task[None] | None = None
+        self._idle_check_task: asyncio.Task[None] | None = None
         self._stop_confirmed = True
         self._tripped = False
         self._closed = False
@@ -151,14 +152,15 @@ class ControlWatchdog:
         self.logs.info("[SAFETY]", f"{reason} while idle; HAL lease kept, motion commands blocked until reconnect")
 
     def _start_idle_check(self, reason: str) -> None:
-        # 检查期间无会话，既不续租也不接受运动命令；HAL 租约 2.5 s 足以覆盖 1 s 检查上限。
-        generation = self._generation
-        self._disconnect_task = asyncio.create_task(
-            self._detach_if_stationary(generation, reason),
+        # 新连接可接收遥测，但不能取消上次断线的静止检查或提前续租。
+        if self._tripped or (self._idle_check_task is not None and not self._idle_check_task.done()):
+            return
+        self._idle_check_task = asyncio.create_task(
+            self._detach_if_stationary(reason),
             name="control-watchdog-idle-check",
         )
 
-    async def _detach_if_stationary(self, generation: int, reason: str) -> None:
+    async def _detach_if_stationary(self, reason: str) -> None:
         try:
             stationary = False
             if self.axes_stationary is not None:
@@ -168,10 +170,11 @@ class ControlWatchdog:
                     raise
                 except Exception as exc:
                     self.logs.error("[SAFETY]", f"axis stationary check failed after browser loss: {exc}")
-            if self._closed or self.clients or generation != self._generation:
+            if self._closed:
                 return
             if stationary and not self._motion_running():
-                self._detach_idle(reason)
+                if not self.clients:
+                    self._detach_idle(reason)
             else:
                 self.trip(f"{reason}; axes not confirmed stationary")
         except asyncio.CancelledError:
@@ -179,6 +182,8 @@ class ControlWatchdog:
 
     def trip(self, reason: str) -> None:
         self._idle_detached = False
+        if self._idle_check_task is not None and self._idle_check_task is not asyncio.current_task():
+            self._idle_check_task.cancel()
         disconnect_task = self._disconnect_task
         self._disconnect_task = None
         if disconnect_task is not None and disconnect_task is not asyncio.current_task():
@@ -215,7 +220,8 @@ class ControlWatchdog:
                 await asyncio.sleep(0.1)
 
     def _healthy(self) -> bool:
-        return bool(self.clients) and all(not client.expired for client in self.clients.values())
+        return (self._stop_confirmed and (self._idle_check_task is None or self._idle_check_task.done())
+                and bool(self.clients) and all(not client.expired for client in self.clients.values()))
 
     def _send(self, client: BrowserLease, message: dict[str, Any]) -> None:
         client.pending_messages[message["type"]] = message
@@ -299,6 +305,8 @@ class ControlWatchdog:
 
     async def close(self) -> None:
         self._closed = True
+        if self._idle_check_task is not None:
+            self._idle_check_task.cancel()
         if self._disconnect_task is not None:
             self._disconnect_task.cancel()
             self._disconnect_task = None

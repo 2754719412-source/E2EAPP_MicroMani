@@ -123,6 +123,7 @@ export function SafetyCard({
         </UiField>
       </div>
 
+      <p>跟踪偏差停机阈值可在回放开始前或结束后修改，保存后从下一轮回放生效。</p>
       <div className="gripper-config-section" style={{ marginTop: 12 }}>
         <div className="hardware-subtitle-row">
           <b>位置导纳（X/Z）</b>

@@ -550,6 +550,9 @@ def test_real_gripper_motion_command_is_tracked_while_in_flight(monkeypatch) -> 
         pending = asyncio.create_task(commands.gripper_command(GripperCommandRequest(side="left", command="close")))
         await asyncio.wait_for(entered.wait(), 2)
         assert commands.gripper_motion_inflight()
+        with pytest.raises(RuntimeError, match="operation already in progress"):
+            await commands.tare_force(unloaded_confirmed=True)
+        commands.hal.command.assert_not_awaited()
         since = commands.unconfirmed_gripper_sides()["left"]
         release.set()
         await pending
@@ -561,5 +564,38 @@ def test_real_gripper_motion_command_is_tracked_while_in_flight(monkeypatch) -> 
         assert set(commands.unconfirmed_gripper_sides()) == {"left"}
         commands.confirm_gripper_stopped("left", since + 1)
         assert commands.unconfirmed_gripper_sides() == {}
+
+    asyncio.run(exercise())
+
+
+def test_tare_blocks_new_gripper_motion_but_allows_stop_and_disable(monkeypatch):
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
+
+    async def exercise():
+        commands = make_commands()
+        commands.hardware = SimpleNamespace()
+        commands._dispatch_real_gripper_command = AsyncMock()
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def hold_tare(name, payload):
+            assert name == "force.tare"
+            entered.set()
+            await release.wait()
+            return {"response": {"ok": True}}
+
+        commands.hal.command = hold_tare
+        pending = asyncio.create_task(commands.tare_force(unloaded_confirmed=True))
+        try:
+            await asyncio.wait_for(entered.wait(), 2)
+            for side in ("left", "right"):
+                with pytest.raises(RuntimeError, match="operation already in progress"):
+                    await commands.gripper_command(GripperCommandRequest(side=side, command="close"))
+            commands._dispatch_real_gripper_command.assert_not_awaited()
+            for action in ("stop", "disable"):
+                await commands.gripper_command(GripperCommandRequest(side="left", command=action))
+            assert commands._dispatch_real_gripper_command.await_count == 2
+        finally:
+            release.set()
+            await pending
 
     asyncio.run(exercise())

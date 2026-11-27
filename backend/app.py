@@ -36,9 +36,10 @@ from backend.core.data_contract import (
     hardware_to_dataset_motion,
     validate_data_contract,
 )
-from backend.core.force_config import hal_force_config_payload, invalidate_changed_force_mappings, without_force_settings
+from backend.core.force_config import (
+    hal_force_config_payload, invalidate_changed_force_mappings, replay_tracking_limit_values, without_force_settings,
+)
 from backend.core.logging import LOG_SCHEMA_VERSION, LogService, PollingErrorLog, now_ms, stable_config_hash
-from backend.core.jodell_modbus import GOBJ_MOVING
 from backend.core.loop_watchdog import LoopStallWatchdog
 from backend.core.queued_log_handlers import install_queued_handlers, stop_queued_handlers
 from backend.core.motion_safety import MotionSafetyToken
@@ -61,11 +62,12 @@ from backend.hal_client.dds_types import DEFAULT_DDS_DOMAIN_ID
 from backend.services.command_service import (
     OriginContinuityConfirmationRequired,
     normalize_motion_axis_enabled,
+    sample_after,
 )
 from backend.services.dataset_recorder import DatasetSaveError, RecordingBlocksOriginReturn
 from backend.services.dataset_replay import DatasetReplayService
 from backend.services.control_watchdog import ControlLeaseUnavailable, ControlWatchdog
-from backend.services.gripper_backend import gripper_port_reserved, native_gripper_config_payload, native_teleop_enabled
+from backend.services.gripper_backend import idle_gripper_feedback_payload, native_teleop_enabled
 from backend.services.pico_network import PicoNetworkDetectionError, detect_pico_network
 from backend.services.policy_bridge import build_policy_action_plan, lerobot_motion_from_ui, lerobot_state_from_ui
 from backend.services.policy_gripper_observation import PolicyGripperObservation, PolicyGripperFeedbackUnavailable
@@ -488,65 +490,23 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         return (replay.active or commands.safety.operation_active() or commands.gripper_motion_inflight()
                 or teleop_mapper.control_active() or policy.dispatch_active())
 
-    def sample_after(stamp: object, requested_at: int) -> bool:
-        # 整数毫秒下，与检查开始同一毫秒的样本无法证明晚于断线，须严格更晚。
-        return (isinstance(stamp, (int, float)) and not isinstance(stamp, bool) and math.isfinite(stamp)
-                and requested_at < stamp <= now_ms() + 100)
-
-    def gripper_stopped(detail: object, requested_at: int) -> bool | None:
-        """None 表示尚无断线后的有效样本；gGTO=1 且 gOBJ=0 表示手指仍在移动。"""
-        if not isinstance(detail, dict) or not sample_after(detail.get("positionSampleTs"), requested_at):
-            return None
-        sample = detail.get("sample")
-        if not isinstance(sample, dict):
-            return None
-        if sample.get("transport") == "dll":
-            # DLL 单独读取 gOBJ，0 没有提供停止证明；1/2 为遇阻停止，3 为到位停止。
-            gobj = sample.get("gOBJ")
-            if (detail.get("positionOk") is not True or sample.get("positionValid") is not True
-                    or type(gobj) is not int or gobj not in range(4)
-                    or not sample_after(sample.get("dllStatusReadStartedTs"), requested_at)):
-                return None
-            return gobj != GOBJ_MOVING
-        if sample.get("statusValid") is not True:
-            return None
-        return not (sample.get("gGTO") == 1 and sample.get("gOBJ") == GOBJ_MOVING)
-
     async def control_axes_stationary() -> bool:
         # 只认检查开始后的新采样：读卡缓存可能早于刚下发的点动。新采样明确在动立即判运动，
         # 仅读取失败或尚无新样本时在 0.5 s 内重试；尚未确认停止的夹爪同样要新样本确认已停。
         requested_at = now_ms()
         deadline = time.monotonic() + 0.5
-        arms_stopped = False
-        while True:
-            if not arms_stopped:
-                try:
-                    state = await hal.motion_state()
-                except (RuntimeError, TimeoutError):
-                    state = None
-                if isinstance(state, dict) and sample_after(state.get("timestamp_ms"), requested_at):
-                    moving = state.get("moving")
-                    if not (isinstance(moving, list) and len(moving) == 12 and all(value is False for value in moving)):
-                        return False
-                    arms_stopped = True
-            if arms_stopped and commands.unconfirmed_gripper_sides():
-                try:
-                    status = (await hal.command("teleop.native.status", {})).get("response", {})
-                except (RuntimeError, TimeoutError):
-                    status = {}
-                grippers = status.get("grippers") if isinstance(status, dict) else None
-                for side, command_ts in commands.unconfirmed_gripper_sides().items():
-                    detail = grippers.get(side) if isinstance(grippers, dict) else None
-                    stopped = gripper_stopped(detail, max(requested_at, command_ts))
-                    if stopped is False:
-                        return False
-                    if stopped:
-                        commands.confirm_gripper_stopped(side, detail["positionSampleTs"])
-            if arms_stopped and not commands.unconfirmed_gripper_sides():
-                return True
-            if time.monotonic() >= deadline:
-                return False
+        while time.monotonic() < deadline:
+            try:
+                state = await hal.motion_state()
+            except (RuntimeError, TimeoutError):
+                state = None
+            if isinstance(state, dict) and sample_after(state.get("timestamp_ms"), requested_at, now_ms()):
+                moving = state.get("moving")
+                if not (isinstance(moving, list) and len(moving) == 12 and all(value is False for value in moving)):
+                    return False
+                return time.monotonic() < deadline and await commands.wait_for_grippers_stopped(requested_at, deadline)
             await asyncio.sleep(0.02)
+        return False
 
     control_watchdog = ControlWatchdog(
         hal, logs, invalidate_control_session, commands.emergency_stop,
@@ -1006,10 +966,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         if not (_real_hardware_mode(config) and native_teleop_enabled(config)
                 and gripper.get("workerTransport") in ("dll", "modbus") and gripper.get("processWorkersEnabled", True)):
             return
-        payload = native_gripper_config_payload(config)
-        for side in ("left", "right"):
-            port = gripper.get(f"{side}Port")
-            payload[f"{side}GripperParticipating"] = bool(port and not gripper_port_reserved(port))
+        payload = idle_gripper_feedback_payload(config)
         try:
             if check_status:
                 # 上次保存的主手连接可跨后端重启；以 HAL 当前三种工作状态决定是否恢复只读采样。
@@ -1127,6 +1084,8 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
 
     @contextlib.asynccontextmanager
     async def configuration_change(current, candidate, *, force_apply=False, confirm_side=None):
+        if replay.active and replay_tracking_limit_values(current.get("safety")) != replay_tracking_limit_values(candidate.get("safety")):
+            raise HTTPException(status_code=409, detail={"message": "请先结束回放，再修改跟踪偏差停机阈值"})
         invalidate_changed_force_mappings(current, candidate, confirm_side=confirm_side)
         if any(current.get("cameras", {}).get(key) != candidate.get("cameras", {}).get(key)
                for key in ("microscopeEnabled", "microscopeIdentity")) and recorder.camera_configuration_busy():
@@ -1922,7 +1881,10 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         policy.invalidate_pending_actions()
         try:
             with commands.safety.operation():
-                return envelope(await commands.acknowledge_safety(readiness_check=control_watchdog.require_ack_ready))
+                result = await commands.acknowledge_safety(readiness_check=control_watchdog.require_ack_ready)
+                # 急停会停掉夹爪轮询。人工确认成功后，只恢复空闲端口的状态读取。
+                await restore_idle_gripper_sampling(await get_config_async(), check_status=True)
+                return envelope(result)
         except ControlLeaseUnavailable as exc:
             raise HTTPException(status_code=409, detail={"code": "CONTROL_LEASE_REQUIRED", "message": str(exc)}) from exc
         except RuntimeError as exc:
@@ -2494,7 +2456,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         except (TypeError, ValueError, RuntimeError, FileNotFoundError) as exc:
             raise HTTPException(409, detail={"code": "REPLAY_REJECTED", "message": str(exc)}) from exc
 
-    @app.post("/api/datasets/{dataset_id}/episodes/{episode_id}/replay/start")
+    @app.post("/api/datasets/{dataset_id}/episodes/{episode_id}/replay/start", dependencies=[Depends(single_settings_writer)])
     async def replay_start(dataset_id: str, episode_id: str, payload: dict[str, Any]) -> ApiEnvelope:
         if payload.get("confirmMotion") is not True:
             raise HTTPException(400, detail={"code": "REPLAY_CONFIRM_REQUIRED", "message": "请确认起点对齐及真机运动"})

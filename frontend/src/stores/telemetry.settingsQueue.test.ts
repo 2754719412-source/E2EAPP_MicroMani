@@ -10,6 +10,22 @@ afterEach(() => { store.setState(initial, true); vi.restoreAllMocks() })
 const halRejected = () => Object.assign(new Error('HAL refused: servos enabled'), { status: 409, code: 'HAL_REJECTED' })
 const settingsBusy = () => Object.assign(new Error('已有配置正在应用，请稍后重试'), { status: 409 })
 
+it('回放期间被拒的跟踪阈值不会显示为已生效，结束后可保存', async () => {
+  vi.spyOn(api, 'mockMode', 'get').mockReturnValue(false)
+  const put = vi.spyOn(api, 'putConfig')
+    .mockRejectedValueOnce(Object.assign(new Error('请先结束回放'), { status: 409 }))
+    .mockImplementation(async (config) => structuredClone(config))
+  store.setState({ config: structuredClone(defaultConfig), configSaveError: null })
+  const safety = { ...defaultConfig.safety, replayTrackingLimitUm: 250 }
+  store.getState().updateConfig({ safety })
+  expect(store.getState().config.safety.replayTrackingLimitUm).toBe(defaultConfig.safety.replayTrackingLimitUm)
+  await vi.waitFor(() => expect(store.getState().configSaveError).toContain('回放'))
+  store.getState().updateConfig({ safety })
+  await vi.waitFor(() => expect(store.getState().config.safety.replayTrackingLimitUm).toBe(250))
+  expect(put).toHaveBeenCalledTimes(2)
+  expect(store.getState().configSaveError).toBeNull()
+})
+
 async function rejectStopThreshold(error: () => Error) {
   vi.spyOn(api, 'mockMode', 'get').mockReturnValue(false)
   const bodies: AppConfig[] = []

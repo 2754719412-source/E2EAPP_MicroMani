@@ -23,6 +23,7 @@ from typing import Any, cast
 from backend.core.config import SettingsService, reanchor_motion_soft_limits_to_current_origin
 from backend.core.force_config import hkvl_tare_sample_count
 from backend.core.gripper_force import effective_grip_torque
+from backend.core.jodell_modbus import GOBJ_MOVING
 from backend.core.gripper_protection import (
     icf_target_min_gap_mm,
     icf_target_protection_enabled,
@@ -77,6 +78,32 @@ MANUAL_AXIS_DIRECTION_SIGN: dict[str, list[int]] = {
 
 def axis_enabled_feedback_unreadable(side: str, axis: str) -> bool:
     return (side, axis) in UNREADABLE_SEVON_FEEDBACK_AXES
+
+
+def sample_after(stamp: object, boundary: int, now: int) -> bool:
+    return (isinstance(stamp, (int, float)) and not isinstance(stamp, bool) and math.isfinite(stamp)
+            and boundary < stamp <= now + 100)
+
+
+def _gripper_stopped(detail: object, boundary: int, now: int) -> bool | None:
+    """缺少新鲜状态返回 None；明确移动返回 False。"""
+    if not isinstance(detail, dict) or not sample_after(detail.get("positionSampleTs"), boundary, now):
+        return None
+    sample = detail.get("sample")
+    if not isinstance(sample, dict) or detail.get("positionOk") is False:
+        return None
+    gobj = sample.get("gOBJ")
+    if type(gobj) is not int or gobj not in range(4):
+        return None
+    if sample.get("transport") == "dll":
+        if (detail.get("positionOk") is not True or sample.get("positionValid") is not True
+                or not sample_after(sample.get("dllStatusReadStartedTs"), boundary, now)):
+            return None
+        return gobj != GOBJ_MOVING
+    gto = sample.get("gGTO")
+    if sample.get("statusValid") is not True or type(gto) is not int or gto not in (0, 1) or sample.get("fault", 0):
+        return None
+    return not (gto == 1 and gobj == GOBJ_MOVING)
 
 
 def normalize_motion_axis_enabled(side: str, values: list[Any]) -> list[bool | None]:
@@ -139,6 +166,28 @@ class CommandService:
         since = self._gripper_unconfirmed_since_ms.get(side)
         if since is not None and sample_ts > since:
             self._gripper_unconfirmed_since_ms.pop(side, None)
+
+    async def wait_for_grippers_stopped(self, requested_at: int, deadline: float) -> bool:
+        while self._gripper_unconfirmed_since_ms:
+            if self.gripper_motion_inflight() or time.monotonic() >= deadline:
+                return False
+            try:
+                status = (await self.hal.command("teleop.native.status", {})).get("response", {})
+            except (RuntimeError, TimeoutError):
+                status = {}
+            if time.monotonic() >= deadline or self.gripper_motion_inflight():
+                return False
+            grippers = status.get("grippers") if isinstance(status, dict) else None
+            for side, since in self.unconfirmed_gripper_sides().items():
+                detail = grippers.get(side) if isinstance(grippers, dict) else None
+                stopped = _gripper_stopped(detail, max(requested_at, since), now_ms())
+                if stopped is False:
+                    return False
+                if stopped:
+                    self.confirm_gripper_stopped(side, detail["positionSampleTs"])
+            if self._gripper_unconfirmed_since_ms:
+                await asyncio.sleep(.02)
+        return True
 
     def set_origin_mutation_lock_checker(self, checker: Callable[[], bool]) -> None:
         self._origin_mutation_locked = checker
@@ -1052,6 +1101,10 @@ class CommandService:
             check_ready()
             real_hardware = self._real_hardware_mode(config)
             if real_hardware and is_hkvl:
+                if self._gripper_unconfirmed_since_ms:
+                    if not await self.wait_for_grippers_stopped(now_ms(), time.monotonic() + 0.5):
+                        raise RuntimeError("夹爪仍在运动或缺少新的停止反馈，请停止夹爪并检查反馈后再去皮")
+                    check_ready()
                 payload: dict[str, object] = {"side": "all", "unloadedConfirmed": True}
                 payload["samples"] = hkvl_tare_sample_count(force.get("tareSamples", 0))
                 try:
@@ -1189,12 +1242,13 @@ class CommandService:
         if self.hardware is not None and self._real_hardware_mode(config):
             if request.command not in GRIPPER_MOTION_COMMANDS:
                 return await self._dispatch_real_gripper_command(config, request)
-            self._gripper_motion_inflight += 1
-            self.note_gripper_motion(request.side)
-            try:
-                return await self._dispatch_real_gripper_command(config, request)
-            finally:
-                self._gripper_motion_inflight -= 1
+            with self.safety.operation(request.side):
+                self._gripper_motion_inflight += 1
+                self.note_gripper_motion(request.side)
+                try:
+                    return await self._dispatch_real_gripper_command(config, request)
+                finally:
+                    self._gripper_motion_inflight -= 1
         self._validate_gripper_command_enabled(config, request)
         target = self._gripper_command_target(config, request)
         if target is None:

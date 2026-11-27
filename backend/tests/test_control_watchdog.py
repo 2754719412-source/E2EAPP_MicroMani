@@ -229,7 +229,8 @@ def test_idle_disconnect_stops_when_hal_cannot_confirm_axes_stationary(feedback)
     asyncio.run(exercise())
 
 
-def test_reconnect_during_idle_check_cancels_the_pending_stop() -> None:
+@pytest.mark.parametrize("stationary", [True, False])
+def test_reconnect_waits_for_idle_check_before_granting_control(stationary) -> None:
     async def exercise() -> None:
         watchdog, _now, _hal, invalidate, stop = make_watchdog()
         watchdog.motion_active = lambda: False
@@ -237,19 +238,32 @@ def test_reconnect_during_idle_check_cancels_the_pending_stop() -> None:
 
         async def axes_stationary():
             await release.wait()
-            return False
+            return stationary
 
         watchdog.axes_stationary = axes_stationary
         first = await confirm_mock_browser_lease(watchdog)
         watchdog.remove(first)
         await flush()
-        second = await confirm_mock_browser_lease(watchdog)
+        send = AsyncMock()
+        second = watchdog.register(send)
+        await watchdog.cycle()
+        with pytest.raises(ControlLeaseUnavailable):
+            watchdog.require_ready()
+        send.assert_not_awaited()
         release.set()
         await flush()
         try:
-            assert second in watchdog.clients
-            invalidate.assert_not_called()
-            stop.assert_not_awaited()
+            await watchdog.cycle()
+            if stationary:
+                assert second in watchdog.clients
+                watchdog.require_ready()
+                stop.assert_not_awaited()
+            else:
+                assert second not in watchdog.clients
+                invalidate.assert_called_once()
+                stop.assert_awaited_once()
+                with pytest.raises(ControlLeaseUnavailable):
+                    watchdog.require_ready()
         finally:
             await watchdog.close()
 
@@ -843,6 +857,7 @@ def test_dll_disconnect_requires_fresh_object_status(tmp_path, monkeypatch, gobj
     app = _app_for_stationary_check(tmp_path, monkeypatch)
     boundary = 1_800_000_000_000
     monkeypatch.setattr("backend.app.now_ms", lambda: boundary)
+    monkeypatch.setattr("backend.services.command_service.now_ms", lambda: boundary)
     app.state.commands._gripper_unconfirmed_since_ms["left"] = boundary - 100
     sample = {"transport": "dll", "positionValid": True, "statusValid": False, "gGTO": -1, "gOBJ": gobj}
     if read_offset is not None:

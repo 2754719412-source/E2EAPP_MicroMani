@@ -6536,8 +6536,9 @@ def test_emergency_stop_returns_before_slow_auto_policy_cleanup(
         assert result["response"].status_code == 200
 
 
+@pytest.mark.parametrize("modbus", [False, True])
 def test_acknowledge_safety_clears_latch_without_restoring_servos_or_moving_origin(
-    tmp_path: Path, monkeypatch: MonkeyPatch
+    tmp_path: Path, monkeypatch: MonkeyPatch, modbus: bool
 ) -> None:
     monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
 
@@ -6559,6 +6560,9 @@ def test_acknowledge_safety_clears_latch_without_restoring_servos_or_moving_orig
             self.commands.append((name, payload))
             if name == "motion.emergency_stop":
                 self.enabled = [False] * 12
+            if name == "teleop.native.status":
+                return {"response": {"running": False, "gripperCommandWorkerRunning": False,
+                                     "gripperFeedbackSampling": False}}
             if name == "control.lease":
                 return {"response": {"ok": True, "leaseFresh": True, "timeoutMs": 2500}}
             return {"command": name, "payload": payload}
@@ -6569,6 +6573,7 @@ def test_acknowledge_safety_clears_latch_without_restoring_servos_or_moving_orig
     client.app.state.telemetry.set_motion_axis_enabled("left", [True, False, True, False, False, False])
     client.app.state.telemetry.set_motion_axis_enabled("right", [True, True, False, False, False, False])
     config = client.app.state.settings.get_config()
+    config["gripper"]["workerTransport"] = "modbus" if modbus else "dll"
     config["motion"]["origin"] = {
         "valid": True,
         "leftValid": True,
@@ -6587,10 +6592,11 @@ def test_acknowledge_safety_clears_latch_without_restoring_servos_or_moving_orig
     acknowledge_response = client.post("/api/motion/safety/acknowledge")
 
     assert acknowledge_response.status_code == 200
-    assert [(name, payload) for name, payload in fake_hal.commands if name != "control.lease"] == [
-        ("motion.emergency_stop", {}),
-        ("motion.acknowledge_estop", {}),
-    ]
+    calls = [(name, payload) for name, payload in fake_hal.commands if name != "control.lease"]
+    assert calls[:2] == [("motion.emergency_stop", {}), ("motion.acknowledge_estop", {})]
+    assert [name for name, _ in calls[2:]] == ["teleop.native.status", "gripper.feedback.configure"]
+    assert calls[-1][1]["gripperWorkerTransport"] == ("modbus" if modbus else "dll")
+    assert "targetMm" not in calls[-1][1] and "side" not in calls[-1][1]
     assert acknowledge_response.json()["data"]["restoredMotionEnable"] == []
     assert acknowledge_response.json()["data"]["servoRestored"] is False
     assert client.app.state.settings.get_config()["motion"]["origin"] == origin_before

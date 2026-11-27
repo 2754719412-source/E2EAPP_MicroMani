@@ -59,6 +59,13 @@ export function gripperFeedbackHealth(
   if (!status) return 'unknown'
   const sideStatus = status.sides?.[side]
   if (!sideStatus) return 'unknown'
+  if (status.nativeManaged && status.command?.transport === 'modbus') {
+    // 后端按采样时钟剔除过期读数。保留上次命令结果，只用当前寄存器判断反馈。
+    const sample = sideStatus.sample
+    if (!sample?.statusValid) return 'pending'
+    if (sample.fault !== 0) return 'error'
+    return sample.positionValid && sample.currentValid ? 'ok' : 'pending'
+  }
   if (sideStatus.ok === false) return 'error'
   if (sideStatus.ok === true) {
     if (gripperFeedbackIsQueued(sideStatus)) return 'pending'

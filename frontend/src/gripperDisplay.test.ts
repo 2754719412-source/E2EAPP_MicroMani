@@ -8,6 +8,7 @@ import {
   initialGripperCommandProgress,
 } from './gripperDisplay'
 import { defaultConfig } from './data'
+import { sampleOf } from './test/gripperForceFixtures'
 import type { TelemetryFrame, TelemetryLinkStatus } from './types'
 
 function baseFrame(overrides: Partial<TelemetryFrame> = {}): TelemetryFrame {
@@ -39,6 +40,17 @@ const liveLink: TelemetryLinkStatus = { state: 'live', lastFrameReceivedAt: Date
 const offlineLink: TelemetryLinkStatus = { state: 'offline', lastFrameReceivedAt: null }
 
 describe('夹爪展示语义拆分', () => {
+  it('Modbus 当前反馈独立于上一条命令结果', () => {
+    const status = { nativeManaged: true, running: false, command: { transport: 'modbus' } }
+    for (const [sample, health] of [
+      [sampleOf(), 'ok'], [sampleOf({ fault: 4 }), 'error'],
+      [sampleOf({ statusValid: false }), 'pending'], [null, 'pending'],
+    ] as const) {
+      const frame = baseFrame({ gripperStatus: { ...status, sides: { right: { ok: false, sample } } } })
+      expect(gripperFeedbackHealth(frame, liveLink, 'right')).toBe(health)
+    }
+  })
+
   it('请求启停来自配置，不依赖反馈', () => {
     const disabled = structuredClone(defaultConfig)
     disabled.gripper.leftEnabled = false
