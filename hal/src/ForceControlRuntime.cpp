@@ -123,6 +123,28 @@ void ForceControlRuntime::configure(
   }
 }
 
+bool ForceControlRuntime::parametersOnlyChange(const ForceRuntimeConfig& config) const {
+  std::scoped_lock lock(mutex_);
+  // 采集健康且只改阈值/柔顺参数时热更新；原样重发仍走完整重配置，用于重连串口和故障恢复。
+  if (!running() || workerFailed_.load() || emergencyCallbackFailed_.load()) return false;
+  const bool sameAcquisition = config.source == config_.source && config.axisSign == config_.axisSign
+      && config.serial == config_.serial;
+  return sameAcquisition && !(config.safety == config_.safety && config.compliance == config_.compliance);
+}
+
+void ForceControlRuntime::updateParameters(const ForceRuntimeConfig& config) {
+  std::scoped_lock lifecycleLock(lifecycleMutex_);
+  validateConfig(config);
+  std::scoped_lock lock(mutex_);
+  if (tareInProgress_) throw std::runtime_error("force self-check is running; retry after it finishes");
+  safety_.updateThresholds(config.safety);
+  compliance_.configure(config.compliance);
+  lastCompliance_ = {};
+  lastComplianceActualUm_ = {};
+  config_.safety = config.safety;
+  config_.compliance = config.compliance;
+}
+
 ForceRuntimeConfig ForceControlRuntime::config() const {
   std::scoped_lock lock(mutex_);
   return config_;
@@ -168,6 +190,9 @@ void ForceControlRuntime::stop() {
     if (config_.source == "hkvl_serial") {
       if (wasRunning) {
         pendingTrip = safety_.latchExternal("force_acquisition_stopped", forceMonotonicMilliseconds());
+        // 确认不再依赖自检状态，停止采集后须等重新启动并收到双侧新样本才可确认。
+        safety_.markDisconnected(0, forceMonotonicMilliseconds());
+        safety_.markDisconnected(1, forceMonotonicMilliseconds());
       }
       calibration_ = {};
       calibration_.state = "waiting_sensors";
@@ -281,10 +306,8 @@ void ForceControlRuntime::acknowledgeEmergencyStop(
     throw std::runtime_error("force emergency-stop callback failed; diagnose and reconfigure before acknowledgement");
   }
   if (workerFailed_.load()) throw std::runtime_error("force worker failed; reconfigure before acknowledgement");
+  // 不再要求启动自检完成或力稳定；只要求双侧传感器在线且样本新鲜，确认后仍超限会被重新锁存。
   if (config_.source == "hkvl_serial") {
-    if (calibration_.state != "ready_for_ack" && calibration_.state != "ready") {
-      throw std::runtime_error("startup force self-check is not complete");
-    }
     std::string blocker;
     if (!safety_.canAcknowledge(nowMonotonicMs, &blocker)) {
       throw std::runtime_error(blocker);
@@ -295,7 +318,6 @@ void ForceControlRuntime::acknowledgeEmergencyStop(
   if (callback) callback();
   if (config_.source == "hkvl_serial") {
     safety_.acknowledge(nowMonotonicMs);
-    calibration_.state = "ready";
   }
   compliance_.reset();
   lastCompliance_ = {};
@@ -316,7 +338,6 @@ std::string ForceControlRuntime::tare(int side, int sampleCount, std::function<b
     throw std::runtime_error("invalid HKVL tare sample count; expected 200..1000");
   }
   std::uint64_t epoch;
-  std::optional<ForceSafetyTrip> pendingTrip;
   {
     std::scoped_lock lock(mutex_);
     if (config_.source != "hkvl_serial") {
@@ -327,7 +348,7 @@ std::string ForceControlRuntime::tare(int side, int sampleCount, std::function<b
     }
     if (commandAllowed && !commandAllowed()) throw std::runtime_error("HKVL tare cancelled by emergency stop");
     epoch = ++tareEpoch_;
-    pendingTrip = safety_.latchExternal("force_tare_pending", forceMonotonicMilliseconds());
+    // 去皮不再锁存急停：调用方已要求遥操作停止且各轴静止，主力锁存按旧偏置持续监测，新急停经命令代际取消。
     compliance_.reset();
     lastCompliance_ = {};
     lastComplianceActualUm_ = {};
@@ -343,7 +364,6 @@ std::string ForceControlRuntime::tare(int side, int sampleCount, std::function<b
     }
     tareInProgress_ = true;
   }
-  invokeEmergencyStopIfNeeded(pendingTrip);
   const auto allowed = [&]() {
     return tareEpoch_ == epoch && !tareSafety_.latched()
         && !workerFailed_.load() && !emergencyCallbackFailed_.load()
@@ -366,10 +386,7 @@ std::string ForceControlRuntime::tare(int side, int sampleCount, std::function<b
     std::scoped_lock lock(mutex_);
     if (!allowed()) throw std::runtime_error("HKVL tare cancelled by emergency stop");
     tareInProgress_ = false;
-    // 提交后重新等待双侧新样本和稳定窗口，再允许操作者确认恢复。
-    safety_.markDisconnected(0, forceMonotonicMilliseconds());
-    safety_.markDisconnected(1, forceMonotonicMilliseconds());
-    calibration_.state = "ready_for_ack";
+    calibration_.state = "ready";
     calibration_.progress = 100;
     calibration_.hasResult = true;
     calibration_.result = result;
@@ -504,11 +521,6 @@ std::string ForceControlRuntime::forceStateJson(
   std::string acknowledgeBlocker;
   bool canAcknowledge =
       safety_.canAcknowledge(nowMonotonicMs, &acknowledgeBlocker);
-  if (config_.source == "hkvl_serial"
-      && calibration_.state != "ready_for_ack" && calibration_.state != "ready") {
-    canAcknowledge = false;
-    acknowledgeBlocker = "startup force self-check is not complete";
-  }
   if (emergencyCallbackFailed_.load()) {
     canAcknowledge = false;
     acknowledgeBlocker = "force emergency-stop callback failed; diagnose and reconfigure before acknowledgement";

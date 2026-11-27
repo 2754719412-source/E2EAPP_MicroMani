@@ -201,7 +201,6 @@ void testAcknowledgementCannotOvertakeForceStopBookkeeping() {
   JodellGripperDriver gripper;
   NativeTeleopController teleop(motion, motionExecutor, omega, gripper);
   ForceControlRuntime force([]() {}, []() {});
-  ForceControlRuntimeTestAccess::markCalibrationReady(force);
   const auto started = std::chrono::steady_clock::now();
   HalCommandDispatcher dispatcher(motion, motionExecutor, omega, teleop, force, started);
   std::promise<void> forceLockHeld;
@@ -248,7 +247,6 @@ void testTareHonorsCancellationBeforeDriverAccess() {
   force.acceptSample(1, {}, {}, 1.0, 1);
   force.acceptSample(0, {}, {}, 501.0, 501);
   force.acceptSample(1, {}, {}, 501.0, 501);
-  ForceControlRuntimeTestAccess::markCalibrationReady(force);
   force.acknowledgeEmergencyStop(501.0);
   require(!force.safetyLatched(), "test setup should release the force latch using safe samples");
   motion.emergencyStop();

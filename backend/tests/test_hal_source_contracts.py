@@ -2400,17 +2400,19 @@ def test_hal_native_configuration_and_omega_force_share_the_emergency_gate() -> 
     assert "omega_.requestEmergencyStop();" in dispatcher
 
 
-def test_hal_tare_requires_safe_stopped_self_check_and_preserves_epoch_guard() -> None:
+def test_hal_tare_requires_stationary_self_check_and_preserves_epoch_guard() -> None:
     dispatcher = (REPO_ROOT / "hal" / "src" / "HalCommandDispatcher.cpp").read_text(encoding="utf-8")
     runtime = (REPO_ROOT / "hal" / "src" / "ForceControlRuntime.cpp").read_text(encoding="utf-8")
     driver = (REPO_ROOT / "hal" / "src" / "HkvlForceDriver.cpp").read_text(encoding="utf-8")
     branch = dispatcher.split('if (name == "force.tare")', 1)[1].split('if (name == "teleop.native.configure")', 1)[0]
     assert '"unloadedConfirmed", false' in branch
-    assert branch.index('requireForceMutationSafe("force tare");') < branch.index("forceRuntime_.tare(")
-    assert "motion_.commandEpoch() == tareCommandEpoch" in branch
-    assert branch.index("const auto tareCommandEpoch") < branch.index("handleEmergencyStop();")
+    # 去皮只要求静止和遥操作停止，不再自行急停；新急停仍通过命令代际取消。
+    assert branch.index('requireForceMutationSafe("force tare", false);') < branch.index("forceRuntime_.tare(")
+    assert "handleEmergencyStop();" not in branch
+    assert "motion_.commandEpoch() == commandEpoch" in branch
     runtime_tare = runtime.split("std::string ForceControlRuntime::tare(", 1)[1].split("ForceComplianceResult ForceControlRuntime::complianceCorrection", 1)[0]
-    assert 'safety_.latchExternal("force_tare_pending"' in runtime_tare
+    assert "safety_.latchExternal" not in runtime_tare and "invokeEmergencyStopIfNeeded" not in runtime_tare
+    assert 'calibration_.state = "ready";' in runtime_tare
     assert "tareEpoch_ == epoch" in runtime_tare
     assert "!tareSafety_.latched()" in runtime_tare
     assert runtime_tare.index("if (!allowed()) return false;") < runtime_tare.index("commit();")

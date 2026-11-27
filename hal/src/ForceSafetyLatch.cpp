@@ -1,6 +1,6 @@
 /*
  * 阅读导航 06｜HAL 硬件与安全
- * 职责：根据超限次数、严重超限和数据超时锁存故障；恢复需双侧健康并满足稳定窗口。
+ * 职责：根据超限次数、严重超限和数据超时锁存故障；恢复需双侧在线且样本新鲜。
  * 先看：ForceSafetyLatch::configure → ForceSafetyLatch::onSample → ForceSafetyLatch::checkWatchdog → ForceSafetyLatch::latchExternal。
  * 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
  */
@@ -18,9 +18,8 @@ ForceSafetyLatch::ForceSafetyLatch(
   configure(config, configuredAtMs);
 }
 
-void ForceSafetyLatch::configure(
-    const ForceSafetyConfig& config,
-    double nowMs) {
+namespace {
+void validateSafetyConfig(const ForceSafetyConfig& config) {
   for (std::size_t i = 0; i < config.warn.size(); ++i) {
     if (!(config.warn[i] > 0.0 && config.warn[i] < config.stop[i])) {
       throw std::invalid_argument("force safety thresholds require 0 < warn < stop");
@@ -29,6 +28,13 @@ void ForceSafetyLatch::configure(
   if (config.watchdogMs <= 0.0 || config.acknowledgeStableMs < 0.0) {
     throw std::invalid_argument("force safety timing values must be positive");
   }
+}
+}  // namespace
+
+void ForceSafetyLatch::configure(
+    const ForceSafetyConfig& config,
+    double nowMs) {
+  validateSafetyConfig(config);
   config_ = config;
   configuredAtMs_ = nowMs;
   latched_ = false;
@@ -38,7 +44,12 @@ void ForceSafetyLatch::configure(
   lastSampleMs_ = {};
   hasSample_ = {false, false};
   connected_ = {false, false};
-  stableSinceMs_.reset();
+}
+
+void ForceSafetyLatch::updateThresholds(const ForceSafetyConfig& config) {
+  validateSafetyConfig(config);
+  config_ = config;
+  consecutiveAtStop_ = {};
 }
 
 std::optional<ForceSafetyTrip> ForceSafetyLatch::onSample(
@@ -82,7 +93,6 @@ std::optional<ForceSafetyTrip> ForceSafetyLatch::onSample(
       consecutiveAtStop_[side][channel] = 0;
     }
   }
-  updateStableWindow(nowMs);
   return newTrip;
 }
 
@@ -94,11 +104,9 @@ std::optional<ForceSafetyTrip> ForceSafetyLatch::checkWatchdog(double nowMs) {
         : nowMs - configuredAtMs_;
     if ((!connected_[side] || !hasSample_[side] || ageMs > config_.watchdogMs)
         && !latched_) {
-      stableSinceMs_.reset();
       return latch(side, -1, ageMs, "watchdog_timeout");
     }
   }
-  updateStableWindow(nowMs);
   return std::nullopt;
 }
 
@@ -117,7 +125,6 @@ void ForceSafetyLatch::markDisconnected(int side, double nowMs) {
     return;
   }
   connected_[side] = false;
-  stableSinceMs_.reset();
   (void)nowMs;
 }
 
@@ -144,31 +151,14 @@ double ForceSafetyLatch::dangerIndex() const {
   return std::clamp(danger, 0.0, 1.2);
 }
 
-// 确认不会跳过安全条件：双侧必须在线、样本新鲜、低于警告阈值，并持续满足稳定窗口。
+// 确认只要求双侧在线且样本新鲜，不再等待低于警告阈值或稳定窗口；确认后仍超限会被重新锁存。
 bool ForceSafetyLatch::canAcknowledge(
     double nowMs,
     std::string* blocker) {
-  updateStableWindow(nowMs);
-  if (!latched_) {
-    if (blocker) {
-      blocker->clear();
-    }
-    return true;
-  }
-  if (!healthyAndUnloaded(nowMs, blocker)) {
-    return false;
-  }
-  if (!stableSinceMs_.has_value()
-      || nowMs - *stableSinceMs_ < config_.acknowledgeStableMs) {
-    if (blocker) {
-      *blocker = "both sensors must remain healthy and below warning thresholds for 500 ms";
-    }
-    return false;
-  }
   if (blocker) {
     blocker->clear();
   }
-  return true;
+  return !latched_ || sensorsHealthy(nowMs, blocker);
 }
 
 void ForceSafetyLatch::acknowledge(double nowMs) {
@@ -188,21 +178,10 @@ std::optional<ForceSafetyTrip> ForceSafetyLatch::latch(
     const std::string& reason) {
   latched_ = true;
   trip_ = ForceSafetyTrip{side, channel, value, reason};
-  stableSinceMs_.reset();
   return trip_;
 }
 
-void ForceSafetyLatch::updateStableWindow(double nowMs) {
-  if (!healthyAndUnloaded(nowMs, nullptr)) {
-    stableSinceMs_.reset();
-    return;
-  }
-  if (!stableSinceMs_.has_value()) {
-    stableSinceMs_ = nowMs;
-  }
-}
-
-bool ForceSafetyLatch::healthyAndUnloaded(
+bool ForceSafetyLatch::sensorsHealthy(
     double nowMs,
     std::string* blocker) const {
   for (int side = 0; side < 2; ++side) {
@@ -217,16 +196,6 @@ bool ForceSafetyLatch::healthyAndUnloaded(
         *blocker = side == 0 ? "left force sample is stale" : "right force sample is stale";
       }
       return false;
-    }
-    for (std::size_t channel = 0; channel < latest_[side].size(); ++channel) {
-      if (std::abs(latest_[side][channel]) >= config_.warn[channel]) {
-        if (blocker) {
-          *blocker = side == 0
-              ? "left force sensor is above warning threshold"
-              : "right force sensor is above warning threshold";
-        }
-        return false;
-      }
     }
   }
   return true;

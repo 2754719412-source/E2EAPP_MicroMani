@@ -23,15 +23,6 @@
 #include <string>
 #include <vector>
 
-namespace appstation::hal {
-struct ForceControlRuntimeTestAccess {
-  static void markCalibrationReady(ForceControlRuntime& runtime) {
-    std::scoped_lock lock(runtime.mutex_);
-    runtime.calibration_.state = "ready_for_ack";
-  }
-};
-}  // namespace appstation::hal
-
 namespace {
 
 using appstation::hal::ForceComplianceConfig;
@@ -195,21 +186,47 @@ void testSafetyLatch() {
   require(watchdogTrip.has_value(), "watchdog must trip after timeout");
   require(watchdogTrip->reason == "watchdog_timeout", "watchdog reason mismatch");
 
-  auto stableConfig = safetyConfig();
-  stableConfig.watchdogMs = 1000.0;
-  ForceSafetyLatch stable(stableConfig, 0.0);
-  stable.onSample(0, {4.8, 0, 0, 0, 0, 0}, 1.0);
-  stable.onSample(0, unloaded, 2.0);
-  stable.onSample(1, unloaded, 2.0);
-  stable.onSample(0, unloaded, 501.0);
-  stable.onSample(1, unloaded, 501.0);
+  // 确认只要求双侧在线且样本新鲜，不再等待稳定窗口或低于警告阈值。
+  auto ackConfig = safetyConfig();
+  ackConfig.watchdogMs = 1000.0;
+  ForceSafetyLatch ack(ackConfig, 0.0);
+  ack.onSample(0, {4.8, 0, 0, 0, 0, 0}, 1.0);
+  require(ack.latched(), "120 percent sample must latch before acknowledgement");
   std::string blocker;
-  require(!stable.canAcknowledge(501.0, &blocker), "stable window must be a full 500 ms");
-  stable.onSample(0, unloaded, 502.0);
-  stable.onSample(1, unloaded, 502.0);
-  require(stable.canAcknowledge(502.0, &blocker), "healthy unloaded samples must unlock acknowledgement");
-  stable.acknowledge(502.0);
-  require(!stable.latched(), "acknowledge must only clear the safety latch");
+  require(!ack.canAcknowledge(2.0, &blocker) && blocker == "right force sensor is not healthy",
+      "acknowledgement must wait until both sensors report samples");
+  ack.onSample(0, {2.5, 0, 0, 0, 0, 0}, 2.0);
+  ack.onSample(1, unloaded, 2.0);
+  require(ack.canAcknowledge(2.0, &blocker),
+      "fresh samples above warning but below stop must unlock acknowledgement without a stable window");
+  require(!ack.canAcknowledge(1003.0, &blocker) && blocker == "left force sample is stale",
+      "stale samples must still block acknowledgement");
+  ack.onSample(0, unloaded, 1003.0);
+  ack.onSample(1, unloaded, 1003.0);
+  ack.acknowledge(1003.0);
+  require(!ack.latched(), "acknowledge must only clear the safety latch");
+
+  // 阈值热更新立即生效并重新累计连续超限次数；已有锁存保持到人工确认。
+  auto raised = safetyConfig();
+  raised.warn[0] = 5.0;
+  raised.stop[0] = 10.0;
+  ForceSafetyLatch tuned(safetyConfig(), 0.0);
+  tuned.onSample(0, {4.0, 0, 0, 0, 0, 0}, 1.0);
+  tuned.onSample(0, {4.0, 0, 0, 0, 0, 0}, 2.0);
+  tuned.updateThresholds(raised);
+  require(!tuned.onSample(0, {4.0, 0, 0, 0, 0, 0}, 3.0).has_value() && !tuned.latched(),
+      "raised stop threshold must apply immediately");
+  ForceSafetyLatch held(safetyConfig(), 0.0);
+  held.onSample(1, {0, 0, 6.0, 0, 0, 0}, 1.0);
+  held.updateThresholds(raised);
+  require(held.latched() && held.trip().reason == "force_120_percent",
+      "threshold update must keep an existing latch and its reason");
+  auto invalid = safetyConfig();
+  invalid.warn[0] = invalid.stop[0];
+  bool rejected = false;
+  try { tuned.updateThresholds(invalid); } catch (const std::invalid_argument&) { rejected = true; }
+  require(rejected && !tuned.onSample(0, {4.0, 0, 0, 0, 0, 0}, 4.0).has_value(),
+      "invalid thresholds must be rejected without replacing the active ones");
 }
 
 ForceComplianceConfig complianceConfig() {
@@ -285,8 +302,6 @@ void testDefaultHkvlForceRuntime() {
   config.safety = safetyConfig();
   config.safety.watchdogMs = 1000.0;
   runtime.configure(config, 0.0);
-  // 本用例验证安全阈值/坐标映射；真实自检流程由 ForceTareRuntimeTests 覆盖。
-  appstation::hal::ForceControlRuntimeTestAccess::markCalibrationReady(runtime);
   require(runtime.usesHkvl(), "default runtime must select HKVL");
   require(runtime.safetyLatched(), "HKVL configuration must begin in a safety latch");
   require(emergencyStops == 1, "HKVL configuration must invoke the global emergency stop");
@@ -349,8 +364,6 @@ void testForceRuntimeAlignsAllSixChannelsBeforeStandardConsumption() {
   config.safety.watchdogMs = 1000.0;
   config.compliance = complianceConfig();
   runtime.configure(config, 0.0);
-  // 本用例验证安全阈值/坐标映射；真实自检流程由 ForceTareRuntimeTests 覆盖。
-  appstation::hal::ForceControlRuntimeTestAccess::markCalibrationReady(runtime);
 
   runtime.acceptSample(
       0,

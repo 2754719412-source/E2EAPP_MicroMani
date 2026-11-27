@@ -17,6 +17,7 @@ struct ForceSafetyConfig {
   std::array<double, 6> stop{{30.0, 30.0, 30.0, 1.0, 1.0, 1.0}};
   double watchdogMs{50.0};
   double acknowledgeStableMs{500.0};
+  bool operator==(const ForceSafetyConfig&) const = default;
 };
 
 struct ForceSafetyTrip {
@@ -33,6 +34,8 @@ class ForceSafetyLatch {
       double configuredAtMs = 0.0);
 
   void configure(const ForceSafetyConfig& config, double nowMs);
+  // 只替换阈值与看门狗时限，保留已有锁存、故障原因和最近样本；连续超限计数按新阈值重新累计。
+  void updateThresholds(const ForceSafetyConfig& config);
   std::optional<ForceSafetyTrip> onSample(
       int side,
       const std::array<double, 6>& values,
@@ -55,8 +58,7 @@ class ForceSafetyLatch {
       int channel,
       double value,
       const std::string& reason);
-  void updateStableWindow(double nowMs);
-  bool healthyAndUnloaded(double nowMs, std::string* blocker) const;
+  bool sensorsHealthy(double nowMs, std::string* blocker) const;
 
   ForceSafetyConfig config_{};
   double configuredAtMs_{0.0};
@@ -67,7 +69,6 @@ class ForceSafetyLatch {
   std::array<double, 2> lastSampleMs_{};
   std::array<bool, 2> hasSample_{{false, false}};
   std::array<bool, 2> connected_{{false, false}};
-  std::optional<double> stableSinceMs_;
 };
 
 }  // namespace appstation::hal

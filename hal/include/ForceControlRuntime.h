@@ -49,6 +49,10 @@ class ForceControlRuntime {
   ForceControlRuntime& operator=(const ForceControlRuntime&) = delete;
 
   void configure(const ForceRuntimeConfig& config, double nowMonotonicMs);
+  // 采集正常运行、数据源/串口/滤波/轴向符号不变且阈值或导纳参数确有变化时热更新：
+  // 不重启采集、不清除去皮结果、不触发急停；已有锁存保持。原样重发仍走完整重配置。
+  bool parametersOnlyChange(const ForceRuntimeConfig& config) const;
+  void updateParameters(const ForceRuntimeConfig& config);
   ForceRuntimeConfig config() const;
   void start();
   void stop();
@@ -78,8 +82,6 @@ class ForceControlRuntime {
   std::string forceStateJson(double nowMonotonicMs);
 
  private:
-  friend struct ForceControlRuntimeTestAccess;
-
   static void validateConfig(const ForceRuntimeConfig& config);
   void monitorLoop();
   void invokeEmergencyStopIfNeeded(

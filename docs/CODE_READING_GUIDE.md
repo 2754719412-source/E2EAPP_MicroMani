@@ -68,7 +68,7 @@ flowchart LR
 
 [force_config.py](../backend/core/force_config.py) 校验配置，[start-hal.ps1](../scripts/start-hal.ps1) 按 PnP 身份解析 HKVL COM 口并注入运行配置。随后读 [HkvlForceProtocol](../hal/src/HkvlForceProtocol.cpp) → [HkvlForceDriver](../hal/src/HkvlForceDriver.cpp) → [ForceControlRuntime](../hal/src/ForceControlRuntime.cpp) → [ForceSafetyLatch](../hal/src/ForceSafetyLatch.cpp) / [ForceComplianceController](../hal/src/ForceComplianceController.cpp)。
 
-安全检测使用方向对齐后的去皮值，柔顺使用滤波值。达到停机阈值 120% 时单帧触发；普通停机阈值需同一通道连续三帧达到。任一侧断连、缺样或超时也会锁存。恢复需双侧健康、数据新鲜、低于警告阈值并维持稳定窗口。阈值以当前配置为准，见 [ForceSafetyConfig](../hal/include/ForceSafetyLatch.h)。
+安全检测使用方向对齐后的去皮值，柔顺使用滤波值。达到停机阈值 120% 时单帧触发；普通停机阈值需同一通道连续三帧达到。任一侧断连、缺样或超时也会锁存。恢复只需双侧在线且数据新鲜，不再要求低于警告阈值、稳定窗口或自检完成；确认后仍超限会再次锁存。阈值和导纳参数可热更新，不重启采集。阈值以当前配置为准，见 [ForceSafetyConfig](../hal/include/ForceSafetyLatch.h)。
 
 柔顺修正当前叠加到 X/Z，最终仍经运动驱动限幅；实际执行量回传柔顺控制器。源码相关测试在 [ForceCoreTests.cpp](../hal/tests/ForceCoreTests.cpp)，Python 配置测试在 [test_force_config.py](../backend/tests/test_force_config.py)。NI-DAQ 使用独立的 [force_nidaq.py](../backend/drivers/force_nidaq.py) 路径。
 

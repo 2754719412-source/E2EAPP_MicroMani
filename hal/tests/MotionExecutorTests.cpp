@@ -357,7 +357,6 @@ void disabledTeleopAxisStopsButCanRecover() {
       config.source = "hkvl_serial";
       config.safety.watchdogMs = 1000;
       force.configure(config, 0);
-      ForceControlRuntimeTestAccess::markCalibrationReady(force);
       const auto healthyForce = [&](double now) {
         for (double offset : {0.0, 501.0}) {
           for (int sensor = 0; sensor < 2; ++sensor) force.acceptSample(sensor, {}, {}, now + offset, 1000);

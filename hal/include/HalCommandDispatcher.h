@@ -37,7 +37,7 @@ class HalCommandDispatcher {
   std::string handleEmergencyStop(const char* reason);
 
  private:
-  void requireForceMutationSafe(const char* operation);
+  void requireForceMutationSafe(const char* operation, bool requireServosDisabled = true);
 
   LTDMCDriver& motion_;
   MotionExecutor& executor_;

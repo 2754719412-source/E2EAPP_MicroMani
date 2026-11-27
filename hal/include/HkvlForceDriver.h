@@ -27,6 +27,7 @@ struct HkvlSerialConfig {
   int expectedSampleHz{1000};
   bool lowpassEnabled{true};
   double lowpassCutoffHz{10.0};
+  bool operator==(const HkvlSerialConfig&) const = default;
 };
 
 struct HkvlDriverSample {

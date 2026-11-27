@@ -58,12 +58,15 @@ std::string HalCommandDispatcher::handleEmergencyStop(const char* reason) {
   return "{\"ok\":true}";
 }
 
-void HalCommandDispatcher::requireForceMutationSafe(const char* operation) {
+void HalCommandDispatcher::requireForceMutationSafe(const char* operation, bool requireServosDisabled) {
   if (nativeTeleop_.running()) {
     throw std::runtime_error(std::string(operation) + " requires native teleop to be stopped");
   }
   for (const auto& axis : motion_.readState().axes) {
-    if (axis.moving || axis.enabled) {
+    if (axis.moving) {
+      throw std::runtime_error(std::string(operation) + " requires all axes stopped");
+    }
+    if (requireServosDisabled && axis.enabled) {
       throw std::runtime_error(std::string(operation) + " requires all axes stopped and servos disabled");
     }
   }
@@ -127,10 +130,15 @@ std::string HalCommandDispatcher::handle(const std::string& name, const std::str
     return motion_.timingJson();
   }
   if (name == "force.configure") {
+    const auto config = jsonForceRuntimeConfig(bodyText, forceRuntime_.config());
+    if (forceRuntime_.parametersOnlyChange(config)) {
+      // 仅阈值/柔顺参数：静止即可热更新，不重启采集、不重置去皮、不触发急停；已有锁存保持到确认。
+      requireForceMutationSafe("force parameter update", false);
+      forceRuntime_.updateParameters(config);
+      return "{\"ok\":true,\"applied\":\"parameters\"}";
+    }
     requireForceMutationSafe("force configuration");
-    forceRuntime_.configure(
-        jsonForceRuntimeConfig(bodyText, forceRuntime_.config()),
-        forceMonotonicMilliseconds());
+    forceRuntime_.configure(config, forceMonotonicMilliseconds());
     return "{\"ok\":true}";
   }
   if (name == "force.tare") {
@@ -143,7 +151,8 @@ std::string HalCommandDispatcher::handle(const std::string& name, const std::str
     if (!jsonBoolValue(bodyText, "unloadedConfirmed", false)) {
       throw std::runtime_error("force tare requires confirmation that both sensors are unloaded");
     }
-    requireForceMutationSafe("force tare");
+    // 去皮只要求静止，不再先急停/下使能；新急停仍通过命令代际取消本次去皮。
+    requireForceMutationSafe("force tare", false);
     const auto sideValue = lowercase(jsonStringValueOr(bodyText, "side", "all"));
     if (sideValue != "all" && sideValue != "both") {
       throw std::runtime_error("HKVL startup force self-check requires side=all");
@@ -156,14 +165,10 @@ std::string HalCommandDispatcher::handle(const std::string& name, const std::str
     if (emergencyStopsInProgress_.load() != 0 || motion_.commandEpoch() != commandEpoch) {
       throw std::runtime_error("HKVL tare cancelled by emergency stop");
     }
-    // 此停止路径先撤销权限，再由 emergencyStop 再次锁存，共增加两次代际。
-    // 预先计算自身停机的代际，不能在停机后读取新值而吞掉并发急停。
-    const auto tareCommandEpoch = (commandEpoch + 4U) | 1U;
-    handleEmergencyStop();
     return forceRuntime_.tare(-1, static_cast<int>(samples),
-        [this, tareCommandEpoch, &ensureTareDeadline]() {
+        [this, commandEpoch, &ensureTareDeadline]() {
           ensureTareDeadline();
-          return emergencyStopsInProgress_.load() == 0 && motion_.commandEpoch() == tareCommandEpoch;
+          return emergencyStopsInProgress_.load() == 0 && motion_.commandEpoch() == commandEpoch;
         });
   }
   if (name == "teleop.native.configure") {

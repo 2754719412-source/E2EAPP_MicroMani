@@ -30,11 +30,4 @@ struct MotionExecutorTestAccess {
     motion.cachedState_.axes[stateIndex(side, SemanticAxis::X)].moving = value;
   }
 };
-
-struct ForceControlRuntimeTestAccess {
-  static void markCalibrationReady(ForceControlRuntime& runtime) {
-    std::scoped_lock lock(runtime.mutex_);
-    runtime.calibration_.state = "ready_for_ack";
-  }
-};
 }

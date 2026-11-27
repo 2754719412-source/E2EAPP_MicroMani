@@ -121,7 +121,6 @@ ForceRuntimeConfig testConfig() {
   ForceRuntimeConfig config;
   config.serial.lowpassEnabled = false;
   config.safety.watchdogMs = 200;
-  config.safety.acknowledgeStableMs = 80;
   return config;
 }
 
@@ -159,20 +158,19 @@ struct Fixture {
   }
 };
 
-void testSuccessfulSelfCheckRequiresExplicitStableAcknowledgement() {
+void testSuccessfulSelfCheckCommitsWithoutEmergencyStop() {
   Fixture fixture;
+  const int stopsBefore = fixture.stops.load();
   const auto result = fixture.force.tare(-1, kHkvlTareMinSamples);
   require(result.find("\"ok\":true") != std::string::npos, "successful self-check did not return a result");
   require(result.find("\"preMean\":[0.5,0,0,0,0,0]") != std::string::npos
       && result.find("\"preMean\":[-0.25,0,0,0,0,0]") != std::string::npos,
       "successful self-check omitted measured pre-tare statistics");
-  require(calibrationIs(fixture.force, "ready_for_ack") && fixture.force.safetyLatched(),
-      "self-check must leave safety latched until explicit acknowledgement");
-  require(fixture.acknowledgements.load() == 0, "self-check acknowledged the stop automatically");
-  // 新样本尚未到齐或稳定窗口尚未结束，两种原因都必须拒绝立即确认。
-  rejects([&]() { fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds()); }, "");
-  await([&]() { return state(fixture.force).find("\"canAcknowledge\":true") != std::string::npos; },
-      "new post-tare samples did not satisfy the stability window");
+  require(calibrationIs(fixture.force, "ready") && fixture.stops.load() == stopsBefore,
+      "self-check must finish ready without its own emergency stop");
+  // 去皮不解除已有锁存，也不自动确认；配置锁存仍需人工确认。
+  require(fixture.force.safetyLatched() && fixture.acknowledgements.load() == 0,
+      "self-check must not release an existing latch automatically");
   fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds());
   require(!fixture.force.safetyLatched() && calibrationIs(fixture.force, "ready")
       && fixture.acknowledgements.load() == 1, "explicit acknowledgement did not finish startup");
@@ -180,17 +178,25 @@ void testSuccessfulSelfCheckRequiresExplicitStableAcknowledgement() {
   require(json.find("\"sensorTareBias\":[0.5,0,0,0,0,0]") != std::string::npos
       && json.find("\"sensorTareBias\":[-0.25,0,0,0,0,0]") != std::string::npos,
       "successful self-check did not commit both raw sensor biases");
+
+  // 运行中再次去皮：不锁存、不急停，提交后仍保持就绪。
+  fixture.force.tare(-1, kHkvlTareMinSamples);
+  require(!fixture.force.safetyLatched() && calibrationIs(fixture.force, "ready")
+      && fixture.stops.load() == stopsBefore, "repeated self-check while unlatched must not stop motion");
 }
 
-void testIncompleteOrSingleSideSelfCheckCannotRecover() {
+void testAcknowledgementNoLongerRequiresSelfCheck() {
   Fixture fixture;
   require(state(fixture.force).find("\"completedAtUnixMs\":0,\"sides\":{}") != std::string::npos,
       "incomplete self-check must not report fabricated zero statistics");
-  rejects([&]() { fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds()); }, "self-check is not complete");
   rejects([&]() { fixture.force.tare(0, kHkvlTareMinSamples); }, "side=all");
   rejects([&]() { fixture.force.tare(1, kHkvlTareMinSamples); }, "side=all");
-  require(fixture.force.safetyLatched() && fixture.acknowledgements.load() == 0,
-      "incomplete self-check released the safety latch");
+  // 双侧在线且样本新鲜即可确认；未自检时校准状态保持未就绪，录制预检仍会拦截。
+  fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds());
+  require(!fixture.force.safetyLatched() && fixture.acknowledgements.load() == 1,
+      "healthy sensors must allow acknowledgement without a completed self-check");
+  require(calibrationIs(fixture.force, "waiting_sensors"),
+      "acknowledgement must not mark an untared sensor as calibrated");
 }
 
 void testWorkerFailureAndEmergencyCallbackFailureRejectSelfCheck() {
@@ -213,8 +219,13 @@ void testWorkerFailureAndEmergencyCallbackFailureRejectSelfCheck() {
 
 enum class Cancellation { externalStop, commandEpoch, overload, watchdog, workerFailure, validationStop };
 
-void testCancellationPreservesBothOldBiases(Cancellation cancellation) {
+void testCancellationPreservesBothOldBiases(Cancellation cancellation, bool acknowledgedFirst) {
   Fixture fixture;
+  if (acknowledgedFirst) {
+    fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds());
+    require(!fixture.force.safetyLatched(), "precondition: configuration latch was not acknowledged");
+  }
+  const int stopsBefore = fixture.stops.load();
   fixture.samples.pause();
   std::atomic_bool commandAllowed{true};
   auto pending = std::async(std::launch::async, [&]() {
@@ -258,6 +269,10 @@ void testCancellationPreservesBothOldBiases(Cancellation cancellation) {
       "self-check was not cancelled by the safety event: " + error);
   require(calibrationIs(fixture.force, "failed") && fixture.force.safetyLatched(),
       "cancelled self-check must remain failed and latched");
+  if (acknowledgedFirst && (cancellation == Cancellation::overload || cancellation == Cancellation::watchdog)) {
+    // 去皮期间主力锁存持续监测，未锁存时超限或失联仍须触发一次全局急停。
+    require(fixture.stops.load() == stopsBefore + 1, "force event during self-check did not invoke one emergency stop");
+  }
   requireOldBias(fixture.force);
 }
 
@@ -265,17 +280,66 @@ void testStopAndConfigurationInvalidateCompletedSelfCheck() {
   for (bool reconfigure : {false, true}) {
     Fixture fixture;
     fixture.force.tare(-1, kHkvlTareMinSamples);
-    require(calibrationIs(fixture.force, "ready_for_ack"), "precondition: self-check was not successful");
-    await([&]() { return state(fixture.force).find("\"canAcknowledge\":true") != std::string::npos; },
-        "self-check did not become acknowledgeable before stop/configuration");
+    require(calibrationIs(fixture.force, "ready"), "precondition: self-check was not successful");
     fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds());
-    require(calibrationIs(fixture.force, "ready"), "precondition: startup did not complete");
+    require(!fixture.force.safetyLatched(), "precondition: startup did not complete");
     if (reconfigure) fixture.force.configure(fixture.config, forceMonotonicMilliseconds());
     else fixture.force.stop();
     require(calibrationIs(fixture.force, "waiting_sensors"), "stop/configuration retained a completed self-check");
     require(fixture.force.safetyLatched(), "stop/configuration must latch previously ready acquisition");
-    rejects([&]() { fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds()); }, "self-check is not complete");
+    // 停止或重配置后旧样本失效，必须等采集恢复并收到双侧新样本才能确认。
+    rejects([&]() { fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds()); }, "not healthy");
   }
+}
+
+void testParameterHotUpdateKeepsAcquisitionAndCalibration() {
+  Fixture fixture;
+  fixture.force.tare(-1, kHkvlTareMinSamples);
+  fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds());
+  const int stopsBefore = fixture.stops.load();
+  require(!fixture.force.parametersOnlyChange(fixture.config),
+      "identical configuration must keep the full reconfigure path for reconnect and recovery");
+  auto tuned = fixture.config;
+  tuned.safety.warn[0] = 5.0;
+  tuned.safety.stop[0] = 12.0;
+  tuned.compliance.sides[0].deadbandN = {0.5, 0.5};
+  require(fixture.force.parametersOnlyChange(tuned), "threshold and compliance changes must hot update");
+  fixture.force.updateParameters(tuned);
+  require(fixture.force.running() && !fixture.force.safetyLatched() && calibrationIs(fixture.force, "ready")
+      && fixture.stops.load() == stopsBefore, "hot update restarted acquisition, reset calibration or stopped motion");
+  require(fixture.force.config().safety.stop[0] == 12.0
+      && fixture.force.config().compliance.sides[0].deadbandN[0] == 0.5, "hot update did not store new parameters");
+  auto invalid = tuned;
+  invalid.safety.warn[0] = invalid.safety.stop[0];
+  rejects([&]() { fixture.force.updateParameters(invalid); }, "0 < warn < stop");
+  require(fixture.force.config().safety.warn[0] == 5.0, "rejected hot update replaced active thresholds");
+  auto moved = tuned;
+  moved.serial.leftPort = "COM16";
+  require(!fixture.force.parametersOnlyChange(moved), "serial identity changes must use full reconfiguration");
+  fixture.samples.failedSide.store(0);
+  await([&]() { return !fixture.force.running(); }, "serial worker failure did not stop the runtime");
+  auto recovery = tuned;
+  recovery.safety.stop[0] = 13.0;
+  require(!fixture.force.parametersOnlyChange(recovery), "failed acquisition must recover through full reconfiguration");
+}
+
+void testHotUpdateAppliesToLiveSamplesAndKeepsLatch() {
+  Fixture fixture;
+  fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds());
+  const int stopsBefore = fixture.stops.load();
+  auto lowered = fixture.config;
+  lowered.safety.warn[0] = 0.1;
+  lowered.safety.stop[0] = 0.3;
+  fixture.force.updateParameters(lowered);
+  // 未去皮时左侧 0.5 N 已超过新停机阈值的 120%，热更新后的新样本必须立即锁存并急停一次。
+  await([&]() { return fixture.stops.load() == stopsBefore + 1; }, "lowered threshold was not applied to live samples");
+  require(fixture.force.safetyLatched(), "hot-update trip did not latch");
+  fixture.force.updateParameters(fixture.config);
+  require(fixture.force.safetyLatched(), "threshold update must not clear an existing latch");
+  fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds());
+  std::this_thread::sleep_for(20ms);
+  require(!fixture.force.safetyLatched() && fixture.stops.load() == stopsBefore + 1,
+      "restored threshold did not allow a stable acknowledgement");
 }
 
 struct DispatcherFixture {
@@ -310,8 +374,6 @@ const std::string kConfirmedTare = R"({"side":"all","samples":200,"unloadedConfi
 void testLeaseStopRetainsDistinctReason() {
   DispatcherFixture fixture;
   fixture.dispatcher.handle("force.tare", kConfirmedTare);
-  await([&]() { return state(fixture.force).find("\"canAcknowledge\":true") != std::string::npos; },
-      "force state did not become acknowledgeable");
   fixture.dispatcher.handle("motion.acknowledge_estop", "{}");
   fixture.dispatcher.handleEmergencyStop("control_lease_lost");
   require(fixture.motion.estopActive() && fixture.force.safetyLatched(), "lease stop did not latch");
@@ -330,21 +392,32 @@ void testDispatcherGuardsAndOwnStopEpoch() {
     rejects([&]() { fixture.dispatcher.handle("force.tare", std::string("{\"unloadedConfirmed\":true,\"samples\":") + samples + "}"); },
         "sample count");
   }
-  ForceTareDispatcherTestAccess::setServoEnabled(fixture.motion, true);
-  rejects([&]() { fixture.dispatcher.handle("force.tare", kConfirmedTare); }, "servos disabled");
-  ForceTareDispatcherTestAccess::setServoEnabled(fixture.motion, false);
   const auto staleEpoch = fixture.motion.commandEpoch();
   fixture.motion.latchEmergencyStop();
   rejects([&]() { fixture.dispatcher.handle("force.tare", kConfirmedTare, staleEpoch); }, "cancelled by emergency stop");
-  const auto before = fixture.motion.commandEpoch();
-  const auto response = fixture.dispatcher.handle("force.tare", kConfirmedTare, before);
+  auto before = fixture.motion.commandEpoch();
+  auto response = fixture.dispatcher.handle("force.tare", kConfirmedTare, before);
   require(response.find("\"ok\":true") != std::string::npos, "dispatcher did not allow self-check while already latched");
-  require(fixture.motion.commandEpoch() == ((before + 4U) | 1U), "self-check stop advanced an unexpected number of epochs");
-  require(fixture.motion.estopActive() && calibrationIs(fixture.force, "ready_for_ack"),
-      "dispatcher self-check must keep motion stopped until explicit ACK");
-  await([&]() { return state(fixture.force).find("\"canAcknowledge\":true") != std::string::npos; },
-      "dispatcher self-check never became acknowledgeable");
+  require(fixture.motion.commandEpoch() == before && fixture.motion.estopActive() && calibrationIs(fixture.force, "ready"),
+      "self-check must neither add its own stop nor clear the existing one");
   fixture.dispatcher.handle("motion.acknowledge_estop", "{}");
+  require(!fixture.motion.estopActive() && !fixture.force.safetyLatched(), "acknowledgement after self-check failed");
+  // 伺服使能但静止时可直接去皮，不触发急停、不改变命令代际。
+  ForceTareDispatcherTestAccess::setServoEnabled(fixture.motion, true);
+  before = fixture.motion.commandEpoch();
+  response = fixture.dispatcher.handle("force.tare", kConfirmedTare, before);
+  require(response.find("\"ok\":true") != std::string::npos && fixture.motion.commandEpoch() == before
+      && !fixture.motion.estopActive() && !fixture.force.safetyLatched(),
+      "stationary self-check with servos enabled must not stop motion");
+  // 阈值热更新只需静止；采集参数变化仍要求伺服关闭。
+  const auto tuned = R"({"source":"hkvl_serial","fxyWarnN":5,"fxyStopN":12})";
+  response = fixture.dispatcher.handle("force.configure", tuned);
+  require(response.find("\"applied\":\"parameters\"") != std::string::npos
+      && !fixture.motion.estopActive() && calibrationIs(fixture.force, "ready"),
+      "parameter-only force configuration did not hot update");
+  rejects([&]() { fixture.dispatcher.handle("force.configure",
+      R"({"source":"hkvl_serial","leftPort":"COM16"})"); }, "servos disabled");
+  ForceTareDispatcherTestAccess::setServoEnabled(fixture.motion, false);
   // 两侧均未连接，默认夹爪跟随关闭；只运行不访问硬件的控制线程生命周期。
   fixture.native.start(false, false);
   rejects([&]() { fixture.dispatcher.handle("force.tare", kConfirmedTare); }, "native teleop to be stopped");
@@ -364,7 +437,7 @@ void testDispatcherNewStopCancelsCollection() {
   fixture.dispatcher.handleEmergencyStop();
   require(pending.wait_for(3s) == std::future_status::ready, "new dispatcher stop did not cancel self-check");
   require(!pending.get().empty() && calibrationIs(fixture.force, "failed"), "new stop was adopted as the tare epoch");
-  require(fixture.motion.commandEpoch() == ((before + 8U) | 1U), "two stop commands must each advance two epochs");
+  require(fixture.motion.commandEpoch() != before && fixture.motion.estopActive(), "new stop did not latch motion");
   requireOldBias(fixture.force);
 }
 
@@ -375,8 +448,7 @@ void testDispatcherDeadlineCancelsCollectionBeforeCommit() {
   const auto payload = std::string("{\"side\":\"all\",\"samples\":200,\"unloadedConfirmed\":true,\"commandExpiresAtUnixMs\":")
       + std::to_string(expiresAt) + "}";
   rejects([&]() { fixture.dispatcher.handle("force.tare", payload); }, "expired");
-  require(calibrationIs(fixture.force, "failed") && fixture.motion.estopActive(),
-      "expired self-check did not stay failed and stopped");
+  require(calibrationIs(fixture.force, "failed"), "expired self-check did not stay failed");
   requireOldBias(fixture.force);
 }
 }  // namespace
@@ -384,19 +456,24 @@ void testDispatcherDeadlineCancelsCollectionBeforeCommit() {
 int main() {
   ProcessDeadline deadline;
   try {
-    testSuccessfulSelfCheckRequiresExplicitStableAcknowledgement();
-    testIncompleteOrSingleSideSelfCheckCannotRecover();
+    testSuccessfulSelfCheckCommitsWithoutEmergencyStop();
+    testAcknowledgementNoLongerRequiresSelfCheck();
     testWorkerFailureAndEmergencyCallbackFailureRejectSelfCheck();
     for (auto cancellation : {Cancellation::externalStop, Cancellation::commandEpoch,
         Cancellation::overload, Cancellation::watchdog, Cancellation::workerFailure, Cancellation::validationStop}) {
-      testCancellationPreservesBothOldBiases(cancellation);
+      testCancellationPreservesBothOldBiases(cancellation, false);
+    }
+    for (auto cancellation : {Cancellation::externalStop, Cancellation::overload, Cancellation::watchdog}) {
+      testCancellationPreservesBothOldBiases(cancellation, true);
     }
     testStopAndConfigurationInvalidateCompletedSelfCheck();
+    testParameterHotUpdateKeepsAcquisitionAndCalibration();
+    testHotUpdateAppliesToLiveSamplesAndKeepsLatch();
     testLeaseStopRetainsDistinctReason();
     testDispatcherGuardsAndOwnStopEpoch();
     testDispatcherNewStopCancelsCollection();
     testDispatcherDeadlineCancelsCollectionBeforeCommit();
-    std::cout << "ForceTareRuntimeTests passed (16 cases, injected sensors, no hardware or DDS runtime)\n";
+    std::cout << "ForceTareRuntimeTests passed (21 cases, injected sensors, no hardware or DDS runtime)\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "ForceTareRuntimeTests failed: " << error.what() << "\n";

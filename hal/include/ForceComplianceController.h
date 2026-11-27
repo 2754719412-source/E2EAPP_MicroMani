@@ -19,11 +19,13 @@ struct ForceComplianceSideConfig {
   std::array<double, 2> gainUmPerNs{};
   std::array<double, 2> maxStepUm{};
   std::array<double, 2> maxOffsetUm{};
+  bool operator==(const ForceComplianceSideConfig&) const = default;
 };
 
 struct ForceComplianceConfig {
   bool enabled{false};
   std::array<ForceComplianceSideConfig, 2> sides{};
+  bool operator==(const ForceComplianceConfig&) const = default;
 };
 
 struct ForceComplianceResult {
