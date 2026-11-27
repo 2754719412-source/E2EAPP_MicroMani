@@ -205,6 +205,14 @@ void ForceControlRuntime::stop() {
   if (monitor_.joinable()) {
     monitor_.join();
   }
+  if (wasRunning) {
+    // 读取线程停止前可能仍有在途样本重新标记在线；采集完全停止后再次标记断连。
+    std::scoped_lock lock(mutex_);
+    if (config_.source == "hkvl_serial") {
+      safety_.markDisconnected(0, forceMonotonicMilliseconds());
+      safety_.markDisconnected(1, forceMonotonicMilliseconds());
+    }
+  }
   resetCompliance();
 }
 

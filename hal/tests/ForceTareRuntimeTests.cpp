@@ -287,8 +287,17 @@ void testStopAndConfigurationInvalidateCompletedSelfCheck() {
     else fixture.force.stop();
     require(calibrationIs(fixture.force, "waiting_sensors"), "stop/configuration retained a completed self-check");
     require(fixture.force.safetyLatched(), "stop/configuration must latch previously ready acquisition");
-    // 停止或重配置后旧样本失效，必须等采集恢复并收到双侧新样本才能确认。
-    rejects([&]() { fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds()); }, "not healthy");
+    if (!reconfigure) {
+      // 停止采集后旧样本失效，未重新启动并收到双侧新样本前不能确认。
+      rejects([&]() { fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds()); }, "not healthy");
+    } else {
+      // 重配置会立即重启采集；收到双侧新样本后可确认，但未重新去皮前校准保持未就绪。
+      await([&]() { return state(fixture.force).find("\"canAcknowledge\":true") != std::string::npos; },
+          "reconfigured acquisition did not deliver fresh samples");
+      fixture.force.acknowledgeEmergencyStop(forceMonotonicMilliseconds());
+      require(!fixture.force.safetyLatched() && calibrationIs(fixture.force, "waiting_sensors"),
+          "acknowledgement after reconfiguration must not mark calibration ready");
+    }
   }
 }
 
