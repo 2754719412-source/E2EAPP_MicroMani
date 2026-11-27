@@ -15,7 +15,7 @@ export class ModuleErrorBoundary extends Component<{
 
   componentDidCatch(error: Error) {
     // 显示异常只降级本模块并记录，不撤销控制；急停入口在独立模块中保持可用。
-    reportDisplayFault(`${this.props.name}显示异常（控制未中断）：${error.message}`)
+    reportDisplayFault(`${this.props.name}显示异常（未撤销控制）：${error.message}`)
   }
 
   render() {

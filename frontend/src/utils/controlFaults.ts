@@ -14,9 +14,9 @@ export function installControlFaultHandlers(report: (reason: string) => void) {
   const onError = (event: ErrorEvent) => {
     if (event.error == null && (event.message === 'ResizeObserver loop completed with undelivered notifications.'
       || event.message === 'ResizeObserver loop limit exceeded')) return
-    report(`页面脚本异常（控制未中断）：${event.message || '未知错误'}`)
+    report(`页面脚本异常（未撤销控制）：${event.message || '未知错误'}`)
   }
-  const onRejection = (event: PromiseRejectionEvent) => report(`页面异步异常（控制未中断）：${String(event.reason)}`)
+  const onRejection = (event: PromiseRejectionEvent) => report(`页面异步异常（未撤销控制）：${String(event.reason)}`)
   window.addEventListener('error', onError)
   window.addEventListener('unhandledrejection', onRejection)
   return () => {

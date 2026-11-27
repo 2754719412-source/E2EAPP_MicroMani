@@ -24,7 +24,7 @@ it.each([
   expect(useTelemetryStore.getState().controlLease).toBe(lease)
   const last = useTelemetryStore.getState().logs.at(-1)
   expect(last?.level).toBe('ERROR')
-  expect(last?.msg).toContain('控制未中断')
+  expect(last?.msg).toContain('未撤销控制')
 })
 
 it('页面降级后重试只重新渲染，不重启控制连接', () => {
@@ -34,4 +34,17 @@ it('页面降级后重试只重新渲染，不重启控制连接', () => {
   render(<RouteErrorBoundary><Broken /></RouteErrorBoundary>)
   fireEvent.click(screen.getByRole('button', { name: '重试页面' }))
   expect(stopBackend).not.toHaveBeenCalled()
+})
+
+
+it.each([
+  ['有效租约', { required: true, status: 'active', sessionId: 's', expiresAt: null, reason: '' }, false, '控制会话仍有效'],
+  ['租约过期', { required: true, status: 'expired', sessionId: null, expiresAt: 0, reason: '连接断开，控制租约已撤销' }, false, '当前控制不可用：连接断开'],
+  ['观察模式', { required: true, status: 'pending', sessionId: null, expiresAt: 0, reason: '' }, true, '观察模式'],
+] as const)('页面错误提示按实际控制状态显示：%s', (_label, controlLease, observerMode, expected) => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  useTelemetryStore.setState({ controlLease: { ...controlLease }, observerMode })
+  render(<RouteErrorBoundary><Broken /></RouteErrorBoundary>)
+  expect(screen.getByRole('alert')).toHaveTextContent(expected)
+  if (expected !== '控制会话仍有效') expect(screen.getByRole('alert')).not.toHaveTextContent('控制会话仍有效')
 })
