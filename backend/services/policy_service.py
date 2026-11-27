@@ -77,6 +77,10 @@ class PolicyService:
         self.logs.warning("[POLICY]", "model service stopped")
         return self.list_models()
 
+    def dispatch_active(self) -> bool:
+        """自动执行运行中或仍有待下发动作。"""
+        return self._auto_running or bool(self._action_queue)
+
     def auto_status(self, config: dict[str, Any] | None = None) -> dict[str, Any]:
         config = config if config is not None else self.settings.get_config()
         auto_config = config.get("auto", {})

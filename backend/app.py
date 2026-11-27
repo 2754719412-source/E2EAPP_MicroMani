@@ -483,9 +483,15 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         policy.invalidate_pending_actions()
         commands.safety.interrupt(emergency=True)
 
+    def control_motion_active() -> bool:
+        # 回放、遥操作、策略执行或任一运动操作进行中断开浏览器才急停；空闲断开只保持 HAL 租约。
+        return (replay.active or commands.safety.operation_active()
+                or teleop_mapper.control_active() or policy.dispatch_active())
+
     control_watchdog = ControlWatchdog(
         hal, logs, invalidate_control_session, commands.emergency_stop,
         disconnect_grace_s=float(os.environ.get("APPSTATION_CONTROL_DISCONNECT_GRACE_SEC", "0")),
+        motion_active=control_motion_active,
     )
     app.state.control_watchdog = control_watchdog
     commands.safety.readiness_check = control_watchdog.require_ready

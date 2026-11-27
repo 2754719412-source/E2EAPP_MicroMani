@@ -624,6 +624,14 @@ class TeleopMappingService:
         if self.logs is not None:
             self.logs.warning("[HAL]", "HAL-native teleop controller stopped after native start gate failure")
 
+    def control_active(self) -> bool:
+        """遥操作是否已布防、运行或正在切换；不读取配置，供断线判断高频调用。"""
+        running = self._task is not None and not self._task.done()
+        if self._native_status_cache:
+            running = bool(self._native_status_cache.get("running", running))
+        return (running or self._armed_at_ms is not None or self._native_transition_lock.locked()
+                or bool(self._arm_sources))
+
     def status(self, config: dict[str, Any] | None = None) -> dict[str, Any]:
         running = self._task is not None and not self._task.done()
         config = config if config is not None else (self.settings.get_config() if self.settings is not None else {})

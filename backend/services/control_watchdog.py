@@ -40,11 +40,16 @@ class ControlWatchdog:
         renew_interval_s: float = 0.5,
         hal_timeout_ms: int = 2500,
         disconnect_grace_s: float = 0.0,
+        motion_active: Callable[[], bool] | None = None,
     ) -> None:
         self.hal = hal
         self.logs = logs
         self.invalidate = invalidate
         self.emergency_stop = emergency_stop
+        # 未提供时按“运动中”处理，保持断开即急停。
+        self.motion_active = motion_active or (lambda: True)
+        # 空闲时浏览器断开：后端继续续租 HAL，但无会话期间拒绝一切运动命令。
+        self._idle_detached = False
         self.clock = clock
         self.renew_interval_s = renew_interval_s
         self.hal_timeout_ms = hal_timeout_ms
@@ -96,6 +101,7 @@ class ControlWatchdog:
         session_id = uuid.uuid4().hex
         self.last_browser_session = session_id
         self.clients[session_id] = BrowserLease(session_id, send)
+        self._idle_detached = False
         self._generation += 1
         if self._task is None or self._task.done():
             self._task = asyncio.create_task(self._run(), name="control-watchdog")
@@ -108,6 +114,9 @@ class ControlWatchdog:
         if client.sending is not None:
             client.sending.cancel()
         if not client.expired and not self.clients:
+            if not self._motion_running():
+                self._detach_idle("browser WebSocket disconnected")
+                return
             if self.disconnect_grace_s <= 0.0:
                 self.trip("browser WebSocket disconnected")
                 return
@@ -126,7 +135,20 @@ class ControlWatchdog:
         except asyncio.CancelledError:
             return
 
+    def _motion_running(self) -> bool:
+        try:
+            return bool(self.motion_active())
+        except Exception as exc:
+            # 无法判断时按运动中处理。
+            self.logs.error("[SAFETY]", f"motion activity check failed: {exc}")
+            return True
+
+    def _detach_idle(self, reason: str) -> None:
+        self._idle_detached = True
+        self.logs.info("[SAFETY]", f"{reason} while idle; HAL lease kept, motion commands blocked until reconnect")
+
     def trip(self, reason: str) -> None:
+        self._idle_detached = False
         disconnect_task = self._disconnect_task
         self._disconnect_task = None
         if disconnect_task is not None and disconnect_task is not asyncio.current_task():
@@ -181,7 +203,12 @@ class ControlWatchdog:
             except Exception as exc:
                 client.pending_messages.clear()
                 if self.clients.get(client.session_id) is client and not client.expired:
-                    self.trip(f"browser connection send failed: {type(exc).__name__}: {exc}")
+                    reason = f"browser connection send failed: {type(exc).__name__}: {exc}"
+                    if len(self.clients) == 1 and not self._motion_running():
+                        self.clients.pop(client.session_id, None)
+                        self._detach_idle(reason)
+                    else:
+                        self.trip(reason)
 
         client.sending = asyncio.create_task(send(), name="control-watchdog-send")
         self._send_tasks.add(client.sending)
@@ -197,7 +224,10 @@ class ControlWatchdog:
 
     async def cycle(self) -> None:
         now = self.clock()
-        if not self._healthy() or now < self._next_renew_at:
+        if self._idle_detached and self._motion_running():
+            self.trip("motion became active without a connected control browser")
+            return
+        if not (self._healthy() or self._idle_detached) or now < self._next_renew_at:
             return
         generation = self._generation
         self._sequence += 1
@@ -216,7 +246,7 @@ class ControlWatchdog:
         except Exception as exc:
             self.trip(f"HAL control lease renewal failed: {type(exc).__name__}: {exc}")
             return
-        if generation != self._generation or not self._healthy():
+        if generation != self._generation or not (self._healthy() or self._idle_detached):
             return
         self._next_renew_at = self.clock() + self.renew_interval_s
         self._confirmed_until = now + self.hal_timeout_ms / 1000.0

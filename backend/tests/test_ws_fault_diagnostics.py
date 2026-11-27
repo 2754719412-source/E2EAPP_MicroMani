@@ -30,12 +30,14 @@ def test_ws_disconnect_logs_close_code_without_weakening_stop(tmp_path, monkeypa
         endpoint = next(r.endpoint for r in app.routes if getattr(r, "path", "") == "/ws")
         task = asyncio.create_task(endpoint(Socket()))
         try:
-            await asyncio.wait_for(sent.wait(), 2)
-            for _ in range(100):
-                messages = [entry.msg for entry in app.state.logs.list_entries()]
-                if any("event=ws_receive_ended" in msg for msg in messages):
-                    break
-                await asyncio.sleep(.01)
+            # 运动操作进行中断开：诊断日志不能削弱急停（空闲断开不急停，见看门狗测试）。
+            with app.state.commands.safety.operation():
+                await asyncio.wait_for(sent.wait(), 2)
+                for _ in range(100):
+                    messages = [entry.msg for entry in app.state.logs.list_entries()]
+                    if any("event=ws_receive_ended" in msg for msg in messages):
+                        break
+                    await asyncio.sleep(.01)
             entry = next(msg for msg in messages if "event=ws_receive_ended" in msg)
             assert "closeCode=1006" in entry
             assert "errorType=WebSocketDisconnect" in entry

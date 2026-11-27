@@ -111,6 +111,80 @@ def test_second_controller_is_rejected_and_owner_disconnect_trips_control() -> N
     asyncio.run(exercise())
 
 
+def test_idle_disconnect_keeps_lease_blocks_motion_and_reconnects_without_ack() -> None:
+    async def exercise() -> None:
+        watchdog, now, hal, invalidate, stop = make_watchdog()
+        watchdog.motion_active = lambda: False
+        first = await confirm_mock_browser_lease(watchdog)
+        watchdog.remove(first)
+        await flush()
+        invalidate.assert_not_called()
+        stop.assert_not_awaited()
+        with pytest.raises(ControlLeaseUnavailable):
+            watchdog.require_ready()
+        renewals = hal.command.call_count
+        for _ in range(2):
+            now[0] += 1.0
+            await watchdog.cycle()
+        assert hal.command.call_count == renewals + 2  # 后端继续续租，HAL 租约不过期
+        second = await confirm_mock_browser_lease(watchdog)
+        try:
+            assert second in watchdog.clients
+            invalidate.assert_not_called()
+            stop.assert_not_awaited()
+        finally:
+            await watchdog.close()
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("cause", ["motion_started", "check_failed"])
+def test_idle_detached_watchdog_stops_when_motion_starts_or_cannot_be_checked(cause) -> None:
+    async def exercise() -> None:
+        watchdog, _now, _hal, invalidate, stop = make_watchdog()
+        state = {"moving": False}
+
+        def motion_active():
+            if state["moving"] and cause == "check_failed":
+                raise RuntimeError("status unavailable")
+            return state["moving"]
+
+        watchdog.motion_active = motion_active
+        session = await confirm_mock_browser_lease(watchdog)
+        watchdog.remove(session)
+        state["moving"] = True
+        await watchdog.cycle()
+        await flush()
+        try:
+            invalidate.assert_called_once()
+            stop.assert_awaited_once()
+        finally:
+            await watchdog.close()
+
+    asyncio.run(exercise())
+
+
+def test_idle_send_failure_detaches_without_stop() -> None:
+    async def exercise() -> None:
+        watchdog, _now, _hal, invalidate, stop = make_watchdog()
+        watchdog.motion_active = lambda: False
+
+        async def broken(_message):
+            raise ConnectionError("socket closed")
+
+        watchdog.register(broken)
+        await watchdog.cycle()
+        await flush()
+        try:
+            assert not watchdog.clients
+            invalidate.assert_not_called()
+            stop.assert_not_awaited()
+        finally:
+            await watchdog.close()
+
+    asyncio.run(exercise())
+
+
 def test_owner_disconnect_allows_quick_reconnect_before_fail_safe_stop() -> None:
     async def exercise() -> None:
         watchdog, _now, _hal, invalidate, stop = make_watchdog()
@@ -337,7 +411,7 @@ def test_websocket_without_browser_heartbeats_keeps_hal_lease(tmp_path, monkeypa
     asyncio.run(exercise())
 
 
-def test_app_websocket_lease_confirmation_allows_ack_and_disconnect_blocks_it(tmp_path, monkeypatch) -> None:
+def test_app_websocket_lease_allows_ack_idle_disconnect_keeps_lease_and_motion_disconnect_stops(tmp_path, monkeypatch) -> None:
     from backend.app import create_app
     from httpx import ASGITransport, AsyncClient
     from starlette.websockets import WebSocketDisconnect, WebSocketState
@@ -350,7 +424,6 @@ def test_app_websocket_lease_confirmation_allows_ack_and_disconnect_blocks_it(tm
     watchdog.disconnect_grace_s = 0.0
 
     async def exercise() -> None:
-        inbox = asyncio.Queue()
         active, stopped = asyncio.Event(), asyncio.Event()
         commands_seen = []
         original_command = app.state.hal.command
@@ -365,6 +438,9 @@ def test_app_websocket_lease_confirmation_allows_ack_and_disconnect_blocks_it(tm
         class Socket:
             client_state = WebSocketState.CONNECTED
 
+            def __init__(self):
+                self.inbox = asyncio.Queue()
+
             async def accept(self):
                 pass
 
@@ -375,7 +451,7 @@ def test_app_websocket_lease_confirmation_allows_ack_and_disconnect_blocks_it(tm
                     active.set()
 
             async def receive_json(self):
-                message = await inbox.get()
+                message = await self.inbox.get()
                 if message is None:
                     self.client_state = WebSocketState.DISCONNECTED
                     raise WebSocketDisconnect()
@@ -383,7 +459,7 @@ def test_app_websocket_lease_confirmation_allows_ack_and_disconnect_blocks_it(tm
 
         app.state.hal.command = command
         endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/ws")
-        task = None
+        task = second = None
         try:
             # ASGITransport 不运行 startup；这里只用 Test HAL 与伪 WebSocket，不连接设备。
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
@@ -391,7 +467,8 @@ def test_app_websocket_lease_confirmation_allows_ack_and_disconnect_blocks_it(tm
                 assert response.status_code == 409
                 assert app.state.commands.safety.latched
                 assert "motion.acknowledge_estop" not in commands_seen
-                task = asyncio.create_task(endpoint(Socket()))
+                socket = Socket()
+                task = asyncio.create_task(endpoint(socket))
                 await asyncio.wait_for(active.wait(), 1)
                 assert "control.lease" in commands_seen
                 watchdog.require_ready()
@@ -402,8 +479,28 @@ def test_app_websocket_lease_confirmation_allows_ack_and_disconnect_blocks_it(tm
                 assert not app.state.commands.safety.latched
                 assert "motion.enable_side" not in commands_seen
 
-                await inbox.put(None)
-                await asyncio.wait_for(stopped.wait(), 1)
+                # 空闲时断开：不急停、不锁存，后端继续续租；无会话时不能确认或运动。
+                await socket.inbox.put(None)
+                await task
+                renewals = commands_seen.count("control.lease")
+                await asyncio.sleep(0.7)
+                assert commands_seen.count("control.lease") > renewals
+                assert "motion.emergency_stop" not in commands_seen
+                assert not app.state.commands.safety.latched
+                assert not watchdog.clients
+                with pytest.raises(ControlLeaseUnavailable):
+                    watchdog.require_ready()
+                assert (await http.post("/api/motion/safety/acknowledge")).status_code == 409
+
+                # 重连后无需确认安全态；运动操作进行中断开则急停并锁存。
+                active.clear()
+                socket = Socket()
+                second = asyncio.create_task(endpoint(socket))
+                await asyncio.wait_for(active.wait(), 1)
+                watchdog.require_ready()
+                with app.state.commands.safety.operation():
+                    await socket.inbox.put(None)
+                    await asyncio.wait_for(stopped.wait(), 1)
                 assert app.state.commands.safety.latched
                 assert not app.state.policy.auto_status()["running"]
                 response = await http.post("/api/motion/safety/acknowledge")
@@ -411,12 +508,13 @@ def test_app_websocket_lease_confirmation_allows_ack_and_disconnect_blocks_it(tm
                 assert commands_seen.count("motion.acknowledge_estop") == 1
                 assert not watchdog.clients
         finally:
-            if task is not None:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
+            for pending in (task, second):
+                if pending is not None and not pending.done():
+                    pending.cancel()
+                    try:
+                        await pending
+                    except asyncio.CancelledError:
+                        pass
             await watchdog.close()
             app.state.telemetry.shutdown()
 

@@ -62,6 +62,10 @@ class MotionSafetyGate:
                 else:
                     del self._busy_sides[key]
 
+    def operation_active(self) -> bool:
+        """是否有运动操作（点动、回零、回放等）正占用资源。"""
+        return bool(self._busy_sides)
+
     def capture(self, side: str | None = None) -> MotionSafetyToken:
         return MotionSafetyToken(
             side,
