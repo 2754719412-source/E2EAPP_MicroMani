@@ -236,12 +236,17 @@ describe('真实 HTTP 分支的急停保护（全部网络隔离）', () => {
   })
 
   it('未知轴反馈拒绝点动，新鲜且明确使能的轴才发送', async () => {
+    const paths = () => requests.map((request) => request.path)
     store.setState({ frame: liveFrame({ motionAxisEnabled: { left: [null, true, true, true, true, true], right: [] } }) })
+    // 未知轴只会触发随动使能请求，位移须等新鲜全轴使能反馈。
     store.getState().issueManualAxisMove('left', 'X', 1)
-    expect(requests).toHaveLength(0)
+    expect(paths()).toEqual(['/api/motion/left/enable_all'])
     store.getState().issueManualAxisMove('left', 'Y', 1)
-    expect(requests[0].path).toBe('/api/motion/manual_axis_move')
+    expect(paths()).toEqual(['/api/motion/left/enable_all', '/api/motion/manual_axis_move'])
+    await respond(1)
     await respond(0)
+    await vi.advanceTimersByTimeAsync(6_000)
+    expect(paths().filter((path) => path === '/api/motion/manual_axis_move')).toHaveLength(1)
   })
 
   it('自动运行的迟到启动响应不能覆盖停止', async () => {

@@ -7,6 +7,7 @@ import {
   motionCommandLabel,
   motionCommandTimeoutMs,
   motionDeviceState,
+  motionEnableOutcome,
   type MotionCommands,
   type MotionCommandState,
 } from './motionCommands'
@@ -507,5 +508,37 @@ describe('急停门闩与异常状态下的断使能', () => {
     await settleRequests()
     test.receive(test.frameWithAxes('left', Array<boolean>(6).fill(true), true))
     expect(test.snapshot.motionCommand.left.phase).toBe('confirmed')
+  })
+})
+
+describe('展示写入异常', () => {
+  it.each([true, false])('enabled=%s 时订阅抛错仍发送请求，且不占死本侧通道', async (enabled) => {
+    const test = fixture()
+    test.write.mockImplementationOnce(() => { throw new Error('显示故障') })
+    expect(() => test.controller.setEnabled('left', enabled)).toThrow('显示故障')
+    expect(test.send).toHaveBeenCalledExactlyOnceWith('left', enabled)
+    test.requests[0].resolve({ ok: true })
+    await settleRequests()
+    test.controller.setEnabled('left', !enabled)
+    expect(test.send).toHaveBeenLastCalledWith('left', !enabled)
+    expect(test.send).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('随动使能结果判定', () => {
+  const command = (patch: Partial<MotionCommandState>): MotionCommandState => ({ ...initialMotionCommand(), ...patch })
+  it.each([
+    ['使能请求已获反馈确认', { phase: 'confirmed', targetEnabled: true }, 'enabled'],
+    ['使能请求发送中', { phase: 'sending', targetEnabled: true }, 'pending'],
+    ['使能等待反馈', { phase: 'waitingConfirm', targetEnabled: true }, 'pending'],
+    ['使能排在旧请求之后', { phase: 'timeout', targetEnabled: false, queuedEnabled: true }, 'pending'],
+    ['期间排入断使能', { phase: 'waitingConfirm', targetEnabled: true, queuedEnabled: false }, 'failed'],
+    ['断使能已确认', { phase: 'confirmed', targetEnabled: false }, 'failed'],
+    ['断使能进行中', { phase: 'sending', targetEnabled: false }, 'failed'],
+    ['使能超时', { phase: 'timeout', targetEnabled: true }, 'failed'],
+    ['使能失败', { phase: 'failed', targetEnabled: true }, 'failed'],
+    ['确认后被遥测失效', { phase: 'idle', targetEnabled: true }, 'failed'],
+  ] as const)('%s → %s', (_name, patch, expected) => {
+    expect(motionEnableOutcome(command(patch))).toBe(expected)
   })
 })

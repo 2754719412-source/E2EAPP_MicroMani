@@ -35,6 +35,7 @@ import {
 } from '../../data'
 import { motionSideReturnOriginReady } from '../../motionReturnReady'
 import type { TeleopHandFrameSlice } from '../../stores/frameSelectors'
+import { motionDeviceState } from '../../stores/motionCommands'
 import { useTelemetryStore } from '../../stores/telemetry'
 import { controlSafetyBlockReason } from '../../utils/controlSafety'
 import type {
@@ -185,6 +186,14 @@ export function TeleopHandCard({
       injectLog('WARNING', `${sideSpec.shortLabel} Omega.7 connect blocked: ${workOriginBlockMessage}`, '[HAL]')
       return
     }
+    // 连接前会随动使能目标臂；后端已上报主手未物理在线（或状态未知）时先拦下，避免连接失败后机械臂被留在使能状态。
+    // 读数是否正常要到逻辑连接后才上报，仍由后端连接校验把关。
+    if (!logicalConnected && handState?.physicalConnected !== undefined && physicalConnected !== true) {
+      const message = '主手未物理在线，未使能目标臂'
+      setConnectionHint(message)
+      injectLog('WARNING', `${sideSpec.shortLabel} Omega.7 connect blocked: ${message}`, '[HAL]')
+      return
+    }
     setConnectionPending(true)
     if (logicalConnected) {
       setConnectSyncPending(false)
@@ -203,12 +212,26 @@ export function TeleopHandCard({
         .finally(() => setConnectionPending(false))
       return
     }
-    setConnectionHint('逻辑连接请求已发送，后台同步 HAL')
-    commandLog(injectLog, '[HAL]', `${sideSpec.shortLabel} Omega.7 connect dhdOpenID(${openId})`)
     const generation = useTelemetryStore.getState().controlSafety.generation
     let waitForTelemetry = false
-    void connectTeleopHand(side)
+    // 目标臂未使能时先随动使能并等遥测确认，再发连接；后端仍要求连接前目标臂已全部使能。
+    const before = useTelemetryStore.getState()
+    if (motionDeviceState(before.frame, before.telemetryLink, hardwareSide) !== 'enabled') setConnectionHint('正在确认目标臂使能')
+    void before.ensureMotionEnabled(hardwareSide)
+      .then((enableReason) => {
+        const blocked = enableReason
+          ?? (useTelemetryStore.getState().controlSafety.generation !== generation ? '期间发生安全事件，请重新操作' : null)
+        if (blocked) {
+          setConnectionHint(`主手连接未发送：${blocked}`)
+          injectLog('WARNING', `${sideSpec.shortLabel}主手连接未发送：${blocked}`, '[HAL]')
+          return null
+        }
+        setConnectionHint('逻辑连接请求已发送，后台同步 HAL')
+        commandLog(injectLog, '[HAL]', `${sideSpec.shortLabel} Omega.7 connect dhdOpenID(${openId})`)
+        return connectTeleopHand(side)
+      })
       .then((result) => {
+        if (result === null) return
         const current = useTelemetryStore.getState()
         const blocked = controlSafetyBlockReason(current)
         if (current.controlSafety.generation !== generation || blocked) {

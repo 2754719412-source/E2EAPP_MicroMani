@@ -115,23 +115,30 @@ describe('运动使能共享入口', () => {
     expect(manual.getByText('使能状态未知')).toBeInTheDocument()
   })
 
-  it('WS 挑战已经应答但执行侧未确认租约时两处仍拒绝使能', async () => {
+  it('手动控制卡不再单独提供使能按钮，只就近保留断使能；运动控制卡保留两者', async () => {
+    const { card, manual } = await renderMotionPage()
+    expect(manual.queryByRole('button', { name: '使能' })).not.toBeInTheDocument()
+    expect(manual.getByRole('button', { name: '断使能' })).toBeEnabled()
+    expect(card.getByRole('button', { name: '使能全部' })).toBeInTheDocument()
+    expect(card.getByRole('button', { name: '断使能' })).toBeInTheDocument()
+  })
+
+  it('WS 挑战已经应答但执行侧未确认租约时仍拒绝使能', async () => {
     MockWebSocket.confirmLeases = false
     const enable = vi.spyOn(api, 'enableMotionSide').mockResolvedValue({ ok: true })
     const disable = vi.spyOn(api, 'disableMotionSide').mockResolvedValue({ ok: true })
-    const { card, manual } = await renderMotionPage()
+    const { card } = await renderMotionPage()
     expect(useTelemetryStore.getState().controlLease).toMatchObject({ required: true, status: 'pending' })
     expect(card.getByRole('button', { name: '使能全部' })).toBeDisabled()
-    expect(manual.queryByRole('button', { name: '使能' })).not.toBeInTheDocument()
     await act(async () => {
       fireEvent.click(card.getByRole('button', { name: '使能全部' }))
-      fireEvent.click(manual.getByRole('button', { name: '断使能' }))
+      fireEvent.click(card.getByRole('button', { name: '断使能' }))
     })
     expect(enable).not.toHaveBeenCalled()
     expect(disable).toHaveBeenCalledExactlyOnceWith('left')
   })
 
-  it.each(['offline', 'stale', 'halUnavailable', 'emergency'] as const)('%s 阻止两处使能并保留断使能入口', async (reason) => {
+  it.each(['offline', 'stale', 'halUnavailable', 'emergency'] as const)('%s 阻止使能并保留两处断使能入口', async (reason) => {
     const enable = vi.spyOn(api, 'enableMotionSide').mockResolvedValue({ ok: true })
     const disable = vi.spyOn(api, 'disableMotionSide').mockResolvedValue({ ok: true })
     const { card, manual } = await renderMotionPage()
@@ -185,7 +192,7 @@ describe('运动使能共享入口', () => {
   it('HTTP 成功仍等待遥测，部分反馈不误报全部使能，停滞撤销两处可信状态', async () => {
     vi.spyOn(api, 'enableMotionSide').mockResolvedValue({ ok: true })
     const { card, manual } = await renderMotionPage()
-    await act(async () => { fireEvent.click(manual.getByRole('button', { name: '使能' })) })
+    await act(async () => { fireEvent.click(card.getByRole('button', { name: '使能全部' })) })
     expectSharedProgress('等待使能反馈')
     await act(async () => {
       emit([true, null, null, null, null, null], { motionEnabled: { left: true, right: null } })

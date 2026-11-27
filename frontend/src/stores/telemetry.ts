@@ -50,7 +50,13 @@ import { manualAxisStepLimitFromPulse } from '../manualMotionLimits'
 import { manualMaxVelocity } from '../manualSpeed'
 import { motionSideReturnOriginReady } from '../motionReturnReady'
 import { initialGripperCommandProgress, type GripperCommandProgress } from '../gripperDisplay'
-import { createMotionCommandController, initialMotionCommand, type MotionCommands } from './motionCommands'
+import {
+  createMotionCommandController,
+  initialMotionCommand,
+  motionDeviceState,
+  motionEnableOutcome,
+  type MotionCommands,
+} from './motionCommands'
 import { isWireRecord, parseLogEntry, parseTelemetryFrame, wireFrameIsLatched } from './telemetryIngress'
 import { canAcknowledgeControlSafety, controlSafetyBlockReason, forceSelfCheckBlockReason, initialControlSafety, type ControlSafetyState } from '../utils/controlSafety'
 import { createControlLeaseSession, initialControlLease, type ControlLeaseState } from './controlLease'
@@ -63,6 +69,7 @@ import type {
   LogLevel,
   ManualControlAction,
   ManualControlAxis,
+  ManualControlSide,
   ManualControlState,
   ManualGripperCommand,
   ManualSpeedMode,
@@ -464,6 +471,8 @@ interface TelemetryStore {
   manualControl: ManualControlState
   motionCommand: MotionCommands
   setMotionEnabled: (side: ManualControlState['selectedSide'], enabled: boolean) => void
+  /** 点动 / 连接主手前随动使能；返回 null 表示本侧已获遥测确认全部使能，否则为未完成原因。 */
+  ensureMotionEnabled: (side: ManualControlState['selectedSide']) => Promise<string | null>
   gripperCommand: Record<ManualControlState['selectedSide'], GripperCommandProgress>
   parameterSnapshots: ParameterSnapshot[]
   mockTimer: number | null
@@ -1483,6 +1492,156 @@ let backendSafetyFrameSequence = 0
 let autoRequestId = 0
 let backendLeaseSession: ReturnType<typeof createControlLeaseSession> | null = null
 
+// 随动使能只在点击后短时间内连带动作；超时只保留已发出的使能，动作需重新点击，避免操作员离手后才运动。
+export const autoEnableActionWindowMs = 3_000
+export const autoEnableEnableOnlyReason = '急停后首次操作只完成使能，请再次点击执行'
+// 同侧随动使能期间只保留第一次点动，避免确认后连续补发多次位移。
+const autoEnableJogPending = new Set<ManualControlSide>()
+// 急停（含遥测锁存）后各侧首次随动使能不连带动作；该侧在急停解除后确认已使能即恢复一键操作。
+const enableOnlyAfterEmergency = new Set<ManualControlSide>()
+
+function errorText(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/** 沿用使能按钮的同一请求通道与安全门槛，等待遥测确认，不绕过后端/HAL 的使能校验。 */
+function ensureMotionSideEnabled(side: ManualControlSide): Promise<string | null> {
+  if (mockMode) return Promise.resolve(null)
+  const state = useTelemetryStore.getState()
+  if (motionDeviceState(state.frame, state.telemetryLink, side) === 'enabled') return Promise.resolve(null)
+  const enableOnly = enableOnlyAfterEmergency.has(side)
+  return new Promise((resolve) => {
+    let done = false
+    let unsubscribe = () => {}
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const finish = (reason: string | null) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      unsubscribe()
+      resolve(reason)
+    }
+    const check = (current: TelemetryStore) => {
+      const command = current.motionCommand[side]
+      const outcome = motionEnableOutcome(command)
+      if (outcome === 'enabled') finish(enableOnly ? autoEnableEnableOnlyReason : null)
+      else if (outcome === 'failed') finish(command.message || '使能未完成')
+    }
+    try {
+      unsubscribe = useTelemetryStore.subscribe(check)
+      timer = setTimeout(
+        () => finish(`使能未在 ${autoEnableActionWindowMs / 1000} 秒内获确认，动作未执行；确认使能后请重新操作`),
+        autoEnableActionWindowMs,
+      )
+      motionCommands.setEnabled(side, true)
+      check(useTelemetryStore.getState())
+    } catch (error) {
+      // 显示订阅等异常不能让等待永不结束，否则该侧后续点动会被永久吞掉；已发出的使能请求照常完成。
+      finish(`使能过程出现异常，动作未执行：${errorText(error)}`)
+    }
+  })
+}
+
+/** 真实模式点动下发；步长与速度档由调用方在点击时锁定。 */
+function sendManualAxisMove(
+  get: TelemetryStoreGet,
+  set: TelemetryStoreSet,
+  side: ManualControlSide,
+  axis: ManualControlAxis,
+  direction: -1 | 1,
+  rawStep: number,
+  speedMode: ManualSpeedMode,
+) {
+  const state = get()
+  const operatorLabel = operatorSideLabel(operatorSideForHardwareSide(side))
+  const axisIndex = manualAxisOrder.indexOf(axis)
+  const step = clampManualAxisStep(state.config, side, axis, rawStep, speedMode)
+  const busyKey = manualAxisBusyKey(side, axis)
+  const now = Date.now()
+  const busyUntil = state.manualControl.axisBusyUntil[busyKey] ?? 0
+  if (busyUntil > now) {
+    // 前端本地节流只影响重复点击，真实安全边界仍由后端和硬件抽象层执行。
+    const remainingS = ((busyUntil - now) / 1000).toFixed(1)
+    set((current) => ({
+      logs: appendLog(
+        current.logs,
+        makeLog('WARNING', `${operatorLabel} ${axis} jog skipped: axis is still moving (${remainingS}s)`, '[HAL]'),
+      ),
+    }))
+    return
+  }
+  const lockUntil = now + manualAxisLockMs(state.config, side, axis, step, speedMode)
+  const effectiveDirection = manualAxisEffectiveDirection(side, axisIndex, direction)
+  // 先标记轴忙，避免网络往返期间再次发出同轴命令。
+  set((current) => ({
+    manualControl: {
+      ...current.manualControl,
+      selectedSide: side,
+      selectedAxis: axis,
+      axisBusyUntil: {
+        ...current.manualControl.axisBusyUntil,
+        [busyKey]: lockUntil,
+      },
+    },
+  }))
+  void manualAxisMoveApi(side, axis, effectiveDirection, step, speedMode)
+    .then(() => {
+      set((current) => ({
+        logs: appendLog(current.logs, makeLog('INFO', `${operatorLabel} ${axis} jog command accepted by HAL`, '[HAL]')),
+      }))
+    })
+    .catch((error) => {
+      set((current) => ({
+        manualControl: {
+          ...current.manualControl,
+          axisBusyUntil: {
+            ...current.manualControl.axisBusyUntil,
+            [busyKey]: Date.now() + 1000,
+          },
+        },
+        logs: appendLog(current.logs, makeLog('ERROR', `manual axis command failed: ${String(error)}`, '[HAL]')),
+      }))
+    })
+}
+
+/** 未使能时先随动使能本侧，获遥测确认后只补发这一次点动；失败、超时、急停或安全事件均不发位移。 */
+function autoEnableThenJog(
+  get: TelemetryStoreGet,
+  set: TelemetryStoreSet,
+  side: ManualControlSide,
+  axis: ManualControlAxis,
+  direction: -1 | 1,
+  rawStep: number,
+  speedMode: ManualSpeedMode,
+) {
+  if (autoEnableJogPending.has(side)) return
+  autoEnableJogPending.add(side)
+  const operatorLabel = operatorSideLabel(operatorSideForHardwareSide(side))
+  const axisIndex = manualAxisOrder.indexOf(axis)
+  const generation = get().controlSafety.generation
+  const warn = (msg: string) => set((latest) => ({ logs: appendLog(latest.logs, makeLog('WARNING', msg, '[HAL]')) }))
+  void get().ensureMotionEnabled(side)
+    .then((reason) => {
+      const blocked = reason
+        ?? (get().controlSafety.generation !== generation ? '控制流程已被安全事件取消，请重新操作' : null)
+      if (blocked) {
+        warn(`${operatorLabel} ${axis} 点动未发送：${blocked}`)
+        return
+      }
+      if (rejectUnsafeControl(get, set)) return
+      if (get().frame.motionAxisEnabled?.[side]?.[axisIndex] !== true) {
+        warn(`${operatorLabel} ${axis} jog skipped: motion axis is disabled`)
+        return
+      }
+      sendManualAxisMove(get, set, side, axis, direction, rawStep, speedMode)
+    })
+    .catch((error) => warn(`${operatorLabel} ${axis} 点动未发送：${errorText(error)}`))
+    .finally(() => autoEnableJogPending.delete(side))
+  set((current) => ({
+    logs: appendLog(current.logs, makeLog('INFO', `${operatorLabel}未使能，点动前自动使能`, '[HAL]')),
+  }))
+}
+
 /** 网络成功只说明请求返回；超时后仍保留急停门闩，允许再次发送急停。 */
 async function safetyRequestWithDeadline(request: Promise<unknown>) {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -1555,6 +1714,7 @@ export const useTelemetryStore = create<TelemetryStore>((set, get) => ({
   manualControl: initialManualState,
   motionCommand: { left: initialMotionCommand(), right: initialMotionCommand() },
   setMotionEnabled: (side, enabled) => motionCommands.setEnabled(side, enabled),
+  ensureMotionEnabled: (side) => ensureMotionSideEnabled(side),
   gripperCommand: { left: initialGripperCommandProgress(), right: initialGripperCommandProgress() },
   parameterSnapshots: readParameterSnapshots(),
   mockTimer: null,
@@ -2902,61 +3062,14 @@ issueManualAxisMove: (side, axis, direction) => {
     if (!mockMode) {
       const state = get()
       const axisIndex = manualAxisOrder.indexOf(axis)
-      if (state.frame.motionAxisEnabled?.[side]?.[axisIndex] !== true) {
-        set((current) => ({
-          logs: appendLog(current.logs, makeLog('WARNING', `${operatorLabel} ${axis} jog skipped: motion axis is disabled`, '[HAL]')),
-        }))
-        return
-      }
+      // 点击时锁定步长与速度档；随动使能后补发也按按钮上显示的数值执行。
       const rawStep = axisIndex < 3 ? state.manualControl.axisStepUm : state.manualControl.axisStepDeg
       const speedMode = state.manualControl.speedMode
-      const step = clampManualAxisStep(state.config, side, axis, rawStep, speedMode)
-      const busyKey = manualAxisBusyKey(side, axis)
-      const now = Date.now()
-      const busyUntil = state.manualControl.axisBusyUntil[busyKey] ?? 0
-      if (busyUntil > now) {
-        // 前端本地节流只影响重复点击，真实安全边界仍由后端和硬件抽象层执行。
-        const remainingS = ((busyUntil - now) / 1000).toFixed(1)
-        set((current) => ({
-          logs: appendLog(
-            current.logs,
-            makeLog('WARNING', `${operatorLabel} ${axis} jog skipped: axis is still moving (${remainingS}s)`, '[HAL]'),
-          ),
-        }))
+      if (state.frame.motionAxisEnabled?.[side]?.[axisIndex] !== true) {
+        autoEnableThenJog(get, set, side, axis, direction, rawStep, speedMode)
         return
       }
-      const lockUntil = now + manualAxisLockMs(state.config, side, axis, step, speedMode)
-      const effectiveDirection = manualAxisEffectiveDirection(side, axisIndex, direction)
-      // 先标记轴忙，避免网络往返期间再次发出同轴命令。
-      set((current) => ({
-        manualControl: {
-          ...current.manualControl,
-          selectedSide: side,
-          selectedAxis: axis,
-          axisBusyUntil: {
-            ...current.manualControl.axisBusyUntil,
-            [busyKey]: lockUntil,
-          },
-        },
-      }))
-      void manualAxisMoveApi(side, axis, effectiveDirection, step, speedMode)
-        .then(() => {
-          set((current) => ({
-            logs: appendLog(current.logs, makeLog('INFO', `${operatorLabel} ${axis} jog command accepted by HAL`, '[HAL]')),
-          }))
-        })
-        .catch((error) => {
-          set((current) => ({
-            manualControl: {
-              ...current.manualControl,
-              axisBusyUntil: {
-                ...current.manualControl.axisBusyUntil,
-                [busyKey]: Date.now() + 1000,
-              },
-            },
-            logs: appendLog(current.logs, makeLog('ERROR', `manual axis command failed: ${String(error)}`, '[HAL]')),
-          }))
-        })
+      sendManualAxisMove(get, set, side, axis, direction, rawStep, speedMode)
       return
     }
     set((state) => {
@@ -3246,6 +3359,23 @@ const motionCommands = createMotionCommandController(
   (side, enabled) => enabled ? enableMotionSide(side) : disableMotionSide(side),
   () => controlSafetyBlockReason(useTelemetryStore.getState(), false),
 )
+
+if (useTelemetryStore.getState().controlSafety.emergencyRequested) {
+  enableOnlyAfterEmergency.add('left')
+  enableOnlyAfterEmergency.add('right')
+}
+useTelemetryStore.subscribe((state, previous) => {
+  if (state.controlSafety.emergencyRequested) {
+    if (!previous.controlSafety.emergencyRequested) {
+      enableOnlyAfterEmergency.add('left')
+      enableOnlyAfterEmergency.add('right')
+    }
+    return
+  }
+  for (const side of enableOnlyAfterEmergency) {
+    if (motionDeviceState(state.frame, state.telemetryLink, side) === 'enabled') enableOnlyAfterEmergency.delete(side)
+  }
+})
 
 installControlCommandGuard(() => controlSafetyBlockReason(useTelemetryStore.getState(), !mockMode))
 installForceSelfCheckGuard(() => forceSelfCheckBlockReason(useTelemetryStore.getState(), !mockMode))

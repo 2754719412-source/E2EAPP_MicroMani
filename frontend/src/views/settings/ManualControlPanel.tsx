@@ -6,11 +6,11 @@ import {
   Activity,
   Pause,
   Play,
-  PlugZap,
   Save,
   ShieldAlert,
   Square,
   Trash2,
+  Usb,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import {
@@ -261,7 +261,12 @@ export function ManualArmControl({
   const [pendingMotionAction, setPendingMotionAction] = useState<'stop' | null>(null)
   const motionEnable = useMotionEnable(hardwareSide)
   const selectedAxisEnabled = motionEnable.axes?.[axisIndex]
-  const motionReady = mockMode || (motionEnable.canEnable && selectedAxisEnabled === true)
+  // 不再单独提供使能按钮：未使能时点动会先随动使能本侧，确认后才发位移；断使能仍就近保留。
+  const motionReady = mockMode || motionEnable.canEnable
+  const autoEnabling = !mockMode && motionEnable.busy && motionEnable.desired === true
+  const jogTitle = !motionReady
+    ? motionEnable.enableBlockedReason ?? undefined
+    : !mockMode && selectedAxisEnabled !== true ? '未使能：点击后先自动使能本侧，确认后执行点动' : undefined
  /** 停止对应流程。 */
  const stopMotion = async () => {
     setPendingMotionAction('stop')
@@ -355,10 +360,10 @@ export function ManualArmControl({
             </UiField>
           </div>
           <div className="manual-action-row">
-            <UiButton disabled={axisBusy || !motionReady || manualAxisBlocked} onClick={() => issueManualAxisMove(hardwareSide, selectedAxis, -1)}>
+            <UiButton title={jogTitle} loading={autoEnabling} disabled={axisBusy || !motionReady || manualAxisBlocked} onClick={() => issueManualAxisMove(hardwareSide, selectedAxis, -1)}>
               {axisBusy ? busyText : `-${boundedStepValue}${unit}`}
             </UiButton>
-            <UiButton variant="primary" disabled={axisBusy || !motionReady || manualAxisBlocked} onClick={() => issueManualAxisMove(hardwareSide, selectedAxis, 1)}>
+            <UiButton variant="primary" title={jogTitle} loading={autoEnabling} disabled={axisBusy || !motionReady || manualAxisBlocked} onClick={() => issueManualAxisMove(hardwareSide, selectedAxis, 1)}>
               {axisBusy ? busyText : `+${boundedStepValue}${unit}`}
             </UiButton>
             <UiButton icon={<Square size={15} />} loading={pendingMotionAction === 'stop'} onClick={() => void stopMotion()}>
@@ -368,11 +373,12 @@ export function ManualArmControl({
               检查
             </UiButton>
             <UiButton
-              icon={<PlugZap size={15} />}
-              danger={!motionEnable.nextEnabled}
-              onClick={() => motionEnable.setMotionEnabled(hardwareSide, motionEnable.nextEnabled)}
+              danger
+              icon={<Usb size={15} />}
+              loading={motionEnable.busy && motionEnable.desired === false}
+              onClick={() => motionEnable.setMotionEnabled(hardwareSide, false)}
             >
-              {motionEnable.nextEnabled ? '使能' : '断使能'}
+              断使能
             </UiButton>
             <UiButton danger icon={<ShieldAlert size={15} />} onClick={triggerEmergencyStop}>
               急停

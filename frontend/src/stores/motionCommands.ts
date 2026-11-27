@@ -43,6 +43,17 @@ export const motionDeviceLabels = {
   enabled: '已使能', disabled: '未使能', partial: '部分使能', unknown: '使能状态未知',
 } as const
 
+/**
+ * 点动 / 连接主手前的随动使能结果：只有本侧使能请求获遥测确认才放行；
+ * 失败、超时、失效或期间排入断使能都视为未完成，调用方不得继续发运动命令。
+ */
+export function motionEnableOutcome(command: MotionCommandState): 'pending' | 'enabled' | 'failed' {
+  if (command.queuedEnabled !== null) return command.queuedEnabled ? 'pending' : 'failed'
+  if (command.targetEnabled !== true) return 'failed'
+  if (command.phase === 'confirmed') return 'enabled'
+  return command.phase === 'sending' || command.phase === 'waitingConfirm' ? 'pending' : 'failed'
+}
+
 export function motionCommandLabel(command: MotionCommandState) {
   const queued = command.queuedEnabled === null ? '' : `；${command.queuedEnabled ? '使能' : '断使能'}请求排队中`
   const transport = command.phase === 'timeout' && command.transportPending ? '；原请求仍等待响应' : ''
@@ -172,10 +183,16 @@ export function createMotionCommandController(
     lane.active = request
     lane.inFlight = request
     lane.queued = null
-    write(side, {
-      phase: 'sending', requestId: request.id, targetEnabled: enabled, queuedEnabled: null,
-      transportPending: true, message: `正在发送${enabled ? '使能' : '断使能'}请求`,
-    })
+    // 展示写入（订阅回调）抛错时仍须安排超时并发送，尤其断使能；否则本侧通道被永久占用。异常在发出后再抛。
+    let displayError: { error: unknown } | null = null
+    try {
+      write(side, {
+        phase: 'sending', requestId: request.id, targetEnabled: enabled, queuedEnabled: null,
+        transportPending: true, message: `正在发送${enabled ? '使能' : '断使能'}请求`,
+      })
+    } catch (error) {
+      displayError = { error }
+    }
     request.timer = setTimeout(() => {
       if (lane.active !== request || request.terminal) return
       request.terminal = true
@@ -229,6 +246,7 @@ export function createMotionCommandController(
         }
       }
     })()
+    if (displayError) throw displayError.error
   }
 
   return {

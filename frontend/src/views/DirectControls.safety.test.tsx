@@ -204,9 +204,10 @@ describe('直接 API 页面入口的安全约束', () => {
 
   it('主手连接迟到成功不能在急停后回写连接配置', async () => {
     const connected = deferred()
-    vi.spyOn(api, 'connectTeleopHand').mockReturnValue(connected.promise)
+    const connect = vi.spyOn(api, 'connectTeleopHand').mockReturnValue(connected.promise)
     const { updateConfig, injectLog } = renderTeleopCard()
-    fireEvent.click(screen.getByRole('button', { name: '连接主手' }))
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '连接主手' })) })
+    expect(connect).toHaveBeenCalledWith('left')
     await act(async () => {
       blockControls()
       connected.resolve({ data: { connected: true } })
@@ -214,6 +215,61 @@ describe('直接 API 页面入口的安全约束', () => {
 
     expect(updateConfig).not.toHaveBeenCalled()
     expect(injectLog).toHaveBeenCalledWith('WARNING', expect.stringContaining('主手连接确认已取消'), '[HAL]')
+  })
+
+  it('连接主手前先随动使能目标臂，确认后才发送连接', async () => {
+    const enabled = deferred()
+    const ensure = vi.fn(() => enabled.promise as Promise<string | null>)
+    useTelemetryStore.setState({ ensureMotionEnabled: ensure })
+    const connect = vi.spyOn(api, 'connectTeleopHand').mockResolvedValue({ data: { connected: true } })
+    const { updateConfig } = renderTeleopCard()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '连接主手' })) })
+
+    // 默认交换遥操作通道：操作者左主手驱动硬件右臂，使能目标必须是硬件侧。
+    expect(ensure).toHaveBeenCalledExactlyOnceWith('right')
+    expect(connect).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: '连接主手' })).toBeDisabled()
+    await act(async () => { enabled.resolve(null) })
+    expect(connect).toHaveBeenCalledExactlyOnceWith('left')
+    expect(updateConfig).toHaveBeenCalled()
+  })
+
+  it.each([
+    ['使能被拒绝', '后端拒绝请求', false],
+    ['急停后首次只完成使能', '急停后首次操作只完成使能，请再次点击执行', false],
+    ['确认期间急停', null, true],
+  ] as const)('%s 时不发送主手连接', async (_case, reason, emergency) => {
+    const enabled = deferred()
+    useTelemetryStore.setState({ ensureMotionEnabled: vi.fn(() => enabled.promise as Promise<string | null>) })
+    const connect = vi.spyOn(api, 'connectTeleopHand').mockResolvedValue({ data: { connected: true } })
+    const { updateConfig, injectLog } = renderTeleopCard()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '连接主手' })) })
+    await act(async () => {
+      if (emergency) blockControls()
+      enabled.resolve(reason)
+    })
+
+    expect(connect).not.toHaveBeenCalled()
+    expect(updateConfig).not.toHaveBeenCalled()
+    expect(injectLog).toHaveBeenCalledWith('WARNING', expect.stringContaining(`主手连接未发送：${reason ?? '期间发生安全事件'}`), '[HAL]')
+    // 拦下后不残留等待态；急停时按钮按安全状态禁用。
+    if (emergency) expect(screen.getByRole('button', { name: '连接主手' })).toBeDisabled()
+    else expect(screen.getByRole('button', { name: '连接主手' })).toBeEnabled()
+  })
+
+  it.each([false, null] as const)('主手物理状态为 %s 时不使能目标臂也不发连接', async (physicalConnected) => {
+    const ensure = vi.fn(() => Promise.resolve(null))
+    const connect = vi.spyOn(api, 'connectTeleopHand').mockResolvedValue({ data: { connected: true } })
+    useTelemetryStore.setState((state) => ({
+      ensureMotionEnabled: ensure,
+      frame: { ...state.frame, teleopHands: state.frame.teleopHands.map((hand) => ({ ...hand, physicalConnected })) },
+    }))
+    const { injectLog } = renderTeleopCard()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '连接主手' })) })
+
+    expect(ensure).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
+    expect(injectLog).toHaveBeenCalledWith('WARNING', expect.stringContaining('主手未物理在线'), '[HAL]')
   })
 })
 
