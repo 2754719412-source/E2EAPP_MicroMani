@@ -115,9 +115,11 @@ def test_idle_disconnect_keeps_lease_blocks_motion_and_reconnects_without_ack() 
     async def exercise() -> None:
         watchdog, now, hal, invalidate, stop = make_watchdog()
         watchdog.motion_active = lambda: False
+        watchdog.axes_stationary = AsyncMock(return_value=True)
         first = await confirm_mock_browser_lease(watchdog)
         watchdog.remove(first)
         await flush()
+        watchdog.axes_stationary.assert_awaited_once()
         invalidate.assert_not_called()
         stop.assert_not_awaited()
         with pytest.raises(ControlLeaseUnavailable):
@@ -150,8 +152,10 @@ def test_idle_detached_watchdog_stops_when_motion_starts_or_cannot_be_checked(ca
             return state["moving"]
 
         watchdog.motion_active = motion_active
+        watchdog.axes_stationary = AsyncMock(return_value=True)
         session = await confirm_mock_browser_lease(watchdog)
         watchdog.remove(session)
+        await flush()
         state["moving"] = True
         await watchdog.cycle()
         await flush()
@@ -164,10 +168,12 @@ def test_idle_detached_watchdog_stops_when_motion_starts_or_cannot_be_checked(ca
     asyncio.run(exercise())
 
 
-def test_idle_send_failure_detaches_without_stop() -> None:
+@pytest.mark.parametrize("stationary", [True, False])
+def test_idle_send_failure_detaches_only_when_axes_are_stationary(stationary) -> None:
     async def exercise() -> None:
         watchdog, _now, _hal, invalidate, stop = make_watchdog()
         watchdog.motion_active = lambda: False
+        watchdog.axes_stationary = AsyncMock(return_value=stationary)
 
         async def broken(_message):
             raise ConnectionError("socket closed")
@@ -175,14 +181,84 @@ def test_idle_send_failure_detaches_without_stop() -> None:
         watchdog.register(broken)
         await watchdog.cycle()
         await flush()
+        await flush()
         try:
             assert not watchdog.clients
+            if stationary:
+                invalidate.assert_not_called()
+                stop.assert_not_awaited()
+            else:
+                invalidate.assert_called_once()
+                stop.assert_awaited_once()
+        finally:
+            await watchdog.close()
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("feedback", ["moving", "check_failed", "timeout", "not_configured"])
+def test_idle_disconnect_stops_when_hal_cannot_confirm_axes_stationary(feedback) -> None:
+    """单段点动应答后后端已无运动任务，但轴可能仍在移动；断线须以 HAL 反馈为准。"""
+    async def exercise() -> None:
+        watchdog, now, hal, invalidate, stop = make_watchdog()
+        watchdog.motion_active = lambda: False
+
+        async def axes_stationary():
+            if feedback == "check_failed":
+                raise RuntimeError("stationary motion feedback is stale or unavailable")
+            if feedback == "timeout":
+                await asyncio.sleep(5)
+            return False
+
+        if feedback != "not_configured":
+            watchdog.axes_stationary = axes_stationary
+        session = await confirm_mock_browser_lease(watchdog)
+        renewals = hal.command.call_count
+        watchdog.remove(session)
+        try:
+            await asyncio.wait_for(_until(lambda: stop.await_count == 1), 2.0)
+            invalidate.assert_called_once()
+            now[0] += 1.0
+            await watchdog.cycle()
+            assert hal.command.call_count == renewals  # 急停后不再为断线会话续租
+            with pytest.raises(ControlLeaseUnavailable):
+                watchdog.require_ready()
+        finally:
+            await watchdog.close()
+
+    asyncio.run(exercise())
+
+
+def test_reconnect_during_idle_check_cancels_the_pending_stop() -> None:
+    async def exercise() -> None:
+        watchdog, _now, _hal, invalidate, stop = make_watchdog()
+        watchdog.motion_active = lambda: False
+        release = asyncio.Event()
+
+        async def axes_stationary():
+            await release.wait()
+            return False
+
+        watchdog.axes_stationary = axes_stationary
+        first = await confirm_mock_browser_lease(watchdog)
+        watchdog.remove(first)
+        await flush()
+        second = await confirm_mock_browser_lease(watchdog)
+        release.set()
+        await flush()
+        try:
+            assert second in watchdog.clients
             invalidate.assert_not_called()
             stop.assert_not_awaited()
         finally:
             await watchdog.close()
 
     asyncio.run(exercise())
+
+
+async def _until(condition) -> None:
+    while not condition():
+        await asyncio.sleep(0.005)
 
 
 def test_owner_disconnect_allows_quick_reconnect_before_fail_safe_stop() -> None:
@@ -515,6 +591,85 @@ def test_app_websocket_lease_allows_ack_idle_disconnect_keeps_lease_and_motion_d
                         await pending
                     except asyncio.CancelledError:
                         pass
+            await watchdog.close()
+            app.state.telemetry.shutdown()
+
+    asyncio.run(exercise())
+
+
+def test_app_disconnect_after_jog_reply_stops_while_hal_reports_axis_moving(tmp_path, monkeypatch) -> None:
+    """单段点动应答后后端运动操作已结束，但 HAL 反馈轴仍在移动；此时断开浏览器必须急停。"""
+    from backend.app import create_app
+    from starlette.websockets import WebSocketDisconnect, WebSocketState
+
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+    monkeypatch.setenv("APPSTATION_WS_PERIOD_SEC", "0.001")
+    app = create_app(tmp_path)
+    app.state.telemetry.hardware = None
+    watchdog = app.state.control_watchdog
+    watchdog.disconnect_grace_s = 0.0
+
+    async def exercise() -> None:
+        active, stopped = asyncio.Event(), asyncio.Event()
+        original_command = app.state.hal.command
+        original_state = app.state.hal.motion_state
+
+        async def command(name, payload=None):
+            result = await original_command(name, payload)
+            if name == "motion.emergency_stop":
+                stopped.set()
+            return result
+
+        async def motion_state():
+            state = await original_state()
+            state["moving"] = [False] * 3 + [True] + [False] * 8
+            return state
+
+        class Socket:
+            client_state = WebSocketState.CONNECTED
+
+            def __init__(self):
+                self.inbox = asyncio.Queue()
+
+            async def accept(self):
+                pass
+
+            async def send_json(self, message):
+                if self.client_state != WebSocketState.CONNECTED:
+                    raise WebSocketDisconnect()
+                if message["type"] == "control_lease" and message["data"]["status"] == "active":
+                    active.set()
+
+            async def receive_json(self):
+                message = await self.inbox.get()
+                if message is None:
+                    self.client_state = WebSocketState.DISCONNECTED
+                    raise WebSocketDisconnect()
+                return message
+
+        app.state.hal.command = command
+        endpoint = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/ws")
+        socket = Socket()
+        task = asyncio.create_task(endpoint(socket))
+        try:
+            await asyncio.wait_for(active.wait(), 1)
+            watchdog.require_ready()
+            app.state.commands.safety.acknowledge(app.state.commands.safety.capture())
+            assert not app.state.commands.safety.latched
+            assert not app.state.commands.safety.operation_active()
+            app.state.hal.motion_state = motion_state
+            await socket.inbox.put(None)
+            await task
+            await asyncio.wait_for(stopped.wait(), 2)
+            assert app.state.commands.safety.latched
+            assert not watchdog.clients
+        finally:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
             await watchdog.close()
             app.state.telemetry.shutdown()
 

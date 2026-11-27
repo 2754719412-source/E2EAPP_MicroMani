@@ -488,10 +488,23 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         return (replay.active or commands.safety.operation_active()
                 or teleop_mapper.control_active() or policy.dispatch_active())
 
+    async def control_axes_stationary() -> bool:
+        # 单段点动在控制卡接受后即返回，轴可能仍在移动；需新鲜反馈确认 12 轴静止，状态通道忙时短暂重试。
+        deadline = time.monotonic() + 0.5
+        while True:
+            try:
+                commands.require_stationary_motion(await hal.motion_state())
+                return True
+            except RuntimeError:
+                if time.monotonic() >= deadline:
+                    return False
+                await asyncio.sleep(0.05)
+
     control_watchdog = ControlWatchdog(
         hal, logs, invalidate_control_session, commands.emergency_stop,
         disconnect_grace_s=float(os.environ.get("APPSTATION_CONTROL_DISCONNECT_GRACE_SEC", "0")),
         motion_active=control_motion_active,
+        axes_stationary=control_axes_stationary,
     )
     app.state.control_watchdog = control_watchdog
     commands.safety.readiness_check = control_watchdog.require_ready

@@ -41,6 +41,7 @@ class ControlWatchdog:
         hal_timeout_ms: int = 2500,
         disconnect_grace_s: float = 0.0,
         motion_active: Callable[[], bool] | None = None,
+        axes_stationary: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         self.hal = hal
         self.logs = logs
@@ -48,6 +49,8 @@ class ControlWatchdog:
         self.emergency_stop = emergency_stop
         # 未提供时按“运动中”处理，保持断开即急停。
         self.motion_active = motion_active or (lambda: True)
+        # 后端无运动任务时，仍须新鲜 HAL 反馈确认各轴静止（单段点动应答后轴可能仍在走）；未提供按运动中处理。
+        self.axes_stationary = axes_stationary
         # 空闲时浏览器断开：后端继续续租 HAL，但无会话期间拒绝一切运动命令。
         self._idle_detached = False
         self.clock = clock
@@ -115,7 +118,7 @@ class ControlWatchdog:
             client.sending.cancel()
         if not client.expired and not self.clients:
             if not self._motion_running():
-                self._detach_idle("browser WebSocket disconnected")
+                self._start_idle_check("browser WebSocket disconnected")
                 return
             if self.disconnect_grace_s <= 0.0:
                 self.trip("browser WebSocket disconnected")
@@ -146,6 +149,33 @@ class ControlWatchdog:
     def _detach_idle(self, reason: str) -> None:
         self._idle_detached = True
         self.logs.info("[SAFETY]", f"{reason} while idle; HAL lease kept, motion commands blocked until reconnect")
+
+    def _start_idle_check(self, reason: str) -> None:
+        # 检查期间无会话，既不续租也不接受运动命令；HAL 租约 2.5 s 足以覆盖 1 s 检查上限。
+        generation = self._generation
+        self._disconnect_task = asyncio.create_task(
+            self._detach_if_stationary(generation, reason),
+            name="control-watchdog-idle-check",
+        )
+
+    async def _detach_if_stationary(self, generation: int, reason: str) -> None:
+        try:
+            stationary = False
+            if self.axes_stationary is not None:
+                try:
+                    stationary = await asyncio.wait_for(self.axes_stationary(), 1.0) is True
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    self.logs.error("[SAFETY]", f"axis stationary check failed after browser loss: {exc}")
+            if self._closed or self.clients or generation != self._generation:
+                return
+            if stationary and not self._motion_running():
+                self._detach_idle(reason)
+            else:
+                self.trip(f"{reason}; axes not confirmed stationary")
+        except asyncio.CancelledError:
+            return
 
     def trip(self, reason: str) -> None:
         self._idle_detached = False
@@ -206,7 +236,7 @@ class ControlWatchdog:
                     reason = f"browser connection send failed: {type(exc).__name__}: {exc}"
                     if len(self.clients) == 1 and not self._motion_running():
                         self.clients.pop(client.session_id, None)
-                        self._detach_idle(reason)
+                        self._start_idle_check(reason)
                     else:
                         self.trip(reason)
 
