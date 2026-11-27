@@ -125,7 +125,7 @@ export interface ForceStatus {
   sensorRawRight?: number[]
   leftRightSkewMs?: number
   calibration?: {
-    state?: 'not_required' | 'waiting_sensors' | 'checking_stability' | 'taring' | 'validating' | 'ready_for_ack' | 'ready' | 'failed' | string
+    state?: 'not_required' | 'waiting_sensors' | 'checking_stability' | 'taring' | 'validating' | 'ready' | 'failed' | string
     progress?: number
     reason?: string
     completedAtUnixMs?: number

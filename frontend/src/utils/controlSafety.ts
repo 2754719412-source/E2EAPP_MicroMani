@@ -35,8 +35,6 @@ export function controlSafetyBlockReason(state: SafetySnapshot, requireLive = tr
 }
 
 const acknowledgeMessages: Record<string, string> = {
-  'startup force self-check is not complete': '请先完成启动力觉自检',
-  'both sensors must remain healthy and below warning thresholds for 500 ms': '等待双侧力传感器连续 500 ms 健康且低于警告阈值',
   'force worker failed; reconfigure before acknowledgement': '力觉采集故障，请重新配置后再确认',
   'force emergency-stop callback failed; diagnose and reconfigure before acknowledgement': '力觉急停回调失败，请排查并重新配置后再确认',
 }
@@ -45,7 +43,6 @@ function forceAcknowledgeReason(reason?: string): string {
   if (!reason) return '等待 HAL 确认力安全条件已满足'
   for (const side of ['left', 'right'] as const) {
     const label = `${operatorSideLabel(operatorSideForHardwareSide(side))}（${hardwareChannelLabel(side)}）`
-    if (reason === `${side} force sensor is above warning threshold`) return `${label}力读数超出警告范围，请检查末端受力`
     if (reason === `${side} force sample is stale`) return `${label}力样本已过期`
     if (reason === `${side} force sensor is not healthy`) return `${label}力传感器状态异常`
   }

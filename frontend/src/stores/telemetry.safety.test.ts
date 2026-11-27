@@ -226,7 +226,7 @@ describe('真实 HTTP 分支的急停保护（全部网络隔离）', () => {
     expect(requests[0].path).toBe('/api/sensors/tare')
     expect(vi.mocked(fetch).mock.calls.at(-1)?.[1]?.body).toBe(JSON.stringify({ unloadedConfirmed: true }))
     await expect(api.runHkvlStartupSelfCheck()).rejects.toThrow('正在进行')
-    await respond(0, { ok: true, data: { hal: { response: { calibration: { state: 'ready_for_ack' } } } } })
+    await respond(0, { ok: true, data: { hal: { response: { calibration: { state: 'ready' } } } } })
     await pending
     expect(store.getState().frame).toBe(frame)
     expect(requests.some((request) => request.path.includes('acknowledge'))).toBe(false)

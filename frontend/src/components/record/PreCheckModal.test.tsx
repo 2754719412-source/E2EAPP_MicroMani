@@ -93,14 +93,18 @@ afterEach(() => {
 })
 
 describe('PreCheckModal', () => {
-  it('HKVL 自检仅收到 ready_for_ack 时仍阻止录制，人工确认反馈 ready 后才能开始', () => {
+  it('HKVL 去皮完成但仍锁存、或已确认但未去皮时都阻止录制，二者都满足后才能开始', () => {
     makeReadyForRecordPrecheck()
     useTelemetryStore.setState((state) => ({
       recordSession: { ...state.recordSession, resetReturnedSides: ['left'] },
-      frame: { ...state.frame, forceStatus: { source: 'hkvl_serial', calibration: { state: 'ready_for_ack' }, safety: { latched: true, canAcknowledge: true } } },
+      frame: { ...state.frame, forceStatus: { source: 'hkvl_serial', calibration: { state: 'ready' }, safety: { latched: true, canAcknowledge: true } } },
     }))
     renderPreCheck()
     fireEvent.click(screen.getByRole('checkbox', { name: '已完成' }))
+    expect(screen.getByRole('button', { name: '确认开始' })).toBeDisabled()
+    act(() => useTelemetryStore.setState((state) => ({ frame: {
+      ...state.frame, forceStatus: { source: 'hkvl_serial', calibration: { state: 'waiting_sensors' }, safety: { latched: false, canAcknowledge: true } },
+    } })))
     expect(screen.getByRole('button', { name: '确认开始' })).toBeDisabled()
     act(() => useTelemetryStore.setState((state) => ({ frame: {
       ...state.frame, forceStatus: { source: 'hkvl_serial', calibration: { state: 'ready' }, safety: { latched: false, canAcknowledge: true } },

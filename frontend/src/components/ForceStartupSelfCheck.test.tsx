@@ -19,7 +19,7 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); useTelemetryStore.setState(initialState) })
 
-it('锁存下先明确确认双侧卸载，再执行自检；请求成功不会自动 ACK', async () => {
+it('锁存下先明确确认双侧卸载，再执行自检；请求成功不会自动 ACK 已有锁存', async () => {
   const run = vi.spyOn(api, 'runHkvlStartupSelfCheck').mockResolvedValue({ ok: true })
   const ack = vi.spyOn(api, 'acknowledgeSafety')
   render(<><ForceStartupSelfCheck /><GlobalEmergencyStopButton /></>)
@@ -34,19 +34,19 @@ it('锁存下先明确确认双侧卸载，再执行自检；请求成功不会�
   expect(useTelemetryStore.getState().frame.forceStatus?.safety?.latched).toBe(true)
   expect(screen.getByRole('button', { name: '确认安全态' })).toBeDisabled()
   act(() => useTelemetryStore.setState((state) => ({ frame: { ...state.frame, forceStatus: {
-    source: 'hkvl_serial', calibration: { state: 'ready_for_ack', progress: 100 }, safety: { latched: true, canAcknowledge: true },
+    source: 'hkvl_serial', calibration: { state: 'ready', progress: 100 }, safety: { latched: true, canAcknowledge: true },
   } } })))
-  expect(screen.getByText('自检通过，待人工确认 · 100%')).toBeInTheDocument()
+  expect(screen.getByText('自检通过，新零点已生效 · 100%')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '确认安全态' })).toBeEnabled()
 })
 
 it('确认按钮直接显示 HAL 报告的操作者侧阻塞原因，条件满足后说明伺服状态', () => {
   useTelemetryStore.setState((state) => ({ frame: { ...state.frame, forceStatus: {
-    source: 'hkvl_serial', safety: { latched: true, canAcknowledge: false, acknowledgeBlocker: 'left force sensor is above warning threshold' },
+    source: 'hkvl_serial', safety: { latched: true, canAcknowledge: false, acknowledgeBlocker: 'left force sample is stale' },
   } } }))
   render(<GlobalEmergencyStopButton />)
   const button = screen.getByRole('button', { name: '确认安全态' })
-  expect(button).toHaveAccessibleDescription('右臂（硬件左侧通道）力读数超出警告范围，请检查末端受力')
+  expect(button).toHaveAccessibleDescription('右臂（硬件左侧通道）力样本已过期')
   expect(button).toBeDisabled()
   act(() => useTelemetryStore.setState((state) => ({ frame: { ...state.frame, forceStatus: {
     source: 'hkvl_serial', safety: { latched: true, canAcknowledge: true },
@@ -56,9 +56,8 @@ it('确认按钮直接显示 HAL 报告的操作者侧阻塞原因，条件满�
 })
 
 it.each([
-  ['both sensors must remain healthy and below warning thresholds for 500 ms', '连续 500 ms'],
+  ['left force sensor is not healthy', '右臂（硬件左侧通道）力传感器状态异常'],
   ['right force sample is stale', '左臂（硬件右侧通道）力样本已过期'],
-  ['startup force self-check is not complete', '请先完成启动力觉自检'],
   ['未识别的硬件诊断', '未识别的硬件诊断'],
 ])('按 HAL 反馈显示阻塞原因 %s', (blocker, message) => {
   const state = useTelemetryStore.getState()
