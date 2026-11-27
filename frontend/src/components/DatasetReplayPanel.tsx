@@ -55,7 +55,6 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
   const statusRevision = useRef(0)
   const commandSequence = useRef(0)
   const inspectInFlight = useRef<Promise<unknown> | null>(null)
-  const [confirmed, setConfirmed] = useState(false)
   const [speed, setSpeed] = useState('0.25')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
@@ -70,7 +69,6 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
   const resetInspection = () => {
     generation.current += 1
     setInspection(null)
-    setConfirmed(false)
   }
   useEffect(() => {
     if (mockMode) return
@@ -132,7 +130,7 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
   }, [canInspect, replayPath, selected, speed, key, attempt])
 
   const run = async (operation: 'start' | 'stop') => {
-    if (operation === 'start' && !(verified && confirmed)) return
+    if (operation === 'start' && !verified) return
     const revision = statusRevision.current
     const command = ++commandSequence.current
     resetInspection()
@@ -185,7 +183,7 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
       <div className="dataset-replay-toolbar">
         <div className="dataset-replay-actions">
           {current?.error && <UiButton onClick={() => { resetInspection(); setAttempt((value) => value + 1) }}>重新校验回放数据</UiButton>}
-          <UiButton variant="primary" icon={<Play size={15} aria-hidden="true" />} disabled={!verified || !confirmed} onClick={() => void run('start')}>对齐起点并真机回放</UiButton>
+          <UiButton variant="primary" icon={<Play size={15} aria-hidden="true" />} disabled={!verified} onClick={() => void run('start')}>对齐起点并真机回放</UiButton>
           <UiButton danger icon={<Square size={14} aria-hidden="true" />} disabled={!status?.active} onClick={() => void run('stop')}>停止真机回放</UiButton>
         </div>
         <fieldset className="dataset-replay-speed" disabled={pending || status?.active}>
@@ -205,10 +203,6 @@ function DatasetReplayPanelContent({ datasetId, episodeId, recordedParticipation
         <p>{timing.limitedFrames ? `${timing.limitedFrames} 段延时，受限通道：${timing.limitingChannels.join('、')}` : '轨迹无需额外延时'}。预计时长不含起点对齐、通信与反馈等待{timing.gripperFeedbackLimited ? '；夹爪耗时以实际反馈为准' : ''}。</p>
         <p>参数来源：{timing.profileSource === 'teleop' ? '当前示教配置' : timing.profileSource} · 平移 {timing.profile.translationVelocityUiPerSec} μm/s · 旋转 {timing.profile.rotationVelocityUiPerSec}°/s · 加/减速 {timing.profile.accTimeSec}/{timing.profile.decTimeSec} 秒。{!timing.hardwareValidated && '尚无逐轴及负载实机验收记录。'}</p>
       </div>}
-      <label className={`dataset-replay-confirm${confirmed ? ' is-confirmed' : ''}`}>
-        <input type="checkbox" checked={confirmed} disabled={!verified} onChange={(event) => setConfirmed(event.target.checked)} />
-        <span><strong>确认工作区可安全运动</strong><span>请先停止示教、录制和策略运行；勾选后允许所选臂与夹爪移动到录制起点并回放。</span></span>
-      </label>
       <div className="dataset-replay-status">
         <span>{pending ? '正在处理请求…' : verified ? '数据校验通过' : canInspect && !current ? '正在校验回放数据…' : '回放进度'}{current?.summary && <span className="dataset-replay-summary">{current.summary}</span>}</span>
         <span className="dataset-replay-frames">{status?.frame ?? 0}<span> / {status?.totalFrames ?? 0} 帧</span></span>

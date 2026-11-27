@@ -21,11 +21,6 @@
 .dataset-replay-speed input:checked + span { color: var(--color-primary); background: var(--color-bg-card); box-shadow: var(--shadow-sm); font-weight: 600; }
 .dataset-replay-speed input:focus-visible + span { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 .dataset-replay-speed:disabled { opacity: .5; }
-.dataset-replay-confirm { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-muted); cursor: pointer; }
-.dataset-replay-confirm input { margin: 3px 0 0; accent-color: var(--color-primary); width: 15px; height: 15px; flex-shrink: 0; }
-.dataset-replay-confirm strong { display: block; font-size: 12px; font-weight: 600; }
-.dataset-replay-confirm span span { display: block; margin-top: 3px; font-size: 12px; line-height: 1.6; color: var(--color-text-secondary); }
-.dataset-replay-confirm.is-confirmed { border-color: var(--color-primary-border); background: var(--color-primary-light); }
 .dataset-replay-status { display: flex; justify-content: space-between; gap: 12px; margin-top: 16px; font-size: 12px; }
 .dataset-replay-timing { padding: 10px 14px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-muted); font-size: 12px; line-height: 1.7; }
 .dataset-replay-timing p { margin: 3px 0; }
