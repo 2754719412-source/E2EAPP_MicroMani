@@ -408,7 +408,7 @@ def test_capture_motion_origin_stops_native_teleop_sources_after_origin_change(
     service = _service_with_hal(config, LogService(emit_startup=False), FakeMotionStateHal([0.0] * 12))
     service.teleop = teleop
 
-    asyncio.run(service.capture_motion_origin(confirm_large_drift=True))
+    asyncio.run(service.capture_motion_origin())
 
     assert teleop.stop_calls == [
         ("teleop-connect", False),
@@ -490,7 +490,7 @@ def test_capture_motion_origin_keeps_mechanical_soft_limits_stable(
     pulses = list(config["motion"]["origin"]["leftPulse"] + config["motion"]["origin"]["rightPulse"])
     service = _service_with_hal(config, LogService(emit_startup=False), FakeMotionStateHal(pulses))
 
-    asyncio.run(service.capture_motion_origin("left", confirm_large_drift=True))
+    asyncio.run(service.capture_motion_origin("left"))
 
     assert config["motion"]["leftSoftLimits"] == soft_limits_before
     home_reference = side_home_reference_ui(config, "left")

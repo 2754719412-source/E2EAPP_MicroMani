@@ -1952,7 +1952,7 @@ def test_motion_side_enable_and_home_routes(tmp_path: Path, monkeypatch: MonkeyP
     assert right_enable_response.status_code == 200
 
     # 机械寻零后，缺少参考类型的旧原点不再自动恢复，需要在当前位置重新记录。
-    capture_response = client.post("/api/motion/right/origin/capture", json={"confirmLargeDrift": True})
+    capture_response = client.post("/api/motion/right/origin/capture")
     assert capture_response.status_code == 200
     origin_response = client.post("/api/motion/right/return_origin")
     assert origin_response.status_code == 200
@@ -2783,7 +2783,7 @@ def test_motion_origin_capture_rejects_work_origin_outside_hardware_zero_limit(
     config["motion"]["leftSoftLimits"] = _wide_motion_soft_limits()
     settings.save_config(config, emit_log=False)
 
-    response = client.post("/api/motion/left/origin/capture", json={"confirmLargeDrift": True})
+    response = client.post("/api/motion/left/origin/capture")
 
     assert response.status_code == 503
     assert "left Roll work origin exceeds soft limit" in response.json()["detail"]["message"]
@@ -2848,7 +2848,7 @@ def test_motion_origin_capture_records_work_origin_without_changing_home_referen
     config["motion"]["rightSoftLimits"] = _wide_motion_soft_limits()
     settings.save_config(config, emit_log=False)
 
-    response = client.post("/api/motion/origin/capture", json={"confirmLargeDrift": True})
+    response = client.post("/api/motion/origin/capture")
 
     assert response.status_code == 200
     assert fake_hal.commands == []
@@ -2989,7 +2989,7 @@ def test_motion_origin_capture_keeps_rotation_limits_anchored_to_home_reference(
     right_soft_limits_before = json.loads(json.dumps(config["motion"]["rightSoftLimits"]))
     settings.save_config(config, emit_log=False)
 
-    response = client.post("/api/motion/origin/capture", json={"confirmLargeDrift": True})
+    response = client.post("/api/motion/origin/capture")
 
     assert response.status_code == 200
     saved = response.json()["data"]["config"]
@@ -3065,63 +3065,7 @@ def test_motion_origin_capture_does_not_issue_hardware_home(
     assert settings.get_config()["motion"]["origin"]["rightPulse"] == [7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
 
 
-def test_motion_origin_capture_requires_confirmation_for_large_origin_drift(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
-
-    class FakeHal:
-        async def motion_state(self) -> dict:
-            return {
-                "timestamp_ms": now_ms(),
-                "sample_cached": False,
-                "positions": [0.0] * 12,
-                "pulses": [100000.0, 0.0, 0.0, 0.0, 0.0, 0.0] + [0.0] * 6,
-                "enabled": [True] * 12,
-                "enabled_confirmed": [True] * 12,
-                "moving": [False] * 12,
-                "estop_active": False,
-            }
-
-        async def command(self, name: str, payload: dict | None = None) -> dict:
-            return {"command": name, "payload": payload or {}}
-
-    monkeypatch.setattr("backend.app.make_hal_client", lambda _config, _logs: FakeHal())
-    client = TestClient(create_app(tmp_path))
-    _attach_mock_control_lease(client)
-    settings = client.app.state.settings
-    config = settings.get_config()
-    original_origin = {
-        "valid": True,
-        "leftValid": True,
-        "rightValid": True,
-        "leftPulse": [0.0] * 6,
-        "rightPulse": [0.0] * 6,
-        "updatedAt": 1234,
-        "previousValid": False,
-        "previousLeftPulse": [0.0] * 6,
-        "previousRightPulse": [0.0] * 6,
-        "previousUpdatedAt": 0,
-    }
-    config["motion"]["origin"] = original_origin
-    _set_home_reference_to_origin(config)
-    _set_zero_work_origin_offset(config)
-    config["motion"]["leftSoftLimits"] = _wide_motion_soft_limits()
-    config["motion"]["rightSoftLimits"] = _wide_motion_soft_limits()
-    settings.save_config(config, emit_log=False)
-
-    response = client.post("/api/motion/left/origin/capture")
-
-    assert response.status_code == 409
-    detail = response.json()["detail"]
-    assert detail["code"] == "ORIGIN_DRIFT_CONFIRM_REQUIRED"
-    assert detail["drift"]["requiresConfirmation"] is True
-    assert detail["drift"]["sides"][0]["side"] == "left"
-    assert detail["drift"]["sides"][0]["axes"][0]["axis"] == "X"
-    assert settings.get_config()["motion"]["origin"] == original_origin
-
-
-def test_motion_origin_capture_allows_confirmed_large_origin_drift(
+def test_motion_origin_capture_overwrites_large_drift_without_confirmation(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
@@ -3171,7 +3115,7 @@ def test_motion_origin_capture_allows_confirmed_large_origin_drift(
     config["motion"]["rightSoftLimits"] = _wide_motion_soft_limits()
     settings.save_config(config, emit_log=False)
 
-    response = client.post("/api/motion/left/origin/capture", json={"confirmLargeDrift": True})
+    response = client.post("/api/motion/left/origin/capture")
 
     assert response.status_code == 200
     data = response.json()["data"]
@@ -3180,7 +3124,10 @@ def test_motion_origin_capture_allows_confirmed_large_origin_drift(
     assert origin["rightPulse"] == [0.0] * 6
     assert origin["previousValid"] is True
     assert origin["previousLeftPulse"] == [0.0] * 6
+    # 超过漂移阈值也直接写入：返回漂移详情并告警，旧原点保留为“上一个”供恢复。
     assert data["originCaptureDrift"]["requiresConfirmation"] is True
+    assert data["originCaptureDrift"]["sides"][0]["axes"][0]["axis"] == "X"
+    assert any("overwritten despite large drift" in entry.msg for entry in client.app.state.logs.list_entries())
 
 
 def test_restore_previous_motion_origin_swaps_current_and_previous(

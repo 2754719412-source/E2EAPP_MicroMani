@@ -31,7 +31,7 @@ def test_work_origin_return_rejects_controller_restart_before_dispatch(tmp_path,
 
 def test_operator_confirmed_hal_restart_returns_and_keeps_only_matching_references(tmp_path, monkeypatch):
     client, hal, state = setup_homing(tmp_path, monkeypatch)
-    assert client.post("/api/motion/left/origin/capture", json={"confirmLargeDrift": True}).is_success
+    assert client.post("/api/motion/left/origin/capture").is_success
     settings = client.app.state.settings
     config = settings.get_config()
     config["motion"]["homeReference"]["leftAxisInstanceId"][1] = "older-reference"
@@ -62,7 +62,7 @@ def test_operator_confirmed_hal_restart_returns_and_keeps_only_matching_referenc
 @pytest.mark.parametrize("change", ["restart", "side", "axes", "missing", "moving", "stop", "edit", "refused", "restart_after_move"])
 def test_operator_confirmation_cannot_cross_change_or_save_a_failed_return(tmp_path, monkeypatch, change):
     client, hal, state = setup_homing(tmp_path, monkeypatch)
-    assert client.post("/api/motion/left/origin/capture", json={"confirmLargeDrift": True}).is_success
+    assert client.post("/api/motion/left/origin/capture").is_success
     hal.instance["id"] = "new-hal"
     url = "/api/motion/left/return_origin"
     body = {"confirmUnchangedCounts": client.post(url).json()["detail"]["confirmation"]}
@@ -101,7 +101,7 @@ def test_operator_confirmation_cannot_cross_change_or_save_a_failed_return(tmp_p
 
 def calibrated_xy(tmp_path, monkeypatch):
     client, hal, state = setup_homing(tmp_path, monkeypatch)
-    response = client.post("/api/motion/left/origin/capture", json={"confirmLargeDrift": True})
+    response = client.post("/api/motion/left/origin/capture")
     assert response.status_code == 200, response.text
     state["pulses"][:2] = [1000., 2000.]
     hal.command.return_value = {"response": {

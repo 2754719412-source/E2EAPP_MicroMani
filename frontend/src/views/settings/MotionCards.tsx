@@ -61,11 +61,6 @@ function commandErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
 }
 
-function originDriftFromError(error: unknown): MotionOriginCaptureDrift | null {
-  const apiError = error as import('../../api').ApiCommandError
-  return apiError?.code === 'ORIGIN_DRIFT_CONFIRM_REQUIRED' && apiError.drift ? apiError.drift : null
-}
-
 function formatOriginDrift(drift: MotionOriginCaptureDrift) {
   const items = drift.sides.flatMap((side) =>
     side.axes.map((axis) => {
@@ -593,10 +588,10 @@ export function MotionCard({
     }
   }
  /** 处理对应的用户交互。 */
- const handleCaptureOrigin = async (confirmLargeDrift = false) => {
+ const handleCaptureOrigin = async () => {
     setPendingOriginAction('capture')
     try {
-      const response = await captureMotionOrigin(hardwareSide, confirmLargeDrift ? { confirmLargeDrift: true } : undefined)
+      const response = await captureMotionOrigin(hardwareSide)
       const responseMotion = response.data?.config?.motion
       const nextOrigin = response.data?.origin ?? responseMotion?.origin ?? {
         ...motionOrigin,
@@ -618,34 +613,12 @@ export function MotionCard({
       const drift = response.data?.originCaptureDrift
       const positionText = formatWorkOriginPosition(nextOrigin)
       await refreshMotionOriginStatus()
-      commandLog(
-        injectLog,
-        '[HAL]',
-        `${drift?.requiresConfirmation
-          ? `${operatorLabel}工作原点已确认大漂移并写入`
-          : `${operatorLabel}工作原点已记录`}：${positionText}`,
-      )
-    } catch (error) {
-      const drift = originDriftFromError(error)
-      if (!confirmLargeDrift && drift) {
-        requestComparison({
-          title: `${operatorLabel}工作原点漂移过大`,
-          tone: 'danger',
-          impact: '本次当前位置读数与已有工作原点记录差距超过保护阈值。未再次确认前，后端不会写入新的工作原点。',
-          expected: `阈值：平移 ${drift.thresholds.translationUm.toFixed(0)} µm，旋转 ${drift.thresholds.rotationDeg.toFixed(3)}°。`,
-          current: [
-            { label: '当前状态', value: originStatusText },
-            { label: '当前位置', value: sidePositionsText || '--' },
-          ],
-          proposed: [
-            { label: '超限漂移', value: formatOriginDrift(drift) },
-            { label: '写入策略', value: '二次确认后覆盖' },
-          ],
-          confirmText: '确认覆盖零点',
-          onConfirm: () => handleCaptureOrigin(true),
-        })
-        return false
+      commandLog(injectLog, '[HAL]', `${operatorLabel}工作原点已记录：${positionText}`)
+      if (drift?.requiresConfirmation) {
+        // 大漂移不再二次确认，直接写入；提示超限项，旧原点可用“恢复上个工作原点”撤回。
+        injectLog('WARNING', `${operatorLabel}工作原点漂移超过阈值（${formatOriginDrift(drift)}），已覆盖；如为误操作可恢复上个工作原点`, '[HAL]')
       }
+    } catch (error) {
       injectLog('ERROR', `${operatorLabel}工作原点记录失败：${commandErrorMessage(error)}`, '[HAL]')
     } finally {
       setPendingOriginAction(null)

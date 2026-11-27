@@ -111,7 +111,6 @@ def test_coarse_manual_move_does_not_send_remaining_chunks_after_stop(stop_kind:
         config["hal"]["mode"] = "real"
         commands = make_commands(config)
         # 使用离线限位/轴状态替身，保留真正的分段派发和停止逻辑。
-        commands._validate_motion_axis_enabled = AsyncMock()
         commands._validate_manual_axis_soft_limit = AsyncMock(return_value={})
         entered, release = asyncio.Event(), asyncio.Event()
 
@@ -134,6 +133,27 @@ def test_coarse_manual_move_does_not_send_remaining_chunks_after_stop(stop_kind:
         moves = [call for call in commands.hal.command.call_args_list if call.args[0] == "motion.manual_axis_move"]
         assert len(moves) == 1
         assert moves[0].args[1]["step"] == 2
+
+    asyncio.run(exercise())
+
+
+def test_manual_move_leaves_servo_enable_decision_to_hal(monkeypatch) -> None:
+    """后端不再按遥测使能位拦截点动；使能由 HAL 执行侧判定，软限位仍保留。"""
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
+
+    async def exercise() -> None:
+        config = default_config()
+        config["hal"]["mode"] = "real"
+        commands = make_commands(config)
+        commands.hal.motion_state = AsyncMock(return_value={"enabled": [False] * 12})
+        soft_limit = AsyncMock(return_value={"current": 0.0, "target": 5.0, "limitMin": -100.0, "limitMax": 100.0})
+        commands._validate_manual_axis_soft_limit = soft_limit
+        request = ManualAxisMoveRequest(side="left", axis="X", direction=1, step=5, speedMode="fine")
+        await commands.manual_axis_move(request)
+        soft_limit.assert_awaited_once()
+        commands.hal.motion_state.assert_not_awaited()
+        moves = [call for call in commands.hal.command.call_args_list if call.args[0] == "motion.manual_axis_move"]
+        assert len(moves) == 1
 
     asyncio.run(exercise())
 

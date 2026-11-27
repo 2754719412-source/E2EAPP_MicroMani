@@ -88,7 +88,7 @@
 | [backend/drivers/gripper_rs485.py](../backend/drivers/gripper_rs485.py) | 封装 Jodell DLL 的端口选择、读写和开口换算；保留给驱动测试及独立探测脚本。 | `GripperResult`、`Rs485GripperDriver` |
 | [backend/drivers/pico_adb.py](../backend/drivers/pico_adb.py) | 通过 ADB 或参考脚本检查、连接 PICO，并管理视觉串流命令。 | `PicoResult`、`PicoAdbDriver` |
 | [backend/services/__init__.py](../backend/services/__init__.py) | 业务服务包标识；服务实例及相互依赖统一由 app_factory 装配。 | 从文件顶部的参数、配置或入口流程开始 |
-| [backend/services/command_service.py](../backend/services/command_service.py) | 执行手动运动、原点、使能与安全命令；在调用 HAL 前检查配置与录制状态。 | `axis_enabled_feedback_unreadable`、`normalize_motion_axis_enabled`、`MotionOriginDriftConfirmationRequired`、`CommandService` |
+| [backend/services/command_service.py](../backend/services/command_service.py) | 执行手动运动、原点、使能与安全命令；在调用 HAL 前检查配置与录制状态。 | `axis_enabled_feedback_unreadable`、`normalize_motion_axis_enabled`、`CommandService` |
 | [backend/services/dataset_recorder.py](../backend/services/dataset_recorder.py) | 管理录制会话和 episode；按时间戳组帧、排队写入 LeRobot，并提供数据集管理接口。 | `DatasetRecorderService`、`FrameAssembler`、`TimedRingBuffer`、`LeRobotWriterThread` |
 | [backend/services/gripper_backend.py](../backend/services/gripper_backend.py) | 定义夹爪后端协议及原生适配器；转换配置、HAL 状态与夹爪命令载荷。 | `GripperBackend`、`native_teleop_enabled`、`gripper_serial_ports`、`native_gripper_payload`、`hal_response_message` |
 | [backend/services/gripper_raw_samples.py](../backend/services/gripper_raw_samples.py) | 从 HAL 夹爪样本历史按 seq 去重收集真实读数，提供帧对齐、录制前空载放行、episode 统计、接触片段与旁路文件行。 | `parse_sample_history`、`GripperRawCollector`、`idle_start_blocker`、`episode_summary`、`episode_rows`、`contact_events` |

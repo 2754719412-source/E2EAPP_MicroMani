@@ -2658,7 +2658,7 @@ describe('AppStation M0 frontend', () => {
     await waitFor(() => expect(useTelemetryStore.getState().logs.some((log) => log.msg.includes('工作原点位置：左['))).toBe(true))
   }, 10000)
 
-  it('requires a second confirmation before overwriting a drifted motion origin', async () => {
+  it('overwrites a drifted motion origin without a second confirmation and warns', async () => {
     window.history.pushState({}, '', '/settings#motion-left')
     const drift: api.MotionOriginCaptureDrift = {
       requiresConfirmation: true,
@@ -2691,10 +2691,6 @@ describe('AppStation M0 frontend', () => {
       origin: nextOrigin,
     }
     const captureSpy = vi.spyOn(api, 'captureMotionOrigin')
-      .mockRejectedValueOnce(Object.assign(new Error('command failed'), {
-        code: 'ORIGIN_DRIFT_CONFIRM_REQUIRED',
-        drift,
-      }))
       .mockResolvedValueOnce({
         ok: true,
         data: {
@@ -2711,15 +2707,12 @@ describe('AppStation M0 frontend', () => {
     fireEvent.click(within(leftCard!).getByText('记录工作原点').closest('button')!)
     fireEvent.click((await screen.findByText('确认记录工作原点')).closest('button')!)
 
-    const driftDialog = (await screen.findByText('左臂工作原点漂移过大')).closest('[role="dialog"]') as HTMLElement
-    expect(within(driftDialog).getByText('确认覆盖零点')).toBeInTheDocument()
-    expect(within(driftDialog).getByText('左.X 20000 um')).toBeInTheDocument()
-    expect(captureSpy).toHaveBeenNthCalledWith(1, 'right', undefined)
-
-    fireEvent.click(within(driftDialog).getByText('确认覆盖零点').closest('button')!)
-
-    await waitFor(() => expect(captureSpy).toHaveBeenNthCalledWith(2, 'right', { confirmLargeDrift: true }))
     await waitFor(() => expect(useTelemetryStore.getState().config.motion.origin.rightPulse[0]).toBe(100000))
+    expect(captureSpy).toHaveBeenCalledTimes(1)
+    expect(captureSpy).toHaveBeenCalledWith('right')
+    expect(screen.queryByText('左臂工作原点漂移过大')).not.toBeInTheDocument()
+    await waitFor(() => expect(useTelemetryStore.getState().logs.some((log) =>
+      log.level === 'WARNING' && log.msg.includes('左.X 20000 um') && log.msg.includes('恢复上个工作原点'))).toBe(true))
     expect(useTelemetryStore.getState().config.motion.homeReference.rightPulse).toEqual(defaultConfig.motion.homeReference.rightPulse)
   }, 10000)
 })

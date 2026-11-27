@@ -113,7 +113,7 @@ def test_http_commands_require_owner_even_with_other_browser_lease(tmp_path, mon
                 # 模拟设备处于配置中的合法工作原点，不能用全零姿态绕过现场旋转限位。
                 origin = candidate["motion"]["origin"]
                 app.state.hal._pulses = list(origin["leftPulse"]) + list(origin["rightPulse"])
-                captured = await http.post("/api/motion/left/origin/capture", json={"confirmLargeDrift": True})
+                captured = await http.post("/api/motion/left/origin/capture")
                 assert captured.status_code == 200, captured.text
                 assert (await http.post("/api/motion/left/enable_all")).status_code == 200
                 assert (await http.post("/api/motion/left/return_origin")).status_code == 200

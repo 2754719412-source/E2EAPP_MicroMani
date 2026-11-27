@@ -1,6 +1,6 @@
 # 阅读导航 04｜后端业务与采集
 # 职责：执行手动运动、原点、使能与安全命令；在调用 HAL 前检查配置与录制状态。
-# 先看：axis_enabled_feedback_unreadable → normalize_motion_axis_enabled → MotionOriginDriftConfirmationRequired → CommandService。
+# 先看：axis_enabled_feedback_unreadable → normalize_motion_axis_enabled → CommandService。
 # 全局阅读顺序与关联文件：docs/CODE_READING_GUIDE.md；逐文件目录：docs/SOURCE_INDEX.md。
 
 """Validate operator commands before they reach HAL or simulated telemetry.
@@ -83,12 +83,6 @@ def normalize_motion_axis_enabled(side: str, values: list[Any]) -> list[bool | N
         if axis_enabled_feedback_unreadable(side, axis) and normalized[axis_index] is not True:
             normalized[axis_index] = None
     return normalized
-
-
-class MotionOriginDriftConfirmationRequired(RuntimeError):
-    def __init__(self, drift: dict[str, object]) -> None:
-        super().__init__("motion work origin drift requires explicit confirmation")
-        self.drift = drift
 
 
 class OriginContinuityConfirmationRequired(RuntimeError):
@@ -847,12 +841,7 @@ class CommandService:
         }
 
     @motion_operation()
-    async def capture_motion_origin(
-        self,
-        side: str | None = None,
-        *,
-        confirm_large_drift: bool = False,
-    ) -> dict[str, object]:
+    async def capture_motion_origin(self, side: str | None = None) -> dict[str, object]:
         if side is not None:
             self._validate_side(side)
         safety_token = self.safety.capture()
@@ -874,10 +863,10 @@ class CommandService:
         pulses = self._motion_state_pulses(state)
         origin = self._normalized_motion_origin(config)
         drift = self._motion_origin_capture_drift(config, origin, pulses, side)
-        if bool(drift["requiresConfirmation"]) and not confirm_large_drift:
+        if bool(drift["requiresConfirmation"]):
+            # 大漂移不再二次确认：直接覆盖并告警，旧原点保留为“上一个”，可一键恢复。
             label = side or "both"
-            self.logs.warning("[HAL]", f"{label} motion work origin recording blocked by large drift")
-            raise MotionOriginDriftConfirmationRequired(drift)
+            self.logs.warning("[HAL]", f"{label} motion work origin overwritten despite large drift; previous origin kept for restore")
         if bool(origin["valid"]):
             origin["previousValid"] = True
             origin["previousLeftPulse"] = list(cast(list[float], origin["leftPulse"]))
@@ -1090,7 +1079,6 @@ class CommandService:
         request = ManualAxisMoveRequest(**{key: action[key] for key in ("side", "axis", "direction", "step", "speedMode")})
         config = await self._get_config_async()
         self._validate_manual_axis_safety(config, request)
-        await self._validate_motion_axis_enabled(request.side, request.axis)
         await self._validate_manual_axis_soft_limit(config, request, request.direction)
 
     async def validate_record_origin(self, sides: set[str]) -> None:
@@ -1119,7 +1107,7 @@ class CommandService:
         op_id = self.logs.new_op_id("manual")
         safe_delta = effective_direction * abs(float(request.step))
         if self._real_hardware_mode(config):
-            await self._validate_motion_axis_enabled(request.side, request.axis)
+            # 轴使能由 HAL 执行侧判定（未使能直接拒绝），后端只保留参数与软限位校验。
             soft_limit_diag = await self._validate_manual_axis_soft_limit(config, request, effective_direction)
             profile = self._axis_profile(config, request)
             chunk_steps = self._manual_axis_chunk_steps(request)
@@ -1579,23 +1567,6 @@ class CommandService:
             value = raw_enabled.get(side)
             if isinstance(value, bool):
                 self.telemetry.set_motion_enabled(side, value)
-
-    async def _validate_motion_axis_enabled(self, side: str, axis: str) -> None:
-        state = await self.hal.motion_state()
-        raw_enabled = state.get("enabled")
-        axis_enabled: bool | None = None
-        if isinstance(raw_enabled, list) and len(raw_enabled) == 12:
-            axis_index = AXIS_ORDER.index(axis)
-            state_index = (0 if side == "left" else 6) + axis_index
-            if axis_enabled_feedback_unreadable(side, axis):
-                return
-            axis_enabled = bool(raw_enabled[state_index])
-        elif isinstance(raw_enabled, dict):
-            value = raw_enabled.get(side)
-            if isinstance(value, bool):
-                axis_enabled = value
-        if axis_enabled is not True:
-            raise RuntimeError(f"{side} {axis} motion axis is disabled; enable the axis before manual jog")
 
     async def _validate_manual_axis_soft_limit(
         self,

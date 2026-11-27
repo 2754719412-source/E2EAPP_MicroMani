@@ -604,11 +604,8 @@ export async function fetchMotionOrigin(): Promise<MotionOriginResponse> {
   return response.json() as Promise<MotionOriginResponse>
 }
 /** 发送或封装对应的后端命令。 */
-export const captureMotionOrigin = (side?: ManualControlSide, options?: { confirmLargeDrift?: boolean }) =>
-  postCommand(
-    side ? `/motion/${side}/origin/capture` : '/motion/origin/capture',
-    options?.confirmLargeDrift ? { confirmLargeDrift: true } : undefined,
-  ) as Promise<MotionOriginResponse>
+export const captureMotionOrigin = (side?: ManualControlSide) =>
+  postCommand(side ? `/motion/${side}/origin/capture` : '/motion/origin/capture') as Promise<MotionOriginResponse>
 
 /** 删除对应数据并同步界面状态。 */
 export const clearMotionOrigin = (side?: ManualControlSide) =>

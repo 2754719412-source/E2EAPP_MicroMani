@@ -58,7 +58,6 @@ from backend.hal_client.client import HalClient, HalHealth, TestHalClient
 from backend.hal_client.dds_client import DdsHalClient
 from backend.hal_client.dds_types import DEFAULT_DDS_DOMAIN_ID
 from backend.services.command_service import (
-    MotionOriginDriftConfirmationRequired,
     OriginContinuityConfirmationRequired,
     normalize_motion_axis_enabled,
 )
@@ -1113,10 +1112,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             commands._ensure_origin_mutation_allowed()
             state = await hal.motion_state()
             commands.require_stationary_motion(state)
-            if recovering_force:
-                enabled = state.get("enabled")
-                if not isinstance(enabled, list) or len(enabled) != 12 or any(value is not False for value in enabled):
-                    raise RuntimeError("force configuration recovery requires all servos confirmed disabled")
+            # 伺服是否须断开由 HAL 按改动类型判定：阈值热更新只要求静止，采集重配置要求断使能。
             check_configuration()
             # 落盘线程只核验代际；租约、活动状态和资源互斥保留在请求上下文。
             before_commit = (lambda: commands.safety.check_force_recovery_generation(token)) if recovering_force else None
@@ -1405,21 +1401,9 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
 
     # 双侧记录当前工作原点。
     @app.post("/api/motion/origin/capture")
-    async def capture_motion_origin_all(
-        payload: Annotated[dict[str, Any] | None, Body()] = None,
-    ) -> ApiEnvelope:
+    async def capture_motion_origin_all() -> ApiEnvelope:
         try:
-            confirm_large_drift = bool(payload.get("confirmLargeDrift")) if isinstance(payload, dict) else False
-            return envelope(await commands.capture_motion_origin(confirm_large_drift=confirm_large_drift))
-        except MotionOriginDriftConfirmationRequired as exc:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "ORIGIN_DRIFT_CONFIRM_REQUIRED",
-                    "message": str(exc),
-                    "drift": exc.drift,
-                },
-            ) from exc
+            return envelope(await commands.capture_motion_origin())
         except ControlLeaseUnavailable as exc:
             raise HTTPException(status_code=409, detail={"code": "CONTROL_LEASE_UNAVAILABLE", "message": str(exc)}) from exc
         except RuntimeError as exc:
@@ -1450,24 +1434,11 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
 
     # 指定侧记录当前工作原点。
     @app.post("/api/motion/{side}/origin/capture")
-    async def capture_motion_origin_side(
-        side: str,
-        payload: Annotated[dict[str, Any] | None, Body()] = None,
-    ) -> ApiEnvelope:
+    async def capture_motion_origin_side(side: str) -> ApiEnvelope:
         if side not in {"left", "right"}:
             raise HTTPException(status_code=400, detail={"code": "BAD_SIDE", "message": "side must be left or right"})
         try:
-            confirm_large_drift = bool(payload.get("confirmLargeDrift")) if isinstance(payload, dict) else False
-            return envelope(await commands.capture_motion_origin(side, confirm_large_drift=confirm_large_drift))
-        except MotionOriginDriftConfirmationRequired as exc:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "ORIGIN_DRIFT_CONFIRM_REQUIRED",
-                    "message": str(exc),
-                    "drift": exc.drift,
-                },
-            ) from exc
+            return envelope(await commands.capture_motion_origin(side))
         except ControlLeaseUnavailable as exc:
             raise HTTPException(status_code=409, detail={"code": "CONTROL_LEASE_UNAVAILABLE", "message": str(exc)}) from exc
         except RuntimeError as exc:
