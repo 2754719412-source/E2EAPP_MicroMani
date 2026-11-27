@@ -36,8 +36,9 @@ from backend.core.data_contract import (
     hardware_to_dataset_motion,
     validate_data_contract,
 )
-from backend.core.force_config import hal_force_config_payload, invalidate_changed_force_mappings
+from backend.core.force_config import hal_force_config_payload, invalidate_changed_force_mappings, without_force_settings
 from backend.core.logging import LOG_SCHEMA_VERSION, LogService, PollingErrorLog, now_ms, stable_config_hash
+from backend.core.jodell_modbus import GOBJ_MOVING
 from backend.core.loop_watchdog import LoopStallWatchdog
 from backend.core.queued_log_handlers import install_queued_handlers, stop_queued_handlers
 from backend.core.motion_safety import MotionSafetyToken
@@ -80,6 +81,8 @@ AXIS_NAMES = ("X", "Y", "Z", "Roll", "Pitch", "Yaw")
 BACKEND_STARTED_AT = time.time()
 TELEOP_GRAVITY_SCALE_DEFAULTS = {"left": 0.45, "right": 1.0}
 REQUIRED_HAL_CAPABILITIES = ("force_calibration_state_v1",)
+# 断线时需要核对已停止的夹爪：最近这段时间内下发过开合/到位命令的侧。
+GRIPPER_MOTION_SETTLE_WINDOW_MS = 10_000
 
 
 def hal_capability_status(health: Any) -> dict[str, Any]:
@@ -483,21 +486,58 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         commands.safety.interrupt(emergency=True)
 
     def control_motion_active() -> bool:
-        # 回放、遥操作、策略执行或任一运动操作进行中断开浏览器才急停；空闲断开只保持 HAL 租约。
-        return (replay.active or commands.safety.operation_active()
+        # 回放、遥操作、策略执行、在途夹爪命令或任一运动操作进行中断开浏览器才急停；空闲断开只保持 HAL 租约。
+        return (replay.active or commands.safety.operation_active() or commands.gripper_motion_inflight()
                 or teleop_mapper.control_active() or policy.dispatch_active())
 
+    def sample_after(stamp: object, requested_at: int) -> bool:
+        return (isinstance(stamp, (int, float)) and not isinstance(stamp, bool) and math.isfinite(stamp)
+                and requested_at <= stamp <= now_ms() + 100)
+
+    def gripper_stopped(detail: object, requested_at: int) -> bool | None:
+        """None 表示尚无断线后的有效样本；gGTO=1 且 gOBJ=0 表示手指仍在移动。"""
+        if not isinstance(detail, dict) or not sample_after(detail.get("positionSampleTs"), requested_at):
+            return None
+        sample = detail.get("sample")
+        if not isinstance(sample, dict) or sample.get("statusValid") is not True:
+            return None
+        return not (sample.get("gGTO") == 1 and sample.get("gOBJ") == GOBJ_MOVING)
+
     async def control_axes_stationary() -> bool:
-        # 单段点动在控制卡接受后即返回，轴可能仍在移动；需新鲜反馈确认 12 轴静止，状态通道忙时短暂重试。
+        # 只认检查开始后的新采样：读卡缓存可能早于刚下发的点动。新采样明确在动立即判运动，
+        # 仅读取失败或尚无新样本时在 0.5 s 内重试；最近下发过开合命令的夹爪同样要新样本确认已停。
+        requested_at = now_ms()
         deadline = time.monotonic() + 0.5
+        arms_stopped = False
+        pending_grippers = commands.recent_gripper_motion_sides(GRIPPER_MOTION_SETTLE_WINDOW_MS)
         while True:
-            try:
-                commands.require_stationary_motion(await hal.motion_state())
+            if not arms_stopped:
+                try:
+                    state = await hal.motion_state()
+                except (RuntimeError, TimeoutError):
+                    state = None
+                if isinstance(state, dict) and sample_after(state.get("timestamp_ms"), requested_at):
+                    moving = state.get("moving")
+                    if not (isinstance(moving, list) and len(moving) == 12 and all(value is False for value in moving)):
+                        return False
+                    arms_stopped = True
+            if arms_stopped and pending_grippers:
+                try:
+                    status = (await hal.command("teleop.native.status", {})).get("response", {})
+                except (RuntimeError, TimeoutError):
+                    status = {}
+                grippers = status.get("grippers") if isinstance(status, dict) else None
+                for side in tuple(pending_grippers):
+                    stopped = gripper_stopped(grippers.get(side) if isinstance(grippers, dict) else None, requested_at)
+                    if stopped is False:
+                        return False
+                    if stopped:
+                        pending_grippers.discard(side)
+            if arms_stopped and not pending_grippers:
                 return True
-            except RuntimeError:
-                if time.monotonic() >= deadline:
-                    return False
-                await asyncio.sleep(0.05)
+            if time.monotonic() >= deadline:
+                return False
+            await asyncio.sleep(0.02)
 
     control_watchdog = ControlWatchdog(
         hal, logs, invalidate_control_session, commands.emergency_stop,
@@ -1082,11 +1122,12 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         if any(current.get("cameras", {}).get(key) != candidate.get("cameras", {}).get(key)
                for key in ("microscopeEnabled", "microscopeIdentity")) and recorder.camera_configuration_busy():
             raise HTTPException(status_code=409, detail={"message": "请先结束录制会话再修改显微相机"})
-        force_only = all(current.get(key) == candidate.get(key)
-                         for key in current.keys() | candidate.keys() if key != "force")
+        # 力阈值存放在 safety：按实际下发 HAL 的力配置判断，单改阈值也要经过租约、互斥和录制检查。
+        force_only = without_force_settings(current) == without_force_settings(candidate)
+        force_payload_changed = hal_force_config_payload(current) != hal_force_config_payload(candidate)
         recovering_force = commands.safety.latched and force_only
-        protected = force_apply or any(current.get(key) != candidate.get(key)
-                                       for key in ("motion", "force", "teleop", "gripper", "auto", "hal"))
+        protected = force_apply or force_payload_changed or any(
+            current.get(key) != candidate.get(key) for key in ("motion", "force", "teleop", "gripper", "auto", "hal"))
         if not protected and not recovering_force:
             yield (lambda: None), None
             return

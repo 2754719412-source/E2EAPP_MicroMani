@@ -576,12 +576,13 @@ def test_inspect_is_read_only_and_start_requires_confirmation_and_lease(setup_re
     assert not replay.active
 
 
-@pytest.mark.parametrize('case', ['busy', 'recording', 'native', 'feedback'])
+@pytest.mark.parametrize('case', ['busy', 'recording', 'native', 'feedback', 'position_stale'])
 def test_execution_preconditions_reject(setup_replay, case, monkeypatch):
     app, replay, *_ = setup_replay
     if case == 'recording': monkeypatch.setattr(app.state.recorder, 'status', lambda: {'active': True})
     if case == 'native': app.state.hal.command.return_value['response']['running'] = True
     if case == 'feedback': app.state.hal.motion_state.return_value = {'pulses': []}
+    if case == 'position_stale': app.state.hal.command.return_value['response']['grippers']['left']['positionSampleTs'] = 1
     async def run():
         if case == 'busy':
             with replay.safety.operation():
@@ -613,6 +614,7 @@ def test_disabled_gripper_reports_operator_side_before_sampling(setup_replay, ha
 @pytest.mark.parametrize('patch,reason', [
     ({'positionOk': False}, '读取失败'),
     ({'ok': False}, '读取失败'),
+    ({'positionSampleTs': 1}, '超时'),
     ({'positionSampleTs': None}, '时间戳无效'),
     ({'positionSampleTs': 'bad'}, '时间戳无效'),
     ({'positionSampleTs': float('nan')}, '时间戳无效'),
@@ -634,10 +636,12 @@ def test_gripper_feedback_reports_specific_reason(setup_replay, hardware_side, o
     asyncio.run(run())
 
 
+@pytest.mark.parametrize('phase', ['running', 'following', 'settling'])
 @pytest.mark.parametrize('age_ms,warned', [(0, False), (1000, False), (1001, True), (60000, True)])
-def test_stale_gripper_feedback_only_warns_once_and_keeps_last_sample(setup_replay, monkeypatch, age_ms, warned):
+def test_stale_gripper_feedback_only_warns_once_during_playback(setup_replay, monkeypatch, phase, age_ms, warned):
     app, replay, data, config = setup_replay
     replay._participation = data['episode']['participation']
+    replay._status['phase'] = phase
     now = time.time()
     monkeypatch.setattr('backend.services.dataset_replay.time.time', lambda: now)
     for detail in app.state.hal.command.return_value['response']['grippers'].values():
@@ -652,13 +656,29 @@ def test_stale_gripper_feedback_only_warns_once_and_keeps_last_sample(setup_repl
     asyncio.run(run())
 
 
+@pytest.mark.parametrize('phase', ['loading', 'aligning'])
+def test_stale_gripper_feedback_blocks_preparation_and_start_alignment(setup_replay, monkeypatch, phase):
+    """起点对齐不能用陈旧夹爪读数确认到位；仅逐帧回放阶段降级为告警。"""
+    app, replay, data, config = setup_replay
+    replay._participation = data['episode']['participation']
+    replay._status['phase'] = phase
+    now = time.time()
+    monkeypatch.setattr('backend.services.dataset_replay.time.time', lambda: now)
+    for detail in app.state.hal.command.return_value['response']['grippers'].values():
+        detail['positionSampleTs'] = now*1000 - 1001
+    async def run():
+        with pytest.raises(RuntimeError, match='起点对齐要求不超过 1 秒'):
+            await replay._observe(config)
+    asyncio.run(run())
+
+
 def test_replay_tracking_limits_follow_settings_and_reject_invalid_values():
     from backend.services.dataset_replay import replay_tracking_limits
     config = {'safety': {'replayTrackingLimitUm': 2000, 'replayTrackingLimitDeg': 3}}
     limits = replay_tracking_limits(config)
     assert limits[:6] == [2000.] * 3 + [3000.] * 3 and limits[7:13] == limits[:6]
     assert replay_tracking_limits({'safety': {}})[:6] == [500.] * 3 + [1000.] * 3
-    for bad in (0, -1, float('nan'), True, 'x'):
+    for bad in (0, -1, float('nan'), True, 'x', '500'):
         with pytest.raises(RuntimeError, match='replayTrackingLimitUm'):
             replay_tracking_limits({'safety': {'replayTrackingLimitUm': bad}})
 
@@ -1055,11 +1075,27 @@ def test_raised_tracking_limit_from_settings_allows_larger_deviation(setup_repla
     replay._status.update(datasetId='d', episodeId='e', speed=1.)
     target, observed = [0.] * 14, [0.] * 14
     observed[3] = 1300.  # 1.3° Roll，超过默认 1°
+    now_ms = time.time() * 1000  # 用真实时刻：Windows 无法把纪元附近的毫秒格式化为本地时间
     with pytest.raises(RuntimeError, match='跟踪偏差超限'):
-        replay._check_tracking(data, 1, target, observed, None, 1., 2.)
+        replay._check_tracking(data, 1, target, observed, None, now_ms - 1, now_ms)
     config['safety']['replayTrackingLimitDeg'] = 2.
     replay._max_error = replay_tracking_limits(config)
-    assert replay._check_tracking(data, 1, target, observed, None, 1., 2.)[3] == 1300.
+    assert replay._check_tracking(data, 1, target, observed, None, now_ms - 1, now_ms)[3] == 1300.
+
+
+@pytest.mark.parametrize('bad', ['500', True, 0])
+def test_invalid_tracking_limit_fails_inspect_and_start_before_enabling_motion(setup_replay, bad):
+    app, replay, _data, config = setup_replay
+    config['safety']['replayTrackingLimitUm'] = bad
+    async def run():
+        with pytest.raises(ValueError, match='replayTrackingLimitUm'):
+            await replay.inspect('d', 'e')
+        await replay.start('d', 'e', 1.)
+        await replay.task
+        assert replay.status()['phase'] == 'failed'
+        assert 'replayTrackingLimitUm' in replay.status()['error']
+        app.state.commands.enable_motion_side.assert_not_called()
+    asyncio.run(run())
 
 
 def test_tracking_fault_without_source_time_does_not_invent_sample_timestamp(setup_replay):

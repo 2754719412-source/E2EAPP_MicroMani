@@ -10,7 +10,7 @@ from backend.core.defaults import default_config
 from backend.core.data_contract import data_contract_metadata
 from backend.core.logging import LogService
 from backend.core.motion_safety import MotionSafetyGate
-from backend.core.schemas import ManualAxisMoveRequest
+from backend.core.schemas import GripperCommandRequest, ManualAxisMoveRequest
 from backend.services.command_service import CommandService
 from backend.services.dataset_recorder import DatasetRecorderService
 from backend.services.policy_service import PolicyService
@@ -521,5 +521,41 @@ def test_hal_only_trip_acknowledgement_clears_old_policy_queue(tmp_path, monkeyp
         assert result["dispatched"] is False
         commands.hal.command.assert_awaited_once_with("motion.acknowledge_estop", {})
         await app.state.control_watchdog.close()
+
+    asyncio.run(exercise())
+
+
+def test_real_gripper_motion_command_is_tracked_while_in_flight(monkeypatch) -> None:
+    """夹爪开合不在 12 轴 moving 内；在途命令与最近下发时刻供断线判定使用。"""
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
+
+    async def exercise() -> None:
+        config = default_config()
+        config["hal"]["mode"] = "real"
+        commands = make_commands(config)
+        commands.hardware = SimpleNamespace()
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        class Router:
+            def backend_name(self, _config):
+                return "native"
+
+            async def command(self, *_args):
+                entered.set()
+                await release.wait()
+                return SimpleNamespace(ok=True, message="ok", details={})
+
+        commands.gripper_router = Router()
+        commands._save_gripper_command_state_async = AsyncMock()
+        pending = asyncio.create_task(commands.gripper_command(GripperCommandRequest(side="left", command="close")))
+        await asyncio.wait_for(entered.wait(), 2)
+        assert commands.gripper_motion_inflight()
+        assert commands.recent_gripper_motion_sides(10_000) == {"left"}
+        release.set()
+        await pending
+        assert not commands.gripper_motion_inflight()
+        assert commands.recent_gripper_motion_sides(10_000) == {"left"}
+        await commands.gripper_command(GripperCommandRequest(side="right", command="stop"))
+        assert commands.recent_gripper_motion_sides(10_000) == {"left"}
 
     asyncio.run(exercise())

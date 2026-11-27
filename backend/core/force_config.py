@@ -72,6 +72,36 @@ def _compliance_axis_signs(config: dict[str, Any], side: str) -> list[Any] | Non
     return [signs[0], signs[2]] if isinstance(signs, list) and len(signs) == 6 else None
 
 
+REPLAY_TRACKING_LIMIT_DEFAULTS = {"replayTrackingLimitUm": 500.0, "replayTrackingLimitDeg": 1.0}
+
+
+def replay_tracking_limit_values(safety: object) -> tuple[float, float]:
+    """回放跟踪偏差阈值（μm, degree）；保存、预检与启动共用，拒绝布尔、字符串与非正数。"""
+    section = safety if isinstance(safety, dict) else {}
+    values = []
+    for key, default in REPLAY_TRACKING_LIMIT_DEFAULTS.items():
+        value = section.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise ValueError(f"safety.{key} must be a positive number")
+        values.append(float(value))
+    return values[0], values[1]
+
+
+# safety 中随 force.configure 下发到 HAL 的力安全参数；其余 safety 键（如回放跟踪阈值）只在后端使用。
+FORCE_SAFETY_KEYS = frozenset({
+    "fxyWarnN", "fxyStopN", "fzWarnN", "fzStopN", "momentWarnNm", "momentStopNm", "watchdogMs",
+})
+
+
+def without_force_settings(config: dict[str, Any]) -> dict[str, Any]:
+    """去掉 force 及其 HAL 力安全参数，用于判断一次修改是否只涉及力配置。"""
+    trimmed = {key: value for key, value in config.items() if key != "force"}
+    safety = config.get("safety")
+    if isinstance(safety, dict):
+        trimmed["safety"] = {key: value for key, value in safety.items() if key not in FORCE_SAFETY_KEYS}
+    return trimmed
+
+
 def invalidate_changed_force_mappings(
     current: dict[str, Any], candidate: dict[str, Any], *, confirm_side: str | None = None,
 ) -> None:
@@ -129,9 +159,7 @@ def validate_force_config(config: dict[str, Any]) -> None:
             )
     if _number(safety.get("watchdogMs"), "safety.watchdogMs") <= 0:
         raise ValueError("safety.watchdogMs must be positive")
-    for key in ("replayTrackingLimitUm", "replayTrackingLimitDeg"):
-        if key in safety and _number(safety.get(key), f"safety.{key}") <= 0:
-            raise ValueError(f"safety.{key} must be positive")
+    replay_tracking_limit_values(safety)
 
     compliance = _mapping(force.get("compliance"), "force.compliance")
     enabled = bool(compliance.get("enabled", False))

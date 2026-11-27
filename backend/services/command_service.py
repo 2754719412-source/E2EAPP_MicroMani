@@ -56,6 +56,8 @@ AXIS_ORDER = ["X", "Y", "Z", "Roll", "Pitch", "Yaw"]
 AXIS_LABELS = ["X", "Y", "Z", "Roll", "Pitch", "Yaw"]
 # 与 LTDMCDriver.cpp 的回工作原点免移动范围一致，避免 HAL 已到位而后端永远拒绝确认。
 WORK_ORIGIN_SETTLED_PULSE_TOLERANCE = 100.0
+# 会让夹爪手指移动的命令；stop/disable 不计入。
+GRIPPER_MOTION_COMMANDS = {"open", "close", "home", "target", "enable"}
 MANUAL_AXIS_STEP_LIMIT_PULSE = 100000.0
 MANUAL_TRANSLATION_STEP_LIMIT_UM = 5000.0
 MANUAL_ROTATION_STEP_LIMIT_DEG = 2.0
@@ -117,6 +119,17 @@ class CommandService:
         if self.gripper_router is None:
             self.gripper_router = GripperRouter(native=NativeGripperAdapter(hal, teleop))
         self._origin_mutation_locked = origin_mutation_locked or (lambda: False)
+        # 夹爪运动不在 12 轴 moving 标志内；断线判定需要在途命令数和最近运动命令时刻。
+        self._gripper_motion_inflight = 0
+        self._gripper_motion_commanded_ms: dict[str, int] = {}
+
+    def gripper_motion_inflight(self) -> bool:
+        return self._gripper_motion_inflight > 0
+
+    def recent_gripper_motion_sides(self, window_ms: int) -> set[str]:
+        """返回在 window_ms 内下发过开合/到位命令的硬件侧，供断线时核对夹爪已停止。"""
+        cutoff = now_ms() - window_ms
+        return {side for side, stamp in self._gripper_motion_commanded_ms.items() if stamp >= cutoff}
 
     def set_origin_mutation_lock_checker(self, checker: Callable[[], bool]) -> None:
         self._origin_mutation_locked = checker
@@ -785,49 +798,62 @@ class CommandService:
             "previousRestore": self.previous_motion_origin_restore_status(config),
         }
 
+    @staticmethod
+    def _previous_origin_side_valid(origin: dict[str, object], side: str) -> bool:
+        return bool(origin.get(f"previous{side.title()}Valid", origin["previousValid"]))
+
+    def _swap_in_previous_motion_origin(self, config: dict[str, Any], origin: dict[str, object]) -> tuple[str, ...]:
+        """按侧把上一个原点换回当前（当前值成为新的上一个），只处理有上一个原点的侧并返回这些侧。"""
+        sides = tuple(side for side in ("left", "right") if self._previous_origin_side_valid(origin, side))
+        if not bool(origin["previousValid"]) or not sides:
+            raise RuntimeError("previous motion work origin is not available")
+        current_updated_at = int(cast(Any, origin["updatedAt"]))
+        for side in sides:
+            title = side.title()
+            current_valid = bool(origin[f"{side}Valid"])
+            current_pulse = list(cast(list[float], origin[f"{side}Pulse"]))
+            current_ids = list(origin[f"{side}AxisInstanceId"])
+            origin[f"{side}Pulse"] = list(cast(list[float], origin[f"previous{title}Pulse"]))
+            origin[f"{side}AxisInstanceId"] = list(origin[f"previous{title}AxisInstanceId"])
+            origin[f"{side}Valid"] = True
+            origin[f"previous{title}Pulse"] = current_pulse
+            origin[f"previous{title}AxisInstanceId"] = current_ids
+            origin[f"previous{title}Valid"] = current_valid
+        origin["updatedAt"] = int(cast(Any, origin["previousUpdatedAt"]))
+        origin["previousUpdatedAt"] = current_updated_at
+        origin["valid"] = bool(origin["leftValid"] and origin["rightValid"])
+        origin["previousValid"] = any(self._previous_origin_side_valid(origin, side) for side in ("left", "right"))
+        home_reference = self._normalized_home_reference(config)
+        work_origin_offset = self._normalized_work_origin_offset(config)
+        for side in sides:
+            self._set_work_origin_offset_side(
+                work_origin_offset,
+                home_reference,
+                side,
+                cast(list[float], origin[f"{side}Pulse"]),
+                int(cast(Any, origin["updatedAt"])),
+                origin[f"{side}AxisInstanceId"],
+            )
+        config["motion"]["origin"] = origin
+        config["motion"]["homeReference"] = home_reference
+        config["motion"]["workOriginOffset"] = work_origin_offset
+        reanchor_motion_soft_limits_to_current_origin(config, None if len(sides) == 2 else sides[0])
+        for side in sides:
+            self._validate_work_origin_target(config, side, self._home_enabled_axes(side, config))
+        return sides
+
     def previous_motion_origin_restore_status(self, config: dict[str, Any]) -> dict[str, object]:
         origin = self._normalized_motion_origin(config)
-        if not bool(origin["previousValid"]):
+        if not bool(origin["previousValid"]) or not any(
+                self._previous_origin_side_valid(origin, side) for side in ("left", "right")):
             return {
                 "available": False,
                 "restorable": False,
                 "message": "previous motion work origin is not available",
             }
         preview = deepcopy(config)
-        preview_origin = self._normalized_motion_origin(preview)
-        preview_origin["leftPulse"] = list(cast(list[float], origin["previousLeftPulse"]))
-        preview_origin["rightPulse"] = list(cast(list[float], origin["previousRightPulse"]))
-        for side in ("left", "right"):
-            preview_origin[f"{side}AxisInstanceId"] = list(origin[f"previous{side.title()}AxisInstanceId"])
-        preview_origin["updatedAt"] = int(cast(Any, origin["previousUpdatedAt"]))
-        preview_origin["leftValid"] = True
-        preview_origin["rightValid"] = True
-        preview_origin["valid"] = True
-        home_reference = self._normalized_home_reference(preview)
-        work_origin_offset = self._normalized_work_origin_offset(preview)
-        self._set_work_origin_offset_side(
-            work_origin_offset,
-            home_reference,
-            "left",
-            cast(list[float], preview_origin["leftPulse"]),
-            int(cast(Any, preview_origin["updatedAt"])),
-            preview_origin["leftAxisInstanceId"],
-        )
-        self._set_work_origin_offset_side(
-            work_origin_offset,
-            home_reference,
-            "right",
-            cast(list[float], preview_origin["rightPulse"]),
-            int(cast(Any, preview_origin["updatedAt"])),
-            preview_origin["rightAxisInstanceId"],
-        )
-        preview["motion"]["origin"] = preview_origin
-        preview["motion"]["homeReference"] = home_reference
-        preview["motion"]["workOriginOffset"] = work_origin_offset
-        reanchor_motion_soft_limits_to_current_origin(preview)
         try:
-            self._validate_work_origin_target(preview, "left", self._home_enabled_axes("left", preview))
-            self._validate_work_origin_target(preview, "right", self._home_enabled_axes("right", preview))
+            self._swap_in_previous_motion_origin(preview, self._normalized_motion_origin(preview))
         except RuntimeError as exc:
             return {
                 "available": True,
@@ -867,13 +893,19 @@ class CommandService:
             # 大漂移不再二次确认：直接覆盖并告警，旧原点保留为“上一个”，可一键恢复。
             label = side or "both"
             self.logs.warning("[HAL]", f"{label} motion work origin overwritten despite large drift; previous origin kept for restore")
-        if bool(origin["valid"]):
+        # 每侧独立保存上一个原点：单侧已有原点也能一键撤回；未参与本次记录的侧恢复时保持不变。
+        captured_sides = ("left", "right") if side is None else (side,)
+        restorable = {active_side: active_side in captured_sides and bool(origin[f"{active_side}Valid"])
+                      for active_side in ("left", "right")}
+        if any(restorable.values()):
+            for active_side, available in restorable.items():
+                title = active_side.title()
+                origin[f"previous{title}Valid"] = available
+                if available:
+                    origin[f"previous{title}Pulse"] = list(cast(list[float], origin[f"{active_side}Pulse"]))
+                    origin[f"previous{title}AxisInstanceId"] = list(origin[f"{active_side}AxisInstanceId"])
             origin["previousValid"] = True
-            origin["previousLeftPulse"] = list(cast(list[float], origin["leftPulse"]))
-            origin["previousRightPulse"] = list(cast(list[float], origin["rightPulse"]))
             origin["previousUpdatedAt"] = int(cast(Any, origin["updatedAt"]))
-            for active_side in ("left", "right"):
-                origin[f"previous{active_side.title()}AxisInstanceId"] = list(origin[f"{active_side}AxisInstanceId"])
         home_reference = self._normalized_home_reference(config)
         work_origin_offset = self._normalized_work_origin_offset(config)
         captured_at = now_ms()
@@ -913,53 +945,9 @@ class CommandService:
         self._ensure_origin_mutation_allowed()
         self.require_stationary_motion(await self.hal.motion_state())
         config = await self._get_config_async()
-        origin = self._normalized_motion_origin(config)
-        if not bool(origin["previousValid"]):
-            raise RuntimeError("previous motion work origin is not available")
-        current_valid = bool(origin["valid"])
-        current_left = list(cast(list[float], origin["leftPulse"]))
-        current_right = list(cast(list[float], origin["rightPulse"]))
-        current_updated_at = int(cast(Any, origin["updatedAt"]))
-        current_ids = {side: list(origin[f"{side}AxisInstanceId"]) for side in ("left", "right")}
-        origin["leftPulse"] = list(cast(list[float], origin["previousLeftPulse"]))
-        origin["rightPulse"] = list(cast(list[float], origin["previousRightPulse"]))
-        for side in ("left", "right"):
-            origin[f"{side}AxisInstanceId"] = list(origin[f"previous{side.title()}AxisInstanceId"])
-            origin[f"previous{side.title()}AxisInstanceId"] = current_ids[side]
-        origin["updatedAt"] = int(cast(Any, origin["previousUpdatedAt"]))
-        origin["leftValid"] = True
-        origin["rightValid"] = True
-        origin["valid"] = True
-        origin["previousValid"] = current_valid
-        origin["previousLeftPulse"] = current_left
-        origin["previousRightPulse"] = current_right
-        origin["previousUpdatedAt"] = current_updated_at if current_valid else 0
-        home_reference = self._normalized_home_reference(config)
-        work_origin_offset = self._normalized_work_origin_offset(config)
-        self._set_work_origin_offset_side(
-            work_origin_offset,
-            home_reference,
-            "left",
-            cast(list[float], origin["leftPulse"]),
-            int(cast(Any, origin["updatedAt"])),
-            origin["leftAxisInstanceId"],
-        )
-        self._set_work_origin_offset_side(
-            work_origin_offset,
-            home_reference,
-            "right",
-            cast(list[float], origin["rightPulse"]),
-            int(cast(Any, origin["updatedAt"])),
-            origin["rightAxisInstanceId"],
-        )
-        config["motion"]["origin"] = origin
-        config["motion"]["homeReference"] = home_reference
-        config["motion"]["workOriginOffset"] = work_origin_offset
-        reanchor_motion_soft_limits_to_current_origin(config)
-        self._validate_work_origin_target(config, "left", self._home_enabled_axes("left", config))
-        self._validate_work_origin_target(config, "right", self._home_enabled_axes("right", config))
+        sides = self._swap_in_previous_motion_origin(config, self._normalized_motion_origin(config))
         self.safety.check(safety_token)
-        await require_current_work_origin(config, self.hal, ("left", "right"))
+        await require_current_work_origin(config, self.hal, sides)
         saved = await self._save_config_async(config, emit_log=False, work_origin_update=True)
         self.logs.info("[HAL]", "previous motion work origin restored")
         await self._stop_native_teleop_after_origin_change()
@@ -1190,7 +1178,14 @@ class CommandService:
         if request.command not in {"stop", "disable"}:
             self.safety.check(safety_token)
         if self.hardware is not None and self._real_hardware_mode(config):
-            return await self._dispatch_real_gripper_command(config, request)
+            if request.command not in GRIPPER_MOTION_COMMANDS:
+                return await self._dispatch_real_gripper_command(config, request)
+            self._gripper_motion_inflight += 1
+            self._gripper_motion_commanded_ms[request.side] = now_ms()
+            try:
+                return await self._dispatch_real_gripper_command(config, request)
+            finally:
+                self._gripper_motion_inflight -= 1
         self._validate_gripper_command_enabled(config, request)
         target = self._gripper_command_target(config, request)
         if target is None:
@@ -1837,6 +1832,7 @@ class CommandService:
             previous_updated_at = int(previous_updated_at)
         except (TypeError, ValueError):
             previous_updated_at = 0
+        previous_valid = bool(origin.get("previousValid", False))
         return {
             "valid": bool(left_valid and right_valid),
             "leftValid": left_valid,
@@ -1844,7 +1840,9 @@ class CommandService:
             "leftPulse": left_pulse,
             "rightPulse": right_pulse,
             "updatedAt": updated_at,
-            "previousValid": bool(origin.get("previousValid", False)),
+            "previousValid": previous_valid,
+            # 按侧标志只在记录过时保留；旧配置缺省时由 _previous_origin_side_valid 沿用整体 previousValid。
+            **{key: bool(origin[key]) for key in ("previousLeftValid", "previousRightValid") if key in origin},
             "previousLeftPulse": previous_left_pulse,
             "previousRightPulse": previous_right_pulse,
             "previousUpdatedAt": previous_updated_at,

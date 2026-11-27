@@ -194,7 +194,7 @@ def test_hkvl_force_axis_direction_requires_six_unit_signs(value: list[float]) -
 
 
 @pytest.mark.parametrize("key", ["replayTrackingLimitUm", "replayTrackingLimitDeg"])
-@pytest.mark.parametrize("value", [0, -1, float("nan"), "x"])
+@pytest.mark.parametrize("value", [0, -1, float("nan"), "x", "500", True])
 def test_replay_tracking_limits_must_be_positive_numbers(key: str, value: object) -> None:
     config = default_config()
     config["safety"][key] = value

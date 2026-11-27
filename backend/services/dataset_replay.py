@@ -10,6 +10,7 @@ from typing import Any
 from uuid import uuid4
 
 from backend.core.data_contract import validate_data_contract, dataset_to_hardware_state
+from backend.core.force_config import replay_tracking_limit_values
 from backend.core.participation import participation, action_mask, hardware_sides
 from backend.core.gripper_protection import icf_target_min_gap_mm
 from backend.core.motion_profile import replay_motion_profile
@@ -26,18 +27,17 @@ TOLERANCE = [10., 10., 10., 50., 50., 50., .2] * 2
 MAX_ERROR = [500., 500., 500., 1000., 1000., 1000., 2.] * 2
 # 夹爪反馈超过该时长未更新只告警，继续沿用最近一次成功采样。
 GRIPPER_FEEDBACK_STALE_WARN_MS = 1000.
+# 只有逐帧回放与末帧到位阶段容忍陈旧夹爪读数；准备和起点对齐仍要求新鲜采样。
+GRIPPER_STALE_TOLERATED_PHASES = {"running", "following", "settling"}
 
 
 def replay_tracking_limits(config: dict[str, Any]) -> list[float]:
     """按设置页阈值生成 14 维跟踪偏差上限（数据集单位）；夹爪维度不参与停机判定。"""
-    safety = config.get("safety") if isinstance(config.get("safety"), dict) else {}
-    limits = []
-    for key, default, scale in (("replayTrackingLimitUm", 500., 1.), ("replayTrackingLimitDeg", 1., 1000.)):
-        value = safety.get(key, default)
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
-            raise RuntimeError(f"safety.{key} 必须是正数")
-        limits.append(float(value) * scale)
-    translation, rotation = limits
+    try:
+        translation, rotation_deg = replay_tracking_limit_values(config.get("safety"))
+    except ValueError as exc:
+        raise RuntimeError(str(exc)) from exc
+    rotation = rotation_deg * 1000.
     return [translation] * 3 + [rotation] * 3 + [MAX_ERROR[6]] + [translation] * 3 + [rotation] * 3 + [MAX_ERROR[13]]
 
 
@@ -133,6 +133,8 @@ class DatasetReplayService:
 
     def _validate_config(self, data, config, selected=None):
         selected = selected or self._participation
+        # 预检与启动在使能前共用设置页的跟踪阈值校验，避免使能后才因配置错误进入急停处理。
+        replay_tracking_limit_values(config.get("safety"))
 
         episode = data["episode"]
         recorded = episode.get("motionOrigin", {})
@@ -229,8 +231,11 @@ class DatasetReplayService:
             sample_age = time.time() * 1000 - sample_ts
             if sample_age < 0:
                 raise RuntimeError(f"{label}夹爪反馈时间戳无效：采样时间晚于当前时间，请检查系统时钟")
+            if sample_age > GRIPPER_FEEDBACK_STALE_WARN_MS and self._status.get("phase") not in GRIPPER_STALE_TOLERATED_PHASES:
+                # 准备与起点对齐要以本次有效采样确认到位，陈旧读数不能当作已对齐。
+                raise RuntimeError(f"{label}夹爪反馈超时：距最近成功采样 {sample_age / 1000:.2f} 秒，起点对齐要求不超过 1 秒")
             if sample_age > GRIPPER_FEEDBACK_STALE_WARN_MS and side not in self._stale_gripper_warned:
-                # 夹爪偏差不参与停机判定；反馈陈旧只告警一次，继续沿用最近成功采样。
+                # 逐帧回放中夹爪偏差不参与停机判定；反馈陈旧只告警一次，继续沿用最近成功采样。
                 self._stale_gripper_warned.add(side)
                 warning = f"{label}夹爪反馈陈旧：距最近成功采样 {sample_age / 1000:.2f} 秒，回放继续，夹爪显示可能滞后"
                 self._status["warning"] = warning

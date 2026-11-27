@@ -758,3 +758,86 @@ def test_slow_browser_send_does_not_block_renewal_and_is_cancelled_on_close():
             await watchdog.close()
         assert not watchdog._send_tasks
     asyncio.run(exercise())
+
+
+def _app_for_stationary_check(tmp_path, monkeypatch):
+    from backend.app import create_app
+
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+    app = create_app(tmp_path)
+    app.state.telemetry.hardware = None
+    return app
+
+
+@pytest.mark.parametrize("scenario,expected", [
+    ("fresh_stationary", True),
+    ("pre_disconnect_cache", False),
+    ("fresh_moving_then_stopped", False),
+    ("read_busy_then_fresh", True),
+])
+def test_app_stationary_check_only_trusts_samples_taken_after_disconnect(tmp_path, monkeypatch, scenario, expected) -> None:
+    """断线前 75 ms 的静止缓存可能早于刚下发的点动；新采样明确在动时不得等它自行停下再判空闲。"""
+    from backend.core.logging import now_ms
+
+    app = _app_for_stationary_check(tmp_path, monkeypatch)
+    calls = []
+    cached_stamp = now_ms() - 75  # 读卡缓存的采样时刻固定，早于断线
+
+    async def motion_state():
+        calls.append(1)
+        if scenario == "read_busy_then_fresh" and len(calls) == 1:
+            raise RuntimeError("dds-motion-state channel is busy; request was not queued")
+        moving = [False] * 12
+        if scenario == "fresh_moving_then_stopped" and len(calls) == 1:
+            moving[3] = True
+        stamp = cached_stamp if scenario == "pre_disconnect_cache" else now_ms()
+        return {"timestamp_ms": stamp, "moving": moving}
+
+    monkeypatch.setattr(app.state.hal, "motion_state", motion_state)
+    try:
+        assert asyncio.run(app.state.control_watchdog.axes_stationary()) is expected
+        if scenario == "fresh_moving_then_stopped":
+            assert len(calls) == 1
+    finally:
+        app.state.telemetry.shutdown()
+
+
+@pytest.mark.parametrize("detail,expected", [
+    ({"sample": {"statusValid": True, "gGTO": 1, "gOBJ": 0}}, False),
+    ({"sample": {"statusValid": True, "gGTO": 1, "gOBJ": 3}}, True),
+    ({"sample": {"statusValid": True, "gGTO": 1, "gOBJ": 2}}, True),
+    ({"sample": {"statusValid": True, "gGTO": 0, "gOBJ": 0}}, True),
+    ({"sample": {"statusValid": False, "gGTO": 1, "gOBJ": 3}}, False),
+    ({"stale": True, "sample": {"statusValid": True, "gGTO": 1, "gOBJ": 3}}, False),
+])
+def test_app_stationary_check_requires_recently_commanded_gripper_to_be_stopped(tmp_path, monkeypatch, detail, expected) -> None:
+    from backend.core.logging import now_ms
+
+    app = _app_for_stationary_check(tmp_path, monkeypatch)
+    app.state.commands._gripper_motion_commanded_ms["left"] = now_ms()
+
+    async def motion_state():
+        return {"timestamp_ms": now_ms(), "moving": [False] * 12}
+
+    async def command(name, payload=None):
+        assert name == "teleop.native.status"
+        stamp = now_ms() - (5000 if detail.get("stale") else 0)
+        return {"response": {"grippers": {"left": {"positionSampleTs": stamp, "sample": detail["sample"]}}}}
+
+    monkeypatch.setattr(app.state.hal, "motion_state", motion_state)
+    monkeypatch.setattr(app.state.hal, "command", command)
+    try:
+        assert asyncio.run(app.state.control_watchdog.axes_stationary()) is expected
+    finally:
+        app.state.telemetry.shutdown()
+
+
+def test_app_motion_activity_includes_inflight_gripper_command(tmp_path, monkeypatch) -> None:
+    app = _app_for_stationary_check(tmp_path, monkeypatch)
+    try:
+        watchdog = app.state.control_watchdog
+        assert watchdog.motion_active() is False
+        app.state.commands._gripper_motion_inflight = 1
+        assert watchdog.motion_active() is True
+    finally:
+        app.state.telemetry.shutdown()

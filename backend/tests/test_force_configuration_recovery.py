@@ -96,7 +96,8 @@ def test_recovery_requires_current_control_session_and_confirmed_stop(recovery, 
 @pytest.mark.parametrize("section,key,value", [
     ("motion", "leftCardNo", 9),
     ("hal", "apiConfirmed", True),
-    ("safety", "fxyWarnN", 1.7),
+    # 力阈值属于力配置（随 force.configure 下发），这里用 safety 中的非力参数验证混合修改。
+    ("safety", "yawSoftLimitDeg", 5),
     ("cameras", "global", "different camera"),
 ])
 def test_mixed_configuration_cannot_use_force_recovery(recovery, monkeypatch, route, section, key, value):
@@ -248,3 +249,48 @@ def test_recovery_excludes_concurrent_ack_and_other_motion_resource_owners(recov
 
     asyncio.run(exercise())
     assert [name for name, _ in calls] == ["force.configure"]
+
+
+@pytest.mark.parametrize("route", ["put", "apply", "snapshot"])
+def test_safety_only_force_threshold_change_recovers_while_latched(recovery, route):
+    """力阈值在 safety 中：锁存后只改阈值仍走力恢复路径并下发 HAL，锁存保持到确认。"""
+    app, client, current, calls = recovery
+    candidate = deepcopy(current)
+    candidate["safety"]["fxyStopN"] = 20
+    response = request_change(client, candidate, route)
+    assert response.status_code == 200, response.text
+    assert [name for name, _ in calls] == ["force.configure"]
+    assert calls[0][1]["fxyStopN"] == 20
+    assert app.state.commands.safety.latched
+
+
+@pytest.mark.parametrize("condition", ["lease", "recording", "moving"])
+def test_safety_only_force_threshold_change_keeps_backend_guards(recovery, monkeypatch, condition):
+    """未锁存时单改力阈值也要经过控制租约、录制会话与静止检查，不能直接下发 HAL。"""
+    app, client, current, calls = recovery
+    app.state.commands.safety.acknowledge(app.state.commands.safety.capture())
+    if condition == "lease":
+        def unavailable():
+            raise ControlLeaseUnavailable("connected browser session required")
+        monkeypatch.setattr(app.state.commands.safety, "readiness_check", unavailable)
+    elif condition == "recording":
+        monkeypatch.setattr(app.state.commands, "_origin_mutation_locked", lambda: True)
+    else:
+        async def moving_state():
+            return {"timestamp_ms": now_ms(), "moving": [True] + [False] * 11, "enabled": [True] * 12}
+        monkeypatch.setattr(app.state.hal, "motion_state", moving_state)
+    candidate = deepcopy(current)
+    candidate["safety"]["fxyStopN"] = 20
+    response = request_change(client, candidate, "put")
+    assert response.status_code == 409, response.text
+    assert calls == []
+
+
+def test_replay_only_safety_change_does_not_reach_hal(recovery):
+    app, client, current, calls = recovery
+    candidate = deepcopy(current)
+    candidate["safety"]["replayTrackingLimitUm"] = 800
+    response = request_change(client, candidate, "put")
+    assert response.status_code == 200, response.text
+    assert calls == []
+    assert client.get("/api/settings").json()["safety"]["replayTrackingLimitUm"] == 800

@@ -3130,6 +3130,66 @@ def test_motion_origin_capture_overwrites_large_drift_without_confirmation(
     assert any("overwritten despite large drift" in entry.msg for entry in client.app.state.logs.list_entries())
 
 
+def test_single_side_origin_overwrite_can_be_restored(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """仅左侧已有原点时覆盖左侧，也能一键恢复；右侧未参与，恢复后保持未记录。"""
+    monkeypatch.setenv("APPSTATION_HAL_MODE", "test")
+
+    class FakeHal:
+        async def motion_state(self) -> dict:
+            return {
+                "timestamp_ms": now_ms(),
+                "sample_cached": False,
+                "positions": [0.0] * 12,
+                "pulses": [100000.0, 0.0, 0.0, 0.0, 0.0, 0.0] + [0.0] * 6,
+                "enabled": [True] * 12,
+                "enabled_confirmed": [True] * 12,
+                "moving": [False] * 12,
+                "estop_active": False,
+            }
+
+        async def command(self, name: str, payload: dict | None = None) -> dict:
+            return {"command": name, "payload": payload or {}}
+
+    monkeypatch.setattr("backend.app.make_hal_client", lambda _config, _logs: FakeHal())
+    client = TestClient(create_app(tmp_path))
+    _attach_mock_control_lease(client)
+    settings = client.app.state.settings
+    config = settings.get_config()
+    config["motion"]["origin"] = {
+        "valid": False,
+        "leftValid": True,
+        "rightValid": False,
+        "leftPulse": [0.0] * 6,
+        "rightPulse": [0.0] * 6,
+        "updatedAt": 1234,
+        "previousValid": False,
+        "previousLeftPulse": [0.0] * 6,
+        "previousRightPulse": [0.0] * 6,
+        "previousUpdatedAt": 0,
+    }
+    _set_home_reference_to_origin(config)
+    _set_zero_work_origin_offset(config)
+    config["motion"]["leftSoftLimits"] = _wide_motion_soft_limits()
+    config["motion"]["rightSoftLimits"] = _wide_motion_soft_limits()
+    settings.save_config(config, emit_log=False)
+
+    captured = client.post("/api/motion/left/origin/capture")
+    assert captured.status_code == 200, captured.text
+    origin = captured.json()["data"]["origin"]
+    assert captured.json()["data"]["originCaptureDrift"]["requiresConfirmation"] is True
+    assert origin["leftPulse"][0] == 100000.0
+    assert origin["previousValid"] is True
+    assert origin["previousLeftValid"] is True and origin["previousRightValid"] is False
+
+    restored = client.post("/api/motion/origin/restore_previous")
+    assert restored.status_code == 200, restored.text
+    origin = restored.json()["data"]["origin"]
+    assert origin["leftPulse"] == [0.0] * 6
+    assert origin["leftValid"] is True and origin["rightValid"] is False
+    # 再次恢复可撤回本次恢复（当前值已成为上一个）。
+    assert origin["previousLeftValid"] is True and origin["previousLeftPulse"][0] == 100000.0
+
+
 def test_restore_previous_motion_origin_swaps_current_and_previous(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
