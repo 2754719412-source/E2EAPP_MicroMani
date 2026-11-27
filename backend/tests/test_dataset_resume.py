@@ -424,3 +424,22 @@ def test_resume_rejects_dataset_without_current_recording_format(recorded, old_f
     change_json(root / "meta/appstation_info.json", downgrade)
     reason = recorder._dataset_resume_error(root, config)
     assert "录制格式" in reason and "请新建数据集" in reason
+
+
+def test_rectification_cannot_mix_with_raw_or_other_geometry_on_resume(recorded):
+    from pathlib import Path
+    from backend.core.camera_rectification import rectification_metadata
+
+    recorder, root, config = recorded
+    profile = json.loads((Path(__file__).resolve().parents[2] / 'docs/camera-calibration/2026-11-26/assets/global-intrinsics.json').read_text(encoding='utf-8'))
+    profile['cameraInfo']['identity'] = 'global-serial'
+    path = root / 'meta/appstation_info.json'
+    config['cameras']['lensIntrinsics'] = {'global': profile}
+    assert '镜头去畸变' in recorder._dataset_resume_error(root, config)
+    metadata = rectification_metadata(config)
+    change_json(path, lambda saved: saved['hardware'].update(cameraRectification=metadata))
+    assert recorder._dataset_resume_error(root, config) == ''
+    profile['distCoeffs'][0] += 0.01
+    assert '镜头去畸变' in recorder._dataset_resume_error(root, config)
+    del config['cameras']['lensIntrinsics']
+    assert '镜头去畸变' in recorder._dataset_resume_error(root, config)

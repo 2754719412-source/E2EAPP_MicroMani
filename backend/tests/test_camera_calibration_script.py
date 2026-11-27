@@ -186,3 +186,8 @@ def test_reference_pose_and_drift_check(calib, board, image_dir, tmp_path) -> No
     assert records[1]["maxShiftPx"] > 3.0
     assert records[1]["poseDelta"]["rotationDeg"] == pytest.approx(0.5, abs=0.1)
     assert math.isfinite(records[0]["meanShiftPx"])
+
+
+def test_calibration_source_requests_raw():
+    source = load_module().ApiSource('http://localhost:18082', 'wrist_right')
+    assert source.url.endswith('/wrist_right/snapshot?raw=true')

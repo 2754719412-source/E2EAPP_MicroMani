@@ -389,7 +389,7 @@ class ApiSource:
 
     def __init__(self, base_url: str, camera: str, timeout_s: float = 3.0) -> None:
         self.base_url = base_url.rstrip("/")
-        self.url = f"{self.base_url}/api/cameras/{camera}/snapshot"
+        self.url = f"{self.base_url}/api/cameras/{camera}/snapshot?raw=true"
         self.timeout_s = timeout_s
         # 访问本机后端，不经过系统代理。
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))

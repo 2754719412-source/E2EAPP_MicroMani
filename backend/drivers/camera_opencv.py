@@ -26,6 +26,7 @@ from importlib import import_module
 from threading import Event, Lock, Thread, current_thread
 from typing import Any, cast
 
+from backend.core.camera_rectification import LensGeometry, lens_geometry
 from backend.core.camera_roles import MICROSCOPE_FPS, MICROSCOPE_SIZE, active_camera_keys, microscope_mode_matches
 from backend.core.schemas import CameraTelemetry, ConnectionState
 
@@ -571,6 +572,8 @@ class OpenCVCameraDriver:
         self._capture_backend_labels: dict[int, str] = {}
         self._stale_indices: set[int] = set()
         self._latest_jpegs: dict[int, bytes] = {}
+        self._jpeg_sources: dict[int, tuple[bytes, Any]] = {}
+        self._corrected_previews: dict[str, tuple[LensGeometry, bytes, bytes]] = {}
         self._latest_sequences: dict[int, int] = {}
         self._latest_at: dict[int, float] = {}
         self._latest_fps: dict[int, float] = {}
@@ -684,7 +687,30 @@ class OpenCVCameraDriver:
         message = "; ".join(errors) if errors else f"OpenCV {self._backend_label} cameras available"
         return self._store(not errors, message, cameras)
 
-    def snapshot(self, config: dict[str, Any], camera: str) -> bytes:
+    def _preview_jpeg(self, cv2: Any, config: dict[str, Any], camera: str, index: int, jpeg: bytes) -> bytes:
+        geometry = lens_geometry(config, camera)
+        if geometry is None:
+            return jpeg
+        previous = self._corrected_previews.get(camera)
+        if previous and previous[0] == geometry and previous[1] is jpeg:
+            return previous[2]
+        source = self._jpeg_sources.get(index)
+        if source and source[0] is jpeg:
+            bgr = source[1]
+        else:
+            np = import_module("numpy")
+            bgr = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+            if bgr is None:
+                raise RuntimeError(f"{camera} JPEG 解码失败")
+        quality = int(os.environ.get("APPSTATION_JPEG_QUALITY", "78"))
+        ok, result = cv2.imencode(".jpg", geometry.rectify(bgr), [cv2.IMWRITE_JPEG_QUALITY, quality])
+        if not ok:
+            raise RuntimeError(f"{camera} 去畸变预览编码失败")
+        corrected = result.tobytes()
+        self._corrected_previews[camera] = geometry, jpeg, corrected
+        return corrected
+
+    def snapshot(self, config: dict[str, Any], camera: str, *, raw: bool = False) -> bytes:
         try:
             cv2 = import_module("cv2")
         except Exception as exc:
@@ -704,7 +730,7 @@ class OpenCVCameraDriver:
         while time.monotonic() < deadline:
             cached = self._latest_jpegs.get(index)
             if cached is not None:
-                return cached
+                return cached if raw else self._preview_jpeg(cv2, config, camera, index, cached)
             event = self._jpeg_events.get(index)
             if event is None:
                 time.sleep(0.01)
@@ -746,14 +772,15 @@ class OpenCVCameraDriver:
                 frame = None
                 latest_at = None
                 cached = None
-            if frame is not None:
-                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if frame is not None or cached is not None:
+                if frame is not None:
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                else:
+                    rgb = self._decode_jpeg_to_rgb_frame(cv2, cast(bytes, cached))
+                geometry = lens_geometry(config, camera)
+                if geometry is not None:
+                    rgb = geometry.rectify(rgb)
                 return CameraFrameSnapshot(rgb, float(latest_at or time.monotonic()))
-            if cached is not None:
-                return CameraFrameSnapshot(
-                    self._decode_jpeg_to_rgb_frame(cv2, cached),
-                    float(latest_at or time.monotonic()),
-                )
             event = self._frame_events.get(index)
             if event is None:
                 time.sleep(0.01)
@@ -790,12 +817,12 @@ class OpenCVCameraDriver:
             sequence = self._latest_sequences.get(index, -1)
             cached = self._latest_jpegs.get(index)
             if cached is not None and sequence != last_sequence:
-                return sequence, cached
+                return sequence, self._preview_jpeg(cv2, config, camera, index, cached)
             time.sleep(min(0.005, max(0.0, deadline - time.monotonic())))  # 5 ms: a 50 ms poll capped streams near 17 fps
         cached = self._latest_jpegs.get(index)
         sequence = self._latest_sequences.get(index, -1)
         if cached is not None:
-            return sequence, cached
+            return sequence, self._preview_jpeg(cv2, config, camera, index, cached)
         raise RuntimeError(f"{camera} index {index} frame read failed")
 
     def apply_tuning(self, config: dict[str, Any], camera: str) -> dict[str, Any]:
@@ -930,7 +957,7 @@ class OpenCVCameraDriver:
             with self._capture_lock:
                 already_open = device["index"] in self._captures
             preview_config = {**config, "cameras": {
-                **config["cameras"], "wristLeftIdentity": device["devicePath"], "wristRightIdentity": "",
+                **config["cameras"], "lensIntrinsics": {}, "wristLeftIdentity": device["devicePath"], "wristRightIdentity": "",
                 "wristRight": "index -1",
             }}
             try:
@@ -1985,6 +2012,7 @@ class OpenCVCameraDriver:
         self._capture_backend_labels.pop(index, None)
         self._stale_indices.discard(index)
         self._latest_jpegs.pop(index, None)
+        self._jpeg_sources.pop(index, None)
         self._latest_sequences.pop(index, None)
         self._latest_at.pop(index, None)
         self._latest_fps.pop(index, None)
@@ -2144,7 +2172,10 @@ class OpenCVCameraDriver:
                     continue
                 if not encoded:
                     continue
-                self._latest_jpegs[index] = bytes(buffer)
+                jpeg = bytes(buffer)
+                if not microscope:
+                    self._jpeg_sources[index] = jpeg, frame
+                self._latest_jpegs[index] = jpeg
                 self._latest_sequences[index] = self._latest_sequences.get(index, 0) + 1
                 event = self._jpeg_events.get(index)
                 if event is not None:

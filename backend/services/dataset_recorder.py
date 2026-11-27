@@ -38,6 +38,7 @@ from backend.services.dataset_resume import resume_metadata_error
 from backend.services.dataset_episode_index import match_records, read_native_index
 
 from backend.core.participation import participation, action_mask, hardware_sides, source_sides, scoped_config
+from backend.core.camera_rectification import rectification_metadata
 from backend.core.camera_roles import CAMERA_KEYS, MICROSCOPE_FPS, MICROSCOPE_SIZE, STANDARD_CAMERA_KEYS, active_camera_keys
 from backend.core.config import SettingsService
 from backend.core.data_contract import (
@@ -4340,6 +4341,7 @@ class DatasetRecorderService:
             "hardware": {
                 "cameras": config.get("cameras", {}),
                 "cameraResolutions": self._camera_resolution_summary_from_config(config),
+                "cameraRectification": rectification_metadata(config),
                 "force": self._force_metadata(config),
                 "gripper": self._gripper_metadata(config),
                 "motion": self._motion_calibration_snapshot(config),
@@ -4769,6 +4771,9 @@ class DatasetRecorderService:
             # 旧数据集（无录制格式或版本不同）仍可读取与回放，但新格式的 feature 不能续录进去。
             return (f"无法续录：数据集录制格式为 {saved_version or '旧版（无夹爪电流）'}，"
                     f"当前为 {RECORDING_FORMAT_VERSION}，请新建数据集")
+        previous_hardware = saved.get("hardware")
+        if isinstance(previous_hardware, dict) and previous_hardware.get("cameraRectification", {}) != rectification_metadata(config):
+            return "无法续录：镜头去畸变参数与已有图像不一致，请使用新数据集"
         try:
             native = read_native_index(dataset_dir, info)
             _matched, untracked = match_records(episodes, native)

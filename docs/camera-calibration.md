@@ -120,8 +120,10 @@ backend/.venv/Scripts/python.exe scripts/calibrate_camera.py calibrate --camera 
 - 三路相机都完成后，把 `camera_calibration` 目录整体复制到共享盘或科研记录，按日期命名。
 - 记录内容：参与人员、标定板规格和实测方格边长、各相机身份（见 `intrinsics.json` 的 `cameraInfo.identity`）、曝光等手动设置。
 
-## 当前限制
+## 运行时图像校正与复核
 
-- 已完成的验证只有离线部分：合成图像回归测试 `backend/tests/test_camera_calibration_script.py` 在 OpenCV 4.10 和 5.1 下通过，覆盖已知内参还原、原点约定、相机移动检测和采集筛选。工控机上的真实相机、预览窗口和快照接口尚未实测。
-- 标定结果还没有写进数据集元数据，续录时也不会校验标定版本，需要后续开发。
+- 三路实机镜头的身份、内参及当时的测试条件见 [2026-11-26 标定记录](camera-calibration/2026-11-26/README.md)。内参用于图像去畸变；支架和工作原点的重复性仍通过 `pose`、`check` 复核。
+- 启用去畸变时，在 `cameras.lensIntrinsics` 中按角色存放通过验收的内参对象。使用 `intrinsics.json` 的 `schema`、`kind`、`camera`、`verdict`、`cameraInfo.identity`、`imageSize`、`distortionModel`、`cameraMatrix` 和 `distCoeffs`。未配置的角色输出原图。换镜头、调焦或互换同型号腕部机身后，要重新确认内参与实物对应，USB 口绑定只能识别安装位置。
+- 5174 的 MJPEG 预览、普通快照和新录制共用同一套 OpenCV 去畸变几何，`alpha=0`，输出保持采集尺寸。`calibrate_camera.py` 始终通过 `snapshot?raw=true` 取得原图，以便继续使用原始角点和参考位姿。
+- 数据集的 `meta/appstation_info.json` 在 `hardware.cameraRectification` 记录各路源矩阵、畸变系数及输出矩阵。已有原图数据和校正几何不同的数据需要分开建集；回放读取已保存的图像。
 - 快照接口返回 JPEG 压缩画面，对角点精度影响很小；需要最高精度时，停服务后用 `--source device`。

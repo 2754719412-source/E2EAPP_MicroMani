@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from backend.core.camera_roles import active_camera_keys
 from backend.core.defaults import default_config
 from backend.drivers import camera_opencv
 from backend.services.telemetry_hub import TelemetryHub
@@ -16,7 +17,7 @@ def camera_setup(monkeypatch):
     config = default_config()
     clock = SimpleNamespace(now=100.0)
     calls = []
-    roles = list(camera_opencv.CAMERA_IDENTITY_KEYS)
+    roles = active_camera_keys(config)
     for index, role in enumerate(roles):
         config['cameras'][camera_opencv.CAMERA_DESCRIPTOR_KEYS[role]] = f'index {index}'
         config['cameras'][camera_opencv.CAMERA_IDENTITY_KEYS[role]] = role

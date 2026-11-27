@@ -26,6 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.websockets import WebSocketState
 
 from backend.app_factory import create_services
+from backend.core.camera_rectification import lens_geometry
 from backend.core.camera_roles import CAMERA_KEYS, MICROSCOPE_FPS, STANDARD_CAMERA_KEYS, active_camera_keys
 from backend.core.participation import participation, hardware_sides, source_sides
 from backend.core.config import SettingsService
@@ -1090,6 +1091,17 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         if any(current.get("cameras", {}).get(key) != candidate.get("cameras", {}).get(key)
                for key in ("microscopeEnabled", "microscopeIdentity")) and recorder.camera_configuration_busy():
             raise HTTPException(status_code=409, detail={"message": "请先结束录制会话再修改显微相机"})
+        if current.get("cameras") != candidate.get("cameras"):
+            profiles = candidate.get("cameras", {}).get("lensIntrinsics", {})
+            if not isinstance(profiles, dict) or profiles.keys() - set(STANDARD_CAMERA_KEYS):
+                raise ValueError("镜头内参只支持 global、wrist_left、wrist_right")
+            try:
+                for camera in profiles:
+                    lens_geometry(candidate, camera)
+            except RuntimeError as exc:
+                raise ValueError(str(exc)) from exc
+            if profiles != current.get("cameras", {}).get("lensIntrinsics", {}) and recorder.camera_configuration_busy():
+                raise HTTPException(status_code=409, detail={"message": "请先结束录制会话，再修改镜头去畸变参数"})
         # 力阈值存放在 safety：按实际下发 HAL 的力配置判断，单改阈值也要经过租约、互斥和录制检查。
         force_only = without_force_settings(current) == without_force_settings(candidate)
         force_payload_changed = hal_force_config_payload(current) != hal_force_config_payload(candidate)
@@ -2166,7 +2178,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
 
     # 获取指定相机 JPEG 快照。
     @app.get("/api/cameras/{camera}/snapshot")
-    async def camera_snapshot(camera: str) -> Response:
+    async def camera_snapshot(camera: str, raw: bool = False) -> Response:
         if camera not in CAMERA_KEYS:
             raise HTTPException(
                 status_code=400,
@@ -2176,12 +2188,18 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
             config = await get_config_async()
             if camera == "microscope" and camera not in active_camera_keys(config):
                 raise HTTPException(status_code=409, detail={"code": "CAMERA_DISABLED", "message": "显微通道未启用"})
-            jpeg = await asyncio.to_thread(hardware.cameras.snapshot, config, camera)
+            if raw:
+                jpeg = await asyncio.to_thread(hardware.cameras.snapshot, config, camera, raw=True)
+            else:
+                jpeg = await asyncio.to_thread(hardware.cameras.snapshot, config, camera)
         except ControlLeaseUnavailable as exc:
             raise HTTPException(status_code=409, detail={"code": "CONTROL_LEASE_UNAVAILABLE", "message": str(exc)}) from exc
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail={"code": "CAMERA_UNAVAILABLE", "message": str(exc)}) from exc
-        return Response(content=jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+        corrected = not raw and camera in config["cameras"].get("lensIntrinsics", {}) and camera != "microscope"
+        return Response(content=jpeg, media_type="image/jpeg", headers={
+            "Cache-Control": "no-store", "X-AppStation-Image-Space": "undistorted" if corrected else "raw",
+        })
 
     # 获取指定相机 MJPEG 视频流。
     @app.get("/api/cameras/{camera}/stream")
