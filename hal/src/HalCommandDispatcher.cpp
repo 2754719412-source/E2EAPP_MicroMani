@@ -10,9 +10,11 @@
 #include "CommandDeadline.h"
 
 #include <stdexcept>
+#include <chrono>
 #include <cmath>
 #include <exception>
 #include <limits>
+#include <thread>
 
 namespace appstation::hal {
 
@@ -62,7 +64,23 @@ void HalCommandDispatcher::requireForceMutationSafe(const char* operation, bool 
   if (nativeTeleop_.running()) {
     throw std::runtime_error(std::string(operation) + " requires native teleop to be stopped");
   }
-  for (const auto& axis : motion_.readState().axes) {
+  // 只认本次操作开始后完成的读卡（含运动线程随后发布的缓存）；拿不到新结果则限时重试，超时拒绝。
+  const auto steadyMs = []() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+  };
+  const auto requestedAtMs = steadyMs();
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+  auto state = motion_.readState();
+  // 同一毫秒内完成的读卡无法证明晚于请求，严格要求更晚的读卡完成时刻。
+  while (state.readMonotonicMs <= requestedAtMs) {
+    if (std::chrono::steady_clock::now() >= deadline) {
+      throw std::runtime_error(std::string(operation) + " requires fresh motion feedback");
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    state = motion_.readState();
+  }
+  for (const auto& axis : state.axes) {
     if (axis.moving) {
       throw std::runtime_error(std::string(operation) + " requires all axes stopped");
     }

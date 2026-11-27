@@ -24,6 +24,7 @@ struct ForceTareDispatcherTestAccess {
     motion.enabled_[0] = enabled;
     motion.commandedEnabled_[0] = enabled;
   }
+  static std::mutex& driverMutex(LTDMCDriver& motion) { return motion.mutex_; }
 };
 }  // namespace appstation::hal
 
@@ -450,6 +451,36 @@ void testDispatcherNewStopCancelsCollection() {
   requireOldBias(fixture.force);
 }
 
+void testDispatcherRejectsForceMutationOnStaleMotionSnapshot() {
+  DispatcherFixture fixture;
+  fixture.motion.readState();  // 先发布一帧“静止且断使能”的缓存
+  std::promise<void> locked;
+  std::promise<void> release;
+  auto lockedFuture = locked.get_future();
+  auto releaseFuture = release.get_future();
+  // 另一线程占住驱动锁，readState 只能返回旧缓存，模拟运动命令长时间持锁。
+  std::thread holder([&]() {
+    std::scoped_lock lock(ForceTareDispatcherTestAccess::driverMutex(fixture.motion));
+    locked.set_value();
+    releaseFuture.wait();
+  });
+  lockedFuture.wait();
+  try {
+    rejects([&]() { fixture.dispatcher.handle("force.tare", kConfirmedTare); }, "fresh motion feedback");
+    rejects([&]() { fixture.dispatcher.handle("force.configure", R"({"source":"hkvl_serial","fxyWarnN":5,"fxyStopN":12})"); },
+        "fresh motion feedback");
+  } catch (...) {
+    release.set_value();
+    holder.join();
+    throw;
+  }
+  release.set_value();
+  holder.join();
+  requireOldBias(fixture.force);
+  const auto response = fixture.dispatcher.handle("force.tare", kConfirmedTare);
+  require(response.find("\"ok\":true") != std::string::npos, "fresh controller read did not restore self-check");
+}
+
 void testDispatcherDeadlineCancelsCollectionBeforeCommit() {
   DispatcherFixture fixture;
   const auto expiresAt = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -481,8 +512,9 @@ int main() {
     testLeaseStopRetainsDistinctReason();
     testDispatcherGuardsAndOwnStopEpoch();
     testDispatcherNewStopCancelsCollection();
+    testDispatcherRejectsForceMutationOnStaleMotionSnapshot();
     testDispatcherDeadlineCancelsCollectionBeforeCommit();
-    std::cout << "ForceTareRuntimeTests passed (21 cases, injected sensors, no hardware or DDS runtime)\n";
+    std::cout << "ForceTareRuntimeTests passed (22 cases, injected sensors, no hardware or DDS runtime)\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "ForceTareRuntimeTests failed: " << error.what() << "\n";
