@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <atomic>
+#include <functional>
 #include <string>
 
 #include "ForceControlRuntime.h"
@@ -35,6 +36,10 @@ class HalCommandDispatcher {
       std::optional<std::uint64_t> expectedEpoch = std::nullopt);
   std::string handleEmergencyStop();
   std::string handleEmergencyStop(const char* reason);
+
+  // 在 timeout 内取得一次晚于本次请求完成的读卡；每次读取返回后先查截止时间，慢读超时同样拒绝。
+  static MotionState requireFreshMotionState(const std::function<MotionState()>& read, const char* operation,
+      std::chrono::milliseconds timeout = std::chrono::milliseconds(500));
 
  private:
   void requireForceMutationSafe(const char* operation, bool requireServosDisabled = true);

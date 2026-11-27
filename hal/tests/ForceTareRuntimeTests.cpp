@@ -481,6 +481,34 @@ void testDispatcherRejectsForceMutationOnStaleMotionSnapshot() {
   require(response.find("\"ok\":true") != std::string::npos, "fresh controller read did not restore self-check");
 }
 
+void testFreshMotionStateWaitCoversSlowRead() {
+  const auto steadyMs = []() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+  };
+  const auto freshAfter = [&](std::chrono::milliseconds delay) {
+    std::this_thread::sleep_for(delay);
+    MotionState state;
+    state.readMonotonicMs = steadyMs();
+    return state;
+  };
+  // 单次读卡耗时超过时限：返回时带新时间戳也必须拒绝。
+  rejects([&]() {
+    HalCommandDispatcher::requireFreshMotionState([&]() { return freshAfter(150ms); }, "force tare", 100ms);
+  }, "fresh motion feedback");
+  // 先返回旧缓存，时限内取得新读卡则放行。
+  int reads = 0;
+  const auto staleThenFresh = HalCommandDispatcher::requireFreshMotionState([&]() {
+    if (++reads < 3) return MotionState{};
+    return freshAfter(2ms);
+  }, "force tare", 200ms);
+  require(reads >= 3 && staleThenFresh.readMonotonicMs > 0, "fresh read within the deadline was not accepted");
+  // 始终只有旧缓存：到时限拒绝。
+  rejects([&]() {
+    HalCommandDispatcher::requireFreshMotionState([]() { return MotionState{}; }, "force tare", 50ms);
+  }, "fresh motion feedback");
+}
+
 void testDispatcherDeadlineCancelsCollectionBeforeCommit() {
   DispatcherFixture fixture;
   const auto expiresAt = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -513,8 +541,9 @@ int main() {
     testDispatcherGuardsAndOwnStopEpoch();
     testDispatcherNewStopCancelsCollection();
     testDispatcherRejectsForceMutationOnStaleMotionSnapshot();
+    testFreshMotionStateWaitCoversSlowRead();
     testDispatcherDeadlineCancelsCollectionBeforeCommit();
-    std::cout << "ForceTareRuntimeTests passed (22 cases, injected sensors, no hardware or DDS runtime)\n";
+    std::cout << "ForceTareRuntimeTests passed (23 cases, injected sensors, no hardware or DDS runtime)\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << "ForceTareRuntimeTests failed: " << error.what() << "\n";
