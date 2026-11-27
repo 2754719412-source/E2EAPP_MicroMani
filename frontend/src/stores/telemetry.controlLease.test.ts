@@ -157,17 +157,6 @@ describe('真实前端控制租约（HTTP 与 WS 均为离线替身）', () => {
     expect(commands()).toEqual(['/api/motion/manual_axis_move'])
   })
 
-  it('即使显示订阅抛错，撤销动作也先关闭 WS 并写入拒绝控制状态', async () => {
-    store.getState().startBackend()
-    const socket = Socket.instances.at(-1)!
-    await live(socket); confirm(socket)
-    const unsubscribe = store.subscribe(() => { throw new Error('显示故障') })
-    expect(() => store.getState().revokeControlLease('显示故障')).toThrow('显示故障')
-    unsubscribe()
-    expect(socket.close).toHaveBeenCalledTimes(1)
-    expect(store.getState().controlLease.status).toBe('expired')
-    expect(store.getState().backendWs).toBeNull()
-  })
 })
 
 it('手动进入观察模式撤销旧租约，旧消息无效，路由重连保持观察', async () => {

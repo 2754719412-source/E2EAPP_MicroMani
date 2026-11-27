@@ -10,7 +10,7 @@ import { mockMode } from './api'
 import { AppLayout } from './components/AppLayout'
 import { UiSpin } from './components/ui'
 import { useTelemetryStore } from './stores/telemetry'
-import { installControlFaultHandlers } from './utils/controlFaults'
+import { installControlFaultHandlers, reportDisplayFault } from './utils/controlFaults'
 
 // 路由级代码分割：首包只保留壳层，各业务页按需加载，降低切换与首屏成本。
 const DashboardView = lazy(() => import('./views/DashboardView').then((module) => ({ default: module.DashboardView })))
@@ -50,7 +50,7 @@ export default function App() {
       startMock()
       return stopMock
     }
-    const removeFaultHandlers = installControlFaultHandlers((reason) => useTelemetryStore.getState().revokeControlLease(reason))
+    const removeFaultHandlers = installControlFaultHandlers(reportDisplayFault)
     startBackend()
     return () => {
       removeFaultHandlers()

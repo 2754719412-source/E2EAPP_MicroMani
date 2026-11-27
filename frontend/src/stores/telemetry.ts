@@ -459,7 +459,6 @@ interface TelemetryStore {
   controlLease: ControlLeaseState
   observerMode: boolean
   setObserverMode: (observe: boolean) => void
-  revokeControlLease: (reason: string) => void
   qualityReport: QualityReport | null
   recordSession: RecordSessionState
   manualControl: ManualControlState
@@ -1549,11 +1548,6 @@ export const useTelemetryStore = create<TelemetryStore>((set, get) => ({
     get().startBackend()
   },
   controlLease: initialControlLease(!mockMode),
-  revokeControlLease: (reason) => {
-    const required = get().controlLease.required
-    get().stopBackend()
-    set({ controlLease: { ...initialControlLease(required), status: 'expired', reason } })
-  },
   dangerOverride: null,
   configSaveError: null,
   qualityReport: null,

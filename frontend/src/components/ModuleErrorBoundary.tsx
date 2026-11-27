@@ -1,5 +1,5 @@
 import { Component, type ReactNode } from 'react'
-import { useTelemetryStore } from '../stores/telemetry'
+import { reportDisplayFault } from '../utils/controlFaults'
 
 /** 壳层各区域独立降级，诊断显示异常不得卸载导航和急停入口。 */
 export class ModuleErrorBoundary extends Component<{
@@ -14,7 +14,8 @@ export class ModuleErrorBoundary extends Component<{
   }
 
   componentDidCatch(error: Error) {
-    useTelemetryStore.getState().revokeControlLease(`${this.props.name}显示异常，控制已暂停：${error.message}`)
+    // 显示异常只降级本模块并记录，不撤销控制；急停入口在独立模块中保持可用。
+    reportDisplayFault(`${this.props.name}显示异常（控制未中断）：${error.message}`)
   }
 
   render() {
