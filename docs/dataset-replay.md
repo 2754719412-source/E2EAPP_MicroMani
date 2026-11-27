@@ -17,6 +17,7 @@
 - 动作是相对工作原点的绝对目标。backend 统一转换操作者侧到硬件侧、mdeg 到 degree，再叠加原点偏置；原点与标定自身不交换。
 - HAL 新命令 `motion.replay_absolute_target` 接收硬件侧绝对 UI 坐标，沿用执行器互斥、单帧脉冲限幅、目标领先限制、软限位、力安全、急停代际与控制租约。它不累加旧目标，不改变原有 `motion.teleop_target_update` 增量语义。
 - backend 必须读到 HAL capability `replay_absolute_target_v1`，旧 HAL 不能执行回放。
+- 每条机械臂目标的 HAL 应答都须带 `ok`、对应硬件侧和六轴 `updateReturn`。返回码 0 及 3011/3019（目标刷新错过窗口，HAL 已重新发起运动段）放行；其他非零码、应答缺失或格式不符视为结果未确认，立即停止下发后续目标并请求急停。实际是否跟上目标由跟踪检查判断。
 - `gripper.prepare_replay` 在运动前独立启动夹爪采样；后续 `gripper.replay_target` 复用 worker 队列，不逐帧关闭并重新打开串口。
 - 仅参与回放的夹爪必须启用，反馈有效且最近成功采样不超过 1 秒。新增 positionOk/positionSampleTs 区分命令应答与位置采样。目标必须符合当前行程和夹缝保护。
 - 整个任务独占后台运动资源并锁定原点修改。运动、遥操作、夹爪或力配置变化、陈旧反馈、租约丢失、执行异常及明显跟踪偏差都会中止，不重试运动命令。
