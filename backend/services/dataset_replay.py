@@ -19,7 +19,7 @@ from backend.core.motion_limits import effective_limit_arrays
 from backend.core.work_origin import require_current_work_origin
 from backend.core.operator_view import operator_side_for_hardware_side, hardware_side_for_operator_side
 from backend.core.units import motion_pulse_per_unit, pulse_to_lerobot, pulse_to_ui
-from backend.services.gripper_backend import native_gripper_payload
+from backend.services.gripper_backend import gripper_port_reserved, native_gripper_config_payload, native_gripper_payload
 
 AXES = ("X", "Y", "Z", "Roll", "Pitch", "Yaw")
 # 单位为数据集 um / mdeg / mm；用于到位判定和跟踪偏差拒绝。
@@ -201,13 +201,21 @@ class DatasetReplayService:
             raise _ReplayStopRequested()
         self.safety.check(token)
 
-    async def _observe(self, config):
-        self._feedback_samples = {}
+    async def _read_feedback(self):
         motion = await self.svc.hal.motion_state()
         pulses = motion.get("pulses")
         if not isinstance(pulses, list) or len(pulses) != 12 or any(not math.isfinite(float(v)) for v in pulses):
             raise RuntimeError("运动反馈缺失")
         native = (await self.svc.hal.command("teleop.native.status", {})).get("response", {})
+        return motion, native
+
+    async def _observe(self, config):
+        motion, native = await self._read_feedback()
+        return self._apply_feedback(config, motion, native)
+
+    def _apply_feedback(self, config, motion, native):
+        self._feedback_samples = {}
+        pulses = motion["pulses"]
         if native.get("running"):
             raise RuntimeError("请停止示教遥操作后再回放")
         coeff = motion_pulse_per_unit(config)
@@ -476,21 +484,25 @@ class DatasetReplayService:
         while True:
             self._check(token)
             # 用剩余时间限制本次读取；不取消在途 DDS 读取，只放弃其结果。
-            reading = asyncio.create_task(self._observe(config))
+            reading = asyncio.create_task(self._read_feedback())
+            reading.add_done_callback(lambda task: task.cancelled() or task.exception())
             done, _ = await asyncio.wait({reading}, timeout=max(0., feedback_deadline - time.monotonic()))
             if not done:
-                reading.add_done_callback(lambda task: task.cancelled() or task.exception())
                 raise RuntimeError("回放准备阶段 2 秒内未取得有效的运动与夹爪反馈")
-            try:
-                observed = reading.result()
-            except RuntimeError as exc:
-                if "夹爪反馈" not in str(exc) or time.monotonic() >= feedback_deadline:
-                    raise
-                await asyncio.sleep(.05)
-                continue
-            # 慢读即使成功返回，超过时限也不采用。
+            self._check(token)
             if time.monotonic() > feedback_deadline:
                 raise RuntimeError("回放准备阶段 2 秒内未取得有效的运动与夹爪反馈：本次读取超时返回")
+            try:
+                observed = self._apply_feedback(config, *reading.result())
+            except RuntimeError as exc:
+                if "夹爪反馈" not in str(exc):
+                    raise
+                remaining = feedback_deadline - time.monotonic()
+                if remaining > 0:
+                    await asyncio.sleep(min(.05, remaining))
+                if time.monotonic() >= feedback_deadline:
+                    raise RuntimeError(f"回放准备阶段 2 秒内未取得有效的运动与夹爪反馈：{exc}") from exc
+                continue
             break
         initial = data["rows"][0]["observation.state"]
         for side, offset in (("right", 0), ("left", 7)):
@@ -526,7 +538,7 @@ class DatasetReplayService:
         self._status["phase"] = "settling"
         await self._settle(previous, config, token)
 
-    async def _finish_motion(self, token):
+    async def _finish_motion(self, token, config):
         sides = hardware_sides(self._participation)
         self.safety.check(token)
         for side in sides:
@@ -567,6 +579,35 @@ class DatasetReplayService:
                         and isinstance(moving, list) and len(moving) == 12 and all(moving[i] is False for i in indices)):
                     return
                 await asyncio.sleep(.02)
+            return
+
+        await self._resume_gripper_feedback(config)
+        self._check(token)
+
+    async def _resume_gripper_feedback(self, config):
+        # native.stop 也会退出采样线程；断线检查仍需每个待确认夹爪的新状态。
+        pending = self.svc.commands.unconfirmed_gripper_sides()
+        if not pending:
+            return
+        payload = native_gripper_config_payload(config)
+        available = {side for side in pending if not gripper_port_reserved(payload[f"{side}Port"])}
+        for side in ("left", "right"):
+            payload[f"{side}GripperParticipating"] = side in available
+        unavailable_reason = ""
+        if not payload["gripperProcessWorkersEnabled"]:
+            unavailable_reason = "只读采样需要启用独立夹爪 worker"
+        else:
+            if pending.keys() - available:
+                unavailable_reason = "部分夹爪串口已被外部保留"
+            if available:
+                try:
+                    await self.svc.hal.command("gripper.feedback.configure", payload)
+                except (RuntimeError, TimeoutError) as exc:
+                    unavailable_reason = str(exc) or type(exc).__name__
+        if unavailable_reason:
+            warning = f"回放结束后夹爪只读采样未完全恢复，停止状态仍待确认：{unavailable_reason}"
+            self._status["warning"] = "；".join(filter(None, (self._status.get("warning"), warning)))
+            self.svc.logs.warning("[HAL]", warning)
 
     async def _run(self, dataset_id, episode_id, speed, token, selected=None):
         try:
@@ -613,7 +654,7 @@ class DatasetReplayService:
             except _ReplayStopRequested:
                 pass
             if self._emergency_task is None:
-                await self._finish_motion(token)
+                await self._finish_motion(token, config)
             if self._stop.is_set():
                 raise _ReplayStopRequested()
             self._status["phase"] = "completed"

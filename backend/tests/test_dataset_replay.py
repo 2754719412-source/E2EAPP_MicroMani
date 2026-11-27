@@ -699,30 +699,79 @@ def test_start_alignment_rejects_gripper_sample_from_before_prepare(setup_replay
     asyncio.run(run())
 
 
-def test_replay_gripper_targets_stay_pending_until_stop_feedback_after_disconnect(setup_replay):
-    """回放直接下发夹爪目标：结束后按侧保留待确认，断线时夹爪仍在动就不能判为空闲。"""
-    from backend.core.logging import now_ms
-    app, replay, _data, _config = setup_replay
+@pytest.mark.parametrize("operator_sides, hardware", [(["left"], {"right"}), (["left", "right"], {"left", "right"})])
+def test_replay_gripper_targets_stay_pending_until_stop_feedback_after_disconnect(setup_replay, monkeypatch, operator_sides, hardware):
+    app, replay, data, _config = setup_replay
+    data["episode"]["participation"]["grippers"] = operator_sides
+    hal = app.state.hal
+    original = hal.command
+    sampling = set()
+    transitions = []
+    check_ms = 1_800_000_000_000
+    monkeypatch.setattr("backend.app.now_ms", lambda: check_ms)
+    monkeypatch.setattr("backend.services.command_service.now_ms", lambda: check_ms)
+    gobj = 0
+
+    async def command(name, payload):
+        nonlocal check_ms
+        if name == "teleop.native.stop":
+            transitions.append(name)
+            sampling.clear()
+        elif name == "gripper.feedback.configure":
+            transitions.append(name)
+            sampling.update(side for side in ("left", "right") if payload[f"{side}GripperParticipating"])
+        elif name == "teleop.native.status" and transitions:
+            check_ms += 1
+            grippers = original.return_value["response"]["grippers"]
+            for side in sampling:
+                grippers[side].update(positionSampleTs=check_ms, sample={"statusValid": True, "gGTO": 1, "gOBJ": gobj})
+            return original.return_value
+        return await original(name, payload)
+
+    hal.command = command
+    async def stopped_axes():
+        nonlocal check_ms
+        check_ms += 1
+        return {"timestamp_ms": check_ms, "moving": [False] * 12}
+
     async def run():
+        nonlocal gobj
         await replay.start('d', 'e', 1.)
         await replay.task
         assert replay.status()['phase'] == 'completed', replay.status()
+        assert transitions == ["teleop.native.stop", "gripper.feedback.configure"]
+        assert sampling == hardware == set(app.state.commands.unconfirmed_gripper_sides())
+        hal.motion_state = stopped_axes
+        assert await app.state.control_watchdog.axes_stationary() is False
+        assert set(app.state.commands.unconfirmed_gripper_sides()) == hardware
+        gobj = 3
+        assert await app.state.control_watchdog.axes_stationary() is True
+        assert app.state.commands.unconfirmed_gripper_sides() == {}
     asyncio.run(run())
-    sent = {c.args[1]['side'] for c in app.state.hal.command.call_args_list
-            if c.args[0] == 'gripper.replay_target' and 'side' in c.args[1]}
-    pending = set(app.state.commands.unconfirmed_gripper_sides())
-    assert pending and pending >= sent
 
-    async def motion_state():
-        return {"timestamp_ms": now_ms() + 1, "moving": [False] * 12}
-    app.state.hal.motion_state = motion_state
-    grippers = app.state.hal.command.return_value['response']['grippers']
-    for gobj, expected in ((0, False), (3, True)):
-        for detail in grippers.values():
-            detail['positionSampleTs'] = now_ms() + 1
-            detail['sample'] = {'statusValid': True, 'gGTO': 1, 'gOBJ': gobj}
-        assert asyncio.run(app.state.control_watchdog.axes_stationary()) is expected
-    assert app.state.commands.unconfirmed_gripper_sides() == {}
+
+def test_idle_sampler_failure_leaves_grippers_unconfirmed(setup_replay, monkeypatch):
+    app, replay, *_ = setup_replay
+    hal = app.state.hal
+    original = hal.command
+    async def command(name, payload):
+        if name == "gripper.feedback.configure":
+            raise RuntimeError("worker unavailable")
+        return await original(name, payload)
+
+    hal.command = command
+    async def run():
+        await replay.start("d", "e", 1.)
+        await replay.task
+        assert replay.status()["phase"] == "completed", replay.status()
+        assert "worker unavailable" in replay.status()["warning"]
+        check_ms = int(time.time() * 1000) + 10
+        monkeypatch.setattr("backend.app.now_ms", lambda: check_ms)
+        hal.motion_state = AsyncMock(return_value={"timestamp_ms": check_ms + 1, "moving": [False] * 12})
+        hal.command = AsyncMock(return_value={"response": {"grippers": {}}})
+        assert await app.state.control_watchdog.axes_stationary() is False
+        assert set(app.state.commands.unconfirmed_gripper_sides()) == {"left", "right"}
+    asyncio.run(run())
 
 
 def test_slow_preparation_feedback_read_is_rejected_before_enabling_motion(setup_replay, monkeypatch):
@@ -731,20 +780,62 @@ def test_slow_preparation_feedback_read_is_rejected_before_enabling_motion(setup
     app, replay, _data, _config = setup_replay
     clock = [0.]
     monkeypatch.setattr(replay_module, 'time', SimpleNamespace(monotonic=lambda: clock[0], time=time.time))
-    original = replay._observe
+    original = replay._read_feedback
     calls = []
-    async def slow(config):
+    async def slow():
         calls.append(1)
         if len(calls) == 1:
             clock[0] += 2.2
-        return await original(config)
-    replay._observe = slow
+        return await original()
+    replay._read_feedback = slow
     async def run():
         await replay.start('d', 'e', 1.)
         await replay.task
         status = replay.status()
         assert status['phase'] == 'failed' and '2 秒内未取得有效' in status['error'], status
         app.state.commands.enable_motion_side.assert_not_called()
+    asyncio.run(run())
+
+
+def test_timed_out_preparation_read_cannot_publish_into_next_replay(setup_replay, monkeypatch):
+    from backend.services import dataset_replay as replay_module
+    app, replay, *_ = setup_replay
+    hal = app.state.hal
+    original = hal.command
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    expired = []
+
+    async def command(name, payload):
+        if name == "teleop.native.status" and not entered.is_set():
+            entered.set()
+            await release.wait()
+        return await original(name, payload)
+
+    async def wait(tasks, *, timeout):
+        if not expired:
+            await asyncio.wait_for(entered.wait(), 1.)
+            expired.extend(tasks)
+            return set(), tasks
+        return await asyncio.wait(tasks, timeout=timeout)
+
+    hal.command = command
+    monkeypatch.setattr(replay_module.asyncio, "wait", wait)
+    async def run():
+        hal.motion_state.return_value = {"pulses": [0.] * 12, "timestamp_ms": 100}
+        await replay.start("d", "e", 1.)
+        await replay.task
+        assert "2 秒内未取得有效" in replay.status()["error"]
+        app.state.commands.enable_motion_side.assert_not_awaited()
+        hal.motion_state.return_value = {"pulses": [0.] * 12, "timestamp_ms": 200}
+        await replay.start("d", "e", 1.)
+        await replay.task
+        assert replay.status()["phase"] == "completed", replay.status()
+        samples = replay._feedback_samples.copy()
+        assert samples["motion"] == 200
+        release.set()
+        await expired[0]
+        assert replay._feedback_samples == samples
     asyncio.run(run())
 
 
@@ -762,7 +853,8 @@ def test_replay_tracking_limits_follow_settings_and_reject_invalid_values():
 def test_alignment_uses_first_observation_then_actions(setup_replay):
     app, replay, data, _ = setup_replay
     data['rows'][0]['observation.state'][0] = 30.
-    observations = [[0.]*14, [0.]*14, [30.] + [0.]*13] + [[0.]*14]*10
+    # 起点对齐先读到零位，下发起点后读到目标；随后各帧反馈回到零位。
+    observations = [[0.]*14, [30.] + [0.]*13] + [[0.]*14]*10
     replay._observe = AsyncMock(side_effect=observations)
     async def run():
         await replay.start('d', 'e', 1.)
@@ -790,13 +882,10 @@ def test_cancellation_after_enable_requests_emergency_stop(setup_replay):
 @pytest.mark.parametrize('reason', ['lease', 'tracking', 'configuration', 'dispatch'])
 def test_runtime_faults_stop_without_following_frames(setup_replay, reason):
     app, replay, data, config = setup_replay
-    calls = 0
     original = replay._observe
     async def observe(current_config):
-        nonlocal calls
-        calls += 1
         result = await original(current_config)
-        if calls == 3:
+        if replay.status()['phase'] == 'running' and replay.status()['frame'] == 0:
             if reason == 'lease':
                 replay.safety.readiness_check = lambda: (_ for _ in ()).throw(RuntimeError('lease lost'))
             elif reason == 'tracking': result[0] = 10000.
