@@ -34,6 +34,19 @@ async function live(socket: Socket, patch: Partial<TelemetryFrame> = {}) {
 const commands = () => fetchSpy.mock.calls.map(([url]) => new URL(String(url)).pathname).filter((path) => /\/api\/motion\//.test(path))
 const warnings = () => store.getState().logs.filter((log) => log.level === 'WARNING').map((log) => log.msg)
 
+const latched = (value: boolean) => ({ forceStatus: { safety: { latched: value, canAcknowledge: true } } })
+
+/** 走真实路径：遥测锁存进入急停，安全确认后等到新的未锁存反馈解除，伺服保持断开。 */
+async function emergencyThenAcknowledge(socket: Socket) {
+  await live(socket, latched(true))
+  expect(store.getState().controlSafety.emergencyRequested).toBe(true)
+  store.getState().acknowledgeSafety()
+  await vi.advanceTimersByTimeAsync(0)
+  await live(socket, latched(false))
+  await live(socket, latched(false))
+  expect(store.getState().controlSafety.emergencyRequested).toBe(false)
+}
+
 async function connectedSocket() {
   store.getState().startBackend()
   const socket = Socket.instances.at(-1)!
@@ -55,7 +68,7 @@ beforeEach(async () => {
   fetchSpy = vi.fn<FetchStub>((url) => {
     const path = new URL(String(url)).pathname
     if (path.endsWith('/enable_all')) return enableResponse()
-    if (path === '/api/motion/manual_axis_move') return ok()
+    if (path === '/api/motion/manual_axis_move' || path.endsWith('/disable_all') || path.endsWith('/safety/acknowledge')) return ok()
     return Promise.resolve(new Response('{}', { status: 503 }))
   })
   vi.stubGlobal('fetch', fetchSpy)
@@ -166,6 +179,50 @@ describe('点动前随动使能', () => {
     await vi.advanceTimersByTimeAsync(0)
     await live(socket, { motionAxisEnabled: axes(true) })
     expect(commands().at(-1)).toBe('/api/motion/manual_axis_move')
+  })
+
+  it('真实锁存→确认解除后：首次点击只使能，再次点击才点动', async () => {
+    const socket = await connectedSocket()
+    await emergencyThenAcknowledge(socket)
+    expect(store.getState().motionEnableOnlyAfterEmergency).toEqual({ left: true, right: true })
+
+    store.getState().issueManualAxisMove('left', 'X', 1)
+    await vi.advanceTimersByTimeAsync(0)
+    // 只有左侧获确认使能；右侧仍断开，其“首次只使能”要求保留。
+    await live(socket, { motionAxisEnabled: { left: Array<boolean>(6).fill(true), right: Array<boolean>(6).fill(false) } })
+    expect(commands().filter((path) => path !== '/api/motion/safety/acknowledge')).toEqual(['/api/motion/left/enable_all'])
+    expect(store.getState().motionEnableOnlyAfterEmergency).toEqual({ left: false, right: true })
+
+    store.getState().issueManualAxisMove('left', 'X', 1)
+    expect(commands().at(-1)).toBe('/api/motion/manual_axis_move')
+  })
+
+  it('刷新页面后仍保留急停后“首次只使能”的要求', async () => {
+    const socket = await connectedSocket()
+    await emergencyThenAcknowledge(socket)
+    store.getState().stopBackend()
+    vi.resetModules()
+    store = (await import('./telemetry')).useTelemetryStore
+    expect(store.getState().controlSafety.emergencyRequested).toBe(false)
+    expect(store.getState().motionEnableOnlyAfterEmergency).toEqual({ left: true, right: true })
+
+    const reloaded = await connectedSocket()
+    const before = commands().length
+    store.getState().issueManualAxisMove('right', 'X', 1)
+    await vi.advanceTimersByTimeAsync(0)
+    await live(reloaded, { motionAxisEnabled: axes(true) })
+    expect(commands().slice(before)).toEqual(['/api/motion/right/enable_all'])
+  })
+
+  it('等待使能确认期间点断使能：点动取消，迟到的使能反馈也不补发', async () => {
+    const socket = await connectedSocket()
+    store.getState().issueManualAxisMove('left', 'X', 1)
+    await vi.advanceTimersByTimeAsync(0)
+    store.getState().setMotionEnabled('left', false)
+    await vi.advanceTimersByTimeAsync(0)
+    await live(socket, { motionAxisEnabled: axes(true) })
+    expect(commands()).toEqual(['/api/motion/left/enable_all', '/api/motion/left/disable_all'])
+    expect(warnings().some((msg) => msg.includes('点动未发送'))).toBe(true)
   })
 
   it('急停后首次点击只完成使能，再次点击才点动；之后恢复一键操作', async () => {

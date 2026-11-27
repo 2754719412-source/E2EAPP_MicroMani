@@ -35,6 +35,7 @@ import {
 import { manualAxisStepLimitFromPulse, manualAxisStepLimitPulse } from '../../manualMotionLimits'
 import { manualMaxVelocity } from '../../manualSpeed'
 import { mockMode, stopMotionSide } from '../../api'
+import { useTelemetryStore } from '../../stores/telemetry'
 import type {
   AppConfig,
   ArmSoftLimitConfig,
@@ -264,9 +265,12 @@ export function ManualArmControl({
   // 不再单独提供使能按钮：未使能时点动会先随动使能本侧，确认后才发位移；断使能仍就近保留。
   const motionReady = mockMode || motionEnable.canEnable
   const autoEnabling = !mockMode && motionEnable.busy && motionEnable.desired === true
+  const enableOnlyAfterEmergency = useTelemetryStore((state) => state.motionEnableOnlyAfterEmergency[hardwareSide])
   const jogTitle = !motionReady
     ? motionEnable.enableBlockedReason ?? undefined
-    : !mockMode && selectedAxisEnabled !== true ? '未使能：点击后先自动使能本侧，确认后执行点动' : undefined
+    : mockMode || selectedAxisEnabled === true ? undefined
+      : enableOnlyAfterEmergency ? '急停后首次点击只完成使能，确认后再次点击执行点动'
+        : '未使能：点击后先自动使能本侧，确认后执行点动'
  /** 停止对应流程。 */
  const stopMotion = async () => {
     setPendingMotionAction('stop')

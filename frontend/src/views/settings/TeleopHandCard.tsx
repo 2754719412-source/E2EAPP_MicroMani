@@ -189,7 +189,7 @@ export function TeleopHandCard({
     // 连接前会随动使能目标臂；后端已上报主手未物理在线（或状态未知）时先拦下，避免连接失败后机械臂被留在使能状态。
     // 读数是否正常要到逻辑连接后才上报，仍由后端连接校验把关。
     if (!logicalConnected && handState?.physicalConnected !== undefined && physicalConnected !== true) {
-      const message = '主手未物理在线，未使能目标臂'
+      const message = physicalConnected === false ? '主手物理离线，未使能目标臂' : '主手物理在线状态未确认，未使能目标臂'
       setConnectionHint(message)
       injectLog('WARNING', `${sideSpec.shortLabel} Omega.7 connect blocked: ${message}`, '[HAL]')
       return

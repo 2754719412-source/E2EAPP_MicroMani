@@ -106,6 +106,34 @@ function persistEmergencyIntent(requested: boolean) {
   }
 }
 
+// 急停后各侧“首次随动使能只使能不动作”的标记；随会话保存，刷新页面后仍要求先单独完成一次使能。
+const enableOnlyAfterEmergencyStorageKey = 'appstation.motionEnableOnlyAfterEmergency.v1'
+
+function readEnableOnlyAfterEmergency(): Record<ManualControlSide, boolean> {
+  const flags = { left: false, right: false }
+  if (mockMode) return flags
+  try {
+    const stored: unknown = JSON.parse(window.sessionStorage.getItem(enableOnlyAfterEmergencyStorageKey) ?? 'null')
+    if (stored && typeof stored === 'object') {
+      flags.left = (stored as Record<string, unknown>).left === true
+      flags.right = (stored as Record<string, unknown>).right === true
+    }
+  } catch {
+    // 存储不可用或内容损坏时只保留内存标记；急停意图本身另有持久化。
+  }
+  return flags
+}
+
+function persistEnableOnlyAfterEmergency(flags: Record<ManualControlSide, boolean>) {
+  if (mockMode) return
+  try {
+    if (flags.left || flags.right) window.sessionStorage.setItem(enableOnlyAfterEmergencyStorageKey, JSON.stringify(flags))
+    else window.sessionStorage.removeItem(enableOnlyAfterEmergencyStorageKey)
+  } catch {
+    // 存储不可用不影响当前页面内的标记。
+  }
+}
+
 function initialSessionControlSafety(): ControlSafetyState {
   const safety = initialControlSafety()
   if (mockMode) return safety
@@ -473,6 +501,8 @@ interface TelemetryStore {
   setMotionEnabled: (side: ManualControlState['selectedSide'], enabled: boolean) => void
   /** 点动 / 连接主手前随动使能；返回 null 表示本侧已获遥测确认全部使能，否则为未完成原因。 */
   ensureMotionEnabled: (side: ManualControlState['selectedSide']) => Promise<string | null>
+  /** 急停后该侧下一次随动使能只完成使能、不连带动作；该侧在急停解除后确认已使能即清除。 */
+  motionEnableOnlyAfterEmergency: Record<ManualControlSide, boolean>
   gripperCommand: Record<ManualControlState['selectedSide'], GripperCommandProgress>
   parameterSnapshots: ParameterSnapshot[]
   mockTimer: number | null
@@ -1497,8 +1527,6 @@ export const autoEnableActionWindowMs = 3_000
 export const autoEnableEnableOnlyReason = '急停后首次操作只完成使能，请再次点击执行'
 // 同侧随动使能期间只保留第一次点动，避免确认后连续补发多次位移。
 const autoEnableJogPending = new Set<ManualControlSide>()
-// 急停（含遥测锁存）后各侧首次随动使能不连带动作；该侧在急停解除后确认已使能即恢复一键操作。
-const enableOnlyAfterEmergency = new Set<ManualControlSide>()
 
 function errorText(error: unknown) {
   return error instanceof Error ? error.message : String(error)
@@ -1509,7 +1537,7 @@ function ensureMotionSideEnabled(side: ManualControlSide): Promise<string | null
   if (mockMode) return Promise.resolve(null)
   const state = useTelemetryStore.getState()
   if (motionDeviceState(state.frame, state.telemetryLink, side) === 'enabled') return Promise.resolve(null)
-  const enableOnly = enableOnlyAfterEmergency.has(side)
+  const enableOnly = state.motionEnableOnlyAfterEmergency[side]
   return new Promise((resolve) => {
     let done = false
     let unsubscribe = () => {}
@@ -1715,6 +1743,7 @@ export const useTelemetryStore = create<TelemetryStore>((set, get) => ({
   motionCommand: { left: initialMotionCommand(), right: initialMotionCommand() },
   setMotionEnabled: (side, enabled) => motionCommands.setEnabled(side, enabled),
   ensureMotionEnabled: (side) => ensureMotionSideEnabled(side),
+  motionEnableOnlyAfterEmergency: readEnableOnlyAfterEmergency(),
   gripperCommand: { left: initialGripperCommandProgress(), right: initialGripperCommandProgress() },
   parameterSnapshots: readParameterSnapshots(),
   mockTimer: null,
@@ -3360,21 +3389,27 @@ const motionCommands = createMotionCommandController(
   () => controlSafetyBlockReason(useTelemetryStore.getState(), false),
 )
 
-if (useTelemetryStore.getState().controlSafety.emergencyRequested) {
-  enableOnlyAfterEmergency.add('left')
-  enableOnlyAfterEmergency.add('right')
-}
-useTelemetryStore.subscribe((state, previous) => {
+// 急停（含遥测锁存）置位两侧标记；急停解除后某侧确认已使能（随动或运动卡“使能全部”）即清除该侧。
+function nextEnableOnlyAfterEmergency(state: TelemetryStore, emergencyStarted: boolean) {
+  const current = state.motionEnableOnlyAfterEmergency
   if (state.controlSafety.emergencyRequested) {
-    if (!previous.controlSafety.emergencyRequested) {
-      enableOnlyAfterEmergency.add('left')
-      enableOnlyAfterEmergency.add('right')
-    }
-    return
+    return emergencyStarted && !(current.left && current.right) ? { left: true, right: true } : current
   }
-  for (const side of enableOnlyAfterEmergency) {
-    if (motionDeviceState(state.frame, state.telemetryLink, side) === 'enabled') enableOnlyAfterEmergency.delete(side)
+  let next = current
+  for (const side of ['left', 'right'] as const) {
+    if (next[side] && motionDeviceState(state.frame, state.telemetryLink, side) === 'enabled') next = { ...next, [side]: false }
   }
+  return next
+}
+function syncEnableOnlyAfterEmergency(state: TelemetryStore, emergencyStarted: boolean) {
+  const next = nextEnableOnlyAfterEmergency(state, emergencyStarted)
+  if (next === state.motionEnableOnlyAfterEmergency) return
+  persistEnableOnlyAfterEmergency(next)
+  useTelemetryStore.setState({ motionEnableOnlyAfterEmergency: next })
+}
+syncEnableOnlyAfterEmergency(useTelemetryStore.getState(), useTelemetryStore.getState().controlSafety.emergencyRequested)
+useTelemetryStore.subscribe((state, previous) => {
+  syncEnableOnlyAfterEmergency(state, state.controlSafety.emergencyRequested && !previous.controlSafety.emergencyRequested)
 })
 
 installControlCommandGuard(() => controlSafetyBlockReason(useTelemetryStore.getState(), !mockMode))

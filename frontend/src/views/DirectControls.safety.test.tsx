@@ -257,7 +257,10 @@ describe('直接 API 页面入口的安全约束', () => {
     else expect(screen.getByRole('button', { name: '连接主手' })).toBeEnabled()
   })
 
-  it.each([false, null] as const)('主手物理状态为 %s 时不使能目标臂也不发连接', async (physicalConnected) => {
+  it.each([
+    [false, '主手物理离线'],
+    [null, '主手物理在线状态未确认'],
+  ] as const)('主手物理状态为 %s 时不使能目标臂也不发连接', async (physicalConnected, message) => {
     const ensure = vi.fn(() => Promise.resolve(null))
     const connect = vi.spyOn(api, 'connectTeleopHand').mockResolvedValue({ data: { connected: true } })
     useTelemetryStore.setState((state) => ({
@@ -269,7 +272,7 @@ describe('直接 API 页面入口的安全约束', () => {
 
     expect(ensure).not.toHaveBeenCalled()
     expect(connect).not.toHaveBeenCalled()
-    expect(injectLog).toHaveBeenCalledWith('WARNING', expect.stringContaining('主手未物理在线'), '[HAL]')
+    expect(injectLog).toHaveBeenCalledWith('WARNING', expect.stringContaining(`${message}，未使能目标臂`), '[HAL]')
   })
 })
 

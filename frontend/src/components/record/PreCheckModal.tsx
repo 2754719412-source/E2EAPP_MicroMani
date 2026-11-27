@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { hardwareChannelLabel, operatorSideForHardwareSide, operatorSideLabel } from '../../data'
 import { motionDeviceState } from '../../stores/motionCommands'
 import { motionSideReturnOriginReady } from '../../motionReturnReady'
 import { preCheckFrameEqual, preCheckFrameSlice, useFrameField, type PreCheckFrameSlice } from '../../stores/frameSelectors'
@@ -173,15 +174,20 @@ export default function PreCheckModal({ open, onConfirm, onCancel }: PreCheckMod
   const returnReady = requiredMotionReturnReady(frame, recordSession)
   const returnSides = requiredResetSides(recordSession)
   const returnBlockReasons: string[] = []
+  // 手动控制卡已不提供单独使能；“去设置使能”跳到第一侧未就绪臂的运动控制卡（按操作者侧编号，含“使能全部”）。
+  let enableTargetSide: 'left' | 'right' | null = null
   if (!returnReady) {
     for (const side of returnSides) {
-      const label = side === 'left' ? '左' : '右'
+      const label = `${operatorSideLabel(operatorSideForHardwareSide(side))}（${hardwareChannelLabel(side)}）`
       const device = motionDeviceState(frame, telemetryLink, side)
       if (device === 'unknown') {
-        returnBlockReasons.push(`${label}臂使能状态未知（遥测不可用或反馈不可读）`)
+        returnBlockReasons.push(`${label}使能状态未知（遥测不可用或反馈不可读）`)
       } else if (device !== 'enabled') {
-        returnBlockReasons.push(`${label}臂${device === 'partial' ? '部分使能' : device === 'disabled' ? '未使能' : '未就绪'}，需先使能再回工作原点`)
+        returnBlockReasons.push(`${label}${device === 'partial' ? '部分使能' : device === 'disabled' ? '未使能' : '未就绪'}，需先在运动控制卡“使能全部”再回工作原点`)
+      } else {
+        continue
       }
+      enableTargetSide ??= operatorSideForHardwareSide(side)
     }
   }
   const hardwareReasons = STEPS[0].reasons?.(frame, recordSession, diagnostics, telemetryLink) ?? []
@@ -198,10 +204,10 @@ export default function PreCheckModal({ open, onConfirm, onCancel }: PreCheckMod
     onConfirm()
   }
 
-  /** 关闭弹窗并跳到设置页手动控制。 */
+  /** 关闭弹窗并跳到未就绪一侧的运动控制卡。 */
   const goManualSettings = () => {
     handleClose()
-    navigate('/settings#manual')
+    navigate(enableTargetSide ? `/settings#motion-${enableTargetSide}` : '/settings#manual')
   }
 
   return (

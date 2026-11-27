@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { defaultDiagnostics } from '../../data'
 import { useTelemetryStore } from '../../stores/telemetry'
 import type { TelemetryFrame } from '../../types'
@@ -88,13 +88,47 @@ describe('PreCheck 失败原因与使能入口', () => {
         <PreCheckModal open onConfirm={vi.fn()} onCancel={onCancel} />
       </MemoryRouter>,
     )
-    expect(screen.getByText(/左臂未使能/)).toBeInTheDocument()
+    // 硬件左臂按操作者视角显示为右臂，并注明硬件通道。
+    expect(screen.getByText(/右臂（硬件左侧通道）未使能/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '去设置页使能' })).toBeEnabled()
     // 回原点按钮仍禁用，但手动勾选可绕过（不把使能并入 allDone）
     expect(screen.getByRole('button', { name: '自动回工作原点' })).toBeDisabled()
     fireEvent.click(screen.getAllByRole('checkbox')[0])
     fireEvent.click(screen.getByRole('button', { name: '确认开始' }))
     // 确认可用：硬件连接与回原点勾选均已满足
+  })
+
+  it.each([
+    ['left', 'motion-right'],
+    ['right', 'motion-left'],
+  ] as const)('硬件%s臂未使能时“去设置使能”跳到 #%s 运动控制卡（手动卡已无使能按钮）', (hardwareSide, hash) => {
+    useTelemetryStore.setState((s) => ({
+      frame: {
+        ...s.frame,
+        motionAxisEnabled: {
+          left: Array(6).fill(hardwareSide !== 'left'),
+          right: Array(6).fill(hardwareSide !== 'right'),
+        },
+      },
+      recordSession: { ...s.recordSession, resetRequiredSides: [hardwareSide] },
+    }))
+    let location = ''
+    function Probe() {
+      location = useLocation().hash
+      return null
+    }
+    const onCancel = vi.fn()
+    render(
+      <MemoryRouter initialEntries={['/record']}>
+        <Routes>
+          <Route path="/record" element={<PreCheckModal open onConfirm={vi.fn()} onCancel={onCancel} />} />
+          <Route path="/settings" element={<Probe />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '去设置页使能' }))
+    expect(onCancel).toHaveBeenCalled()
+    expect(location).toBe(`#${hash}`)
   })
 
   it('使能就绪后不显示受阻原因', () => {
