@@ -445,6 +445,10 @@ bool JodellGripperDriver::readPositionMmUnlocked(
       const int status = getClawCurrentStatus_(slave);
       const int torque = getClawCurrentTorque_(slave);
       out << ", status=" << status << ", torque=" << torque;
+      // 配套 DLL 只返回 0x07D0 低字节的最高两位 gOBJ；完整状态寄存器仍标为无效。
+      if (status >= jodell::kGobjMoving && status <= jodell::kGobjArrivedNoObject) {
+        dllSample.gOBJ = status;
+      }
       dllSample.currentValid = torque >= 0 && torque <= 255;
       dllSample.currentRaw = torque;
     }

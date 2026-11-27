@@ -834,6 +834,56 @@ def test_app_stationary_check_requires_recently_commanded_gripper_to_be_stopped(
         app.state.telemetry.shutdown()
 
 
+@pytest.mark.parametrize("gobj,read_offset,position_ok,expected", [
+    (0, 1, True, False), (1, 1, True, True), (2, 1, True, True), (3, 1, True, True),
+    (-1, 1, True, False), (4, 1, True, False), (True, 1, True, False),
+    (3, 0, True, False), (3, -10, True, False), (3, None, True, False), (3, 1, False, False),
+])
+def test_dll_disconnect_requires_fresh_object_status(tmp_path, monkeypatch, gobj, read_offset, position_ok, expected):
+    app = _app_for_stationary_check(tmp_path, monkeypatch)
+    boundary = 1_800_000_000_000
+    monkeypatch.setattr("backend.app.now_ms", lambda: boundary)
+    app.state.commands._gripper_unconfirmed_since_ms["left"] = boundary - 100
+    sample = {"transport": "dll", "positionValid": True, "statusValid": False, "gGTO": -1, "gOBJ": gobj}
+    if read_offset is not None:
+        sample["dllStatusReadStartedTs"] = boundary + read_offset
+    detail = {"sample": sample, "positionOk": position_ok, "positionSampleTs": boundary + 2}
+    monkeypatch.setattr(app.state.hal, "motion_state", AsyncMock(return_value={
+        "timestamp_ms": boundary + 2, "moving": [False] * 12}))
+    monkeypatch.setattr(app.state.hal, "command", AsyncMock(return_value={"response": {"grippers": {"left": detail}}}))
+    try:
+        assert asyncio.run(app.state.control_watchdog.axes_stationary()) is expected
+        assert ("left" in app.state.commands.unconfirmed_gripper_sides()) is (not expected)
+    finally:
+        app.state.telemetry.shutdown()
+
+
+def test_dll_read_started_before_latest_command_cannot_confirm_stop(tmp_path, monkeypatch):
+    app = _app_for_stationary_check(tmp_path, monkeypatch)
+    boundary = 1_800_000_000_000
+    now = boundary
+    monkeypatch.setattr("backend.app.now_ms", lambda: now)
+    monkeypatch.setattr("backend.services.command_service.now_ms", lambda: now)
+    app.state.commands.note_gripper_motion("left")
+    monkeypatch.setattr(app.state.hal, "motion_state", AsyncMock(return_value={
+        "timestamp_ms": boundary + 1, "moving": [False] * 12}))
+
+    async def status(name, payload):
+        nonlocal now
+        if now == boundary:
+            now += 3
+            app.state.commands.note_gripper_motion("left")
+        return {"response": {"grippers": {"left": {"positionOk": True, "positionSampleTs": boundary + 4,
+            "sample": {"transport": "dll", "positionValid": True, "gOBJ": 3, "dllStatusReadStartedTs": boundary + 2}}}}}
+
+    monkeypatch.setattr(app.state.hal, "command", status)
+    try:
+        assert asyncio.run(app.state.control_watchdog.axes_stationary()) is False
+        assert app.state.commands.unconfirmed_gripper_sides() == {"left": boundary + 3}
+    finally:
+        app.state.telemetry.shutdown()
+
+
 def test_app_motion_activity_includes_inflight_gripper_command(tmp_path, monkeypatch) -> None:
     app = _app_for_stationary_check(tmp_path, monkeypatch)
     try:

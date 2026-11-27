@@ -845,6 +845,7 @@ void NativeTeleopController::gripperLoop(int targetIndex) {
 void NativeTeleopController::sampleGripperPosition(Side side, bool feedbackOnly) {
   // 周期性采样供状态显示及回放到位判断；失败不能刷新成功采样时间。
   std::string message;
+  const auto readStartedUnixMs = unixTimeMs();
   const auto readStarted = std::chrono::steady_clock::now();
   // 读数在驱动锁内随读取结果一起交回；读完后不再争锁，命令进行中采样线程不会阻塞等待。
   std::vector<jodell::GripperFeedbackSample> samples;
@@ -876,13 +877,18 @@ void NativeTeleopController::sampleGripperPosition(Side side, bool feedbackOnly)
   gripperPositionsMm_ = gripperPositionSnapshotUnlocked();
   if (!feedbackOnly) gripperLastCommandOk_[index] = ok;
   gripperPositionOk_[index] = ok;
+  // 断线后只认此后发起的 DLL 读取；旧 worker、重复样本和 READPOS 不能刷新状态时间。
+  const auto& latest = gripperLatestSample_[index];
+  gripperDllStatusReadStartedTs_[index] =
+      ok && recorded && !latest.halTimestamp && latest.sample.transport == "dll" && latest.sample.positionValid
+      && latest.sample.gOBJ >= jodell::kGobjMoving && latest.sample.gOBJ <= jodell::kGobjArrivedNoObject
+          ? readStartedUnixMs : 0;
   if (ok) {
     // Jodell does not expose a hardware sample timestamp. Use the midpoint of
     // the blocking READ as the best host-side estimate of measurement time.
     gripperPositionSampleTs_[index] = readFinishedUnixMs
         - static_cast<std::int64_t>(std::llround(readMs * 0.5));
     // 有结构化样本时用 worker 在串口往返中点打的时间戳，不含管道延迟。
-    const auto& latest = gripperLatestSample_[index];
     gripperPositionSampleMonotonicMs_[index] = ok && recorded && latest.sample.positionValid && !latest.halTimestamp
         ? latest.sample.monotonicUs / 1000 : sampleMonotonicMs;
   }
@@ -1083,6 +1089,7 @@ std::string NativeTeleopController::statusJsonImpl(bool compactHistory) const {
       out << "null";
     } else {
       out << "{\"seq\":" << record.seq
+          << ",\"dllStatusReadStartedTs\":" << gripperDllStatusReadStartedTs_[index]
           << ",\"monotonicUs\":" << sample.monotonicUs
           << ",\"timestampSource\":\"" << (record.halTimestamp ? "hal_midpoint" : "worker") << "\""
           << ",\"transport\":\"" << jsonEscape(sample.transport) << "\""

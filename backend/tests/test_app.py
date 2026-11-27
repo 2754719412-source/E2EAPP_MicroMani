@@ -1531,10 +1531,11 @@ def test_startup_never_moves_with_legacy_home_config(tmp_path: Path, monkeypatch
 
 
 @pytest.mark.parametrize("transport,enabled,expected,reserved", [
-    ("dll", True, False, ""), ("modbus", False, False, ""), ("modbus", True, True, ""),
+    ("dll", True, True, ""), ("dll", True, True, "com9"), ("dll", False, False, ""),
+    ("modbus", False, False, ""), ("modbus", True, True, ""),
     ("modbus", True, True, "com9"),
 ])
-def test_idle_startup_restores_only_modbus_feedback(tmp_path, monkeypatch, transport, enabled, expected, reserved):
+def test_idle_startup_restores_isolated_gripper_feedback(tmp_path, monkeypatch, transport, enabled, expected, reserved):
     from unittest.mock import AsyncMock, Mock
 
     monkeypatch.setenv("APPSTATION_HAL_MODE", "real")
@@ -1558,7 +1559,7 @@ def test_idle_startup_restores_only_modbus_feedback(tmp_path, monkeypatch, trans
         payload = calls[-1][1]
         assert payload["leftGripperParticipating"]
         assert payload["rightGripperParticipating"] is (not reserved)
-        assert payload["gripperWorkerTransport"] == "modbus"
+        assert payload["gripperWorkerTransport"] == transport
         assert "targetMm" not in payload and "side" not in payload
 
 

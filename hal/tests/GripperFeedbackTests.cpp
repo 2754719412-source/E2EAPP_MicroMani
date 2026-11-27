@@ -166,6 +166,36 @@ void testReadVerbFollowsScenario(const char* exe) {
   std::filesystem::remove(verbs);
 }
 
+void testDllObjectStatusThroughWorker(const char* exe) {
+  Fixture f(exe, "_dll_status");
+  const auto dir = std::filesystem::absolute(exe).parent_path();
+  f.config.dllPath = (dir / "JodellStatusTestDll.dll").string();
+  f.config.workerExePath = (dir / "JodellGripperWorker.exe").string();
+  f.config.ports[0] = "COM250";
+  require(std::filesystem::exists(f.config.dllPath), "test DLL missing");
+  f.driver.configure(f.config);
+  std::vector<jodell::GripperFeedbackSample> samples;
+  std::string message;
+  auto read = [&](bool withStatus) {
+    samples.clear();
+    return f.driver.readPositionMm(Side::Left, &message, withStatus, &samples);
+  };
+  require(read(true) && samples.size() == 1 && samples[0].gOBJ == 3
+      && !samples[0].statusValid && samples[0].gGTO == -1, "DLL arrival status missing or invented gGTO");
+  require(!read(true) && samples.empty(), "failed READ replayed previous stopped sample");
+  require(read(false) && samples.size() == 1 && samples[0].gOBJ == -1, "READPOS reused old status");
+  for (const int expected : {0, -1, -1, 2}) {
+    require(read(true) && samples.size() == 1 && samples[0].gOBJ == expected, "incorrect DLL object status");
+  }
+  f.teleop.configureGripperFeedback(f.config, {true, false});
+  await([&] { return jsonNumberValue(f.status(), "dllStatusReadStartedTs", 0) > 0; },
+      "idle sampler did not publish fresh DLL status");
+  const auto status = f.status();
+  require(jsonNumberValue(status, "gOBJ", -1) == 2, "idle status missing contact stop");
+  require(jsonNumberValue(status, "dllStatusReadStartedTs", 0) <= jsonNumberValue(status, "positionSampleTs", 0),
+      "status read starts after position sample");
+}
+
 void testFailedReadPreservesLastSuccessTime(const char* exe) {
   Fixture f(exe, "_failure_after_success");
   f.teleop.configureGripperFeedback(f.config, {true, false});
@@ -215,6 +245,7 @@ int main(int argc, char** argv) {
     testSameSideReadYieldsToSynchronousCommand(argv[0]);
     testFailedReadPreservesLastSuccessTime(argv[0]);
     testReadVerbFollowsScenario(argv[0]);
+    testDllObjectStatusThroughWorker(argv[0]);
     testStructuredSamplesGetSequenceAndHistory(argv[0]);
     std::cout << "GripperFeedbackTests passed\n";
     return 0;

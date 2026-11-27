@@ -127,6 +127,11 @@ if(BUILD_TESTING AND NOT APPSTATION_ENABLE_VENDOR_SDKS)
       add_test(NAME ${gripper_test} COMMAND ${gripper_test})
       set_tests_properties(${gripper_test} PROPERTIES TIMEOUT 30)
     endforeach()
+    add_library(JodellStatusTestDll SHARED tests/JodellStatusTestDll.cpp)
+    if(MSVC)
+      target_compile_options(JodellStatusTestDll PRIVATE /utf-8)
+    endif()
+    add_dependencies(GripperFeedbackTests JodellStatusTestDll JodellGripperWorker)
   endif()
   add_executable(MotionExecutorTests
     tests/MotionExecutorTests.cpp

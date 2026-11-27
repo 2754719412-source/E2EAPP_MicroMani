@@ -498,7 +498,17 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         if not isinstance(detail, dict) or not sample_after(detail.get("positionSampleTs"), requested_at):
             return None
         sample = detail.get("sample")
-        if not isinstance(sample, dict) or sample.get("statusValid") is not True:
+        if not isinstance(sample, dict):
+            return None
+        if sample.get("transport") == "dll":
+            # DLL 单独读取 gOBJ，0 没有提供停止证明；1/2 为遇阻停止，3 为到位停止。
+            gobj = sample.get("gOBJ")
+            if (detail.get("positionOk") is not True or sample.get("positionValid") is not True
+                    or type(gobj) is not int or gobj not in range(4)
+                    or not sample_after(sample.get("dllStatusReadStartedTs"), requested_at)):
+                return None
+            return gobj != GOBJ_MOVING
+        if sample.get("statusValid") is not True:
             return None
         return not (sample.get("gGTO") == 1 and sample.get("gOBJ") == GOBJ_MOVING)
 
@@ -508,7 +518,6 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
         requested_at = now_ms()
         deadline = time.monotonic() + 0.5
         arms_stopped = False
-        pending_grippers = set(commands.unconfirmed_gripper_sides())
         while True:
             if not arms_stopped:
                 try:
@@ -520,21 +529,20 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
                     if not (isinstance(moving, list) and len(moving) == 12 and all(value is False for value in moving)):
                         return False
                     arms_stopped = True
-            if arms_stopped and pending_grippers:
+            if arms_stopped and commands.unconfirmed_gripper_sides():
                 try:
                     status = (await hal.command("teleop.native.status", {})).get("response", {})
                 except (RuntimeError, TimeoutError):
                     status = {}
                 grippers = status.get("grippers") if isinstance(status, dict) else None
-                for side in tuple(pending_grippers):
+                for side, command_ts in commands.unconfirmed_gripper_sides().items():
                     detail = grippers.get(side) if isinstance(grippers, dict) else None
-                    stopped = gripper_stopped(detail, requested_at)
+                    stopped = gripper_stopped(detail, max(requested_at, command_ts))
                     if stopped is False:
                         return False
                     if stopped:
                         commands.confirm_gripper_stopped(side, detail["positionSampleTs"])
-                        pending_grippers.discard(side)
-            if arms_stopped and not pending_grippers:
+            if arms_stopped and not commands.unconfirmed_gripper_sides():
                 return True
             if time.monotonic() >= deadline:
                 return False
@@ -996,7 +1004,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
     async def restore_idle_gripper_sampling(config: dict[str, Any], *, check_status: bool = False) -> None:
         gripper = config.get("gripper", {})
         if not (_real_hardware_mode(config) and native_teleop_enabled(config)
-                and gripper.get("workerTransport") == "modbus" and gripper.get("processWorkersEnabled", True)):
+                and gripper.get("workerTransport") in ("dll", "modbus") and gripper.get("processWorkersEnabled", True)):
             return
         payload = native_gripper_config_payload(config)
         for side in ("left", "right"):

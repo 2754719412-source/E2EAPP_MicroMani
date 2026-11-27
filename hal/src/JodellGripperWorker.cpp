@@ -256,7 +256,8 @@ int main(int argc, char** argv) {
       const auto started = jodell::steadyNowUs();
       const bool ok = driver.readPositionMm(side, &message, line == "READ");
       const auto finished = jodell::steadyNowUs();
-      auto sample = driver.lastDllSample(side);
+      // 读取失败时驱动仍保留上次成功值，不能给旧样本打上这次的时间戳。
+      auto sample = ok ? driver.lastDllSample(side) : jodell::GripperFeedbackSample{};
       sample.monotonicUs = started + (finished - started) / 2;
       const auto positions = driver.positionMm();
       writeResponse(ok, positions[sideIndex], message, sample);
