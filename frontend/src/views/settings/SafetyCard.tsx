@@ -115,6 +115,12 @@ export function SafetyCard({
         <UiField label="Watchdog ms">
           <UiNumber commitOnBlur min={10} max={500} value={config.safety.watchdogMs} onChange={(value) => updateSafety({ watchdogMs: Number(value ?? 50) })} />
         </UiField>
+        <UiField label="回放跟踪偏差停机 μm">
+          <UiNumber commitOnBlur min={1} step={50} value={config.safety.replayTrackingLimitUm} onChange={(value) => updateSafety({ replayTrackingLimitUm: Number(value ?? 500) })} />
+        </UiField>
+        <UiField label="回放跟踪偏差停机 °">
+          <UiNumber commitOnBlur min={0.01} step={0.1} value={config.safety.replayTrackingLimitDeg} onChange={(value) => updateSafety({ replayTrackingLimitDeg: Number(value ?? 1) })} />
+        </UiField>
       </div>
 
       <div className="gripper-config-section" style={{ marginTop: 12 }}>

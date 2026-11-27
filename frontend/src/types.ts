@@ -753,6 +753,9 @@ export interface AppConfig {
     momentStopNm: number
     yawSoftLimitDeg: number
     watchdogMs: number
+    /** 回放跟踪偏差停机阈值（平移 μm / 旋转 °）。 */
+    replayTrackingLimitUm: number
+    replayTrackingLimitDeg: number
   }
   zmq: {
     observationPush: string

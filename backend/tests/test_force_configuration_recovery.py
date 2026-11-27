@@ -141,7 +141,7 @@ def test_recovery_rejects_active_recording_auto_or_teleop(recovery, monkeypatch,
 @pytest.mark.parametrize("condition", [
     "moving", "stale", "missing_timestamp", "missing_enabled", "short_enabled", "unknown_enabled", "enabled",
 ])
-def test_recovery_requires_fresh_stopped_and_disabled_feedback(recovery, monkeypatch, condition):
+def test_recovery_requires_fresh_stationary_feedback_and_leaves_servo_rule_to_hal(recovery, monkeypatch, condition):
     app, client, current, calls = recovery
 
     async def state():
@@ -162,8 +162,14 @@ def test_recovery_requires_fresh_stopped_and_disabled_feedback(recovery, monkeyp
 
     monkeypatch.setattr(app.state.hal, "motion_state", state)
     response = request_change(client, current, "apply")
-    assert response.status_code == 409, response.text
-    assert calls == []
+    if condition in {"moving", "stale", "missing_timestamp"}:
+        assert response.status_code == 409, response.text
+        assert calls == []
+    else:
+        # 后端不再要求伺服断开；是否接受由 HAL 按热更新/完整重配置判定，锁存仍保持。
+        assert response.status_code == 200, response.text
+        assert calls
+        assert app.state.commands.safety.latched
 
 
 @pytest.mark.parametrize("route", ["put", "apply", "snapshot"])

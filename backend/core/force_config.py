@@ -129,6 +129,9 @@ def validate_force_config(config: dict[str, Any]) -> None:
             )
     if _number(safety.get("watchdogMs"), "safety.watchdogMs") <= 0:
         raise ValueError("safety.watchdogMs must be positive")
+    for key in ("replayTrackingLimitUm", "replayTrackingLimitDeg"):
+        if key in safety and _number(safety.get(key), f"safety.{key}") <= 0:
+            raise ValueError(f"safety.{key} must be positive")
 
     compliance = _mapping(force.get("compliance"), "force.compliance")
     enabled = bool(compliance.get("enabled", False))

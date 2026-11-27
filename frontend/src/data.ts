@@ -574,6 +574,8 @@ export const defaultConfig: AppConfig = {
     momentStopNm: 1,
     yawSoftLimitDeg: 7,
     watchdogMs: 50,
+    replayTrackingLimitUm: 500,
+    replayTrackingLimitDeg: 1,
   },
   zmq: {
     observationPush: 'tcp://127.0.0.1:8082',

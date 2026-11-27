@@ -191,3 +191,20 @@ def test_hkvl_force_axis_direction_requires_six_unit_signs(value: list[float]) -
 
     with pytest.raises(ValueError, match="force.axisSign.left"):
         validate_force_config(config)
+
+
+@pytest.mark.parametrize("key", ["replayTrackingLimitUm", "replayTrackingLimitDeg"])
+@pytest.mark.parametrize("value", [0, -1, float("nan"), "x"])
+def test_replay_tracking_limits_must_be_positive_numbers(key: str, value: object) -> None:
+    config = default_config()
+    config["safety"][key] = value
+    with pytest.raises(ValueError, match=key):
+        validate_force_config(config)
+
+
+def test_replay_tracking_limits_default_and_can_be_raised() -> None:
+    config = default_config()
+    assert config["safety"]["replayTrackingLimitUm"] == 500
+    assert config["safety"]["replayTrackingLimitDeg"] == 1.0
+    config["safety"].update(replayTrackingLimitUm=3000, replayTrackingLimitDeg=5)
+    validate_force_config(config)

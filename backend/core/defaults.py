@@ -477,6 +477,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "momentStopNm": 1,
         "yawSoftLimitDeg": 7,
         "watchdogMs": 50,
+        # 回放跟踪偏差停机阈值：平移 μm、旋转 degree，可在设置页放宽。
+        "replayTrackingLimitUm": 500,
+        "replayTrackingLimitDeg": 1.0,
     },
     "zmq": {
         "observationPush": "tcp://127.0.0.1:8082",

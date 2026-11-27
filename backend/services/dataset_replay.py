@@ -24,6 +24,21 @@ AXES = ("X", "Y", "Z", "Roll", "Pitch", "Yaw")
 # 单位为数据集 um / mdeg / mm；用于到位判定和跟踪偏差拒绝。
 TOLERANCE = [10., 10., 10., 50., 50., 50., .2] * 2
 MAX_ERROR = [500., 500., 500., 1000., 1000., 1000., 2.] * 2
+# 夹爪反馈超过该时长未更新只告警，继续沿用最近一次成功采样。
+GRIPPER_FEEDBACK_STALE_WARN_MS = 1000.
+
+
+def replay_tracking_limits(config: dict[str, Any]) -> list[float]:
+    """按设置页阈值生成 14 维跟踪偏差上限（数据集单位）；夹爪维度不参与停机判定。"""
+    safety = config.get("safety") if isinstance(config.get("safety"), dict) else {}
+    limits = []
+    for key, default, scale in (("replayTrackingLimitUm", 500., 1.), ("replayTrackingLimitDeg", 1., 1000.)):
+        value = safety.get(key, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise RuntimeError(f"safety.{key} 必须是正数")
+        limits.append(float(value) * scale)
+    translation, rotation = limits
+    return [translation] * 3 + [rotation] * 3 + [MAX_ERROR[6]] + [translation] * 3 + [rotation] * 3 + [MAX_ERROR[13]]
 
 
 def vector14(value: Any) -> list[float]:
@@ -79,6 +94,8 @@ class DatasetReplayService:
         self._stop = asyncio.Event()
         self._stop_acknowledged = asyncio.Event()
         self._stop_decel_s = 0.
+        self._max_error = list(MAX_ERROR)
+        self._stale_gripper_warned: set[str] = set()
         self._status: dict[str, Any] = {"phase": "idle", "active": False, "frame": 0, "totalFrames": 0, "error": ""}
 
     @property
@@ -168,6 +185,8 @@ class DatasetReplayService:
         self._feedback_samples = {}
         self._participation = None
         self._controlled_stop_available = False
+        self._max_error = list(MAX_ERROR)
+        self._stale_gripper_warned = set()
         self._stop_task = self._emergency_task = None
         self.task = asyncio.create_task(self._run(dataset_id, episode_id, speed, token, selected), name="dataset-replay")
         return self.status()
@@ -210,8 +229,12 @@ class DatasetReplayService:
             sample_age = time.time() * 1000 - sample_ts
             if sample_age < 0:
                 raise RuntimeError(f"{label}夹爪反馈时间戳无效：采样时间晚于当前时间，请检查系统时钟")
-            if sample_age > 1000:
-                raise RuntimeError(f"{label}夹爪反馈超时：距最近成功采样 {sample_age / 1000:.2f} 秒，要求不超过 1 秒")
+            if sample_age > GRIPPER_FEEDBACK_STALE_WARN_MS and side not in self._stale_gripper_warned:
+                # 夹爪偏差不参与停机判定；反馈陈旧只告警一次，继续沿用最近成功采样。
+                self._stale_gripper_warned.add(side)
+                warning = f"{label}夹爪反馈陈旧：距最近成功采样 {sample_age / 1000:.2f} 秒，回放继续，夹爪显示可能滞后"
+                self._status["warning"] = warning
+                self.svc.logs.warning("[HAL]", warning)
             if isinstance(gap, bool) or not isinstance(gap, (int, float)) or not math.isfinite(gap) or gap < 0:
                 raise RuntimeError(f"{label}夹爪反馈位置数值异常：开口必须是有限且不小于 0 的毫米数值")
             raw.append(float(gap))
@@ -305,7 +328,7 @@ class DatasetReplayService:
         mask = action_mask(self._participation)
         errors = [abs(a-b) if enabled else 0. for a, b, enabled in zip(previous, observed, mask)]
         self._status["trackingError"] = errors
-        if reason or any(error > limit for i, (error, limit) in enumerate(zip(errors, MAX_ERROR)) if i % 7 != 6):
+        if reason or any(error > limit for i, (error, limit) in enumerate(zip(errors, self._max_error)) if i % 7 != 6):
             target_index = max(0, index - 1)
             target_kind = target_kind or ("action" if index else "observation.state")
             fault = {
@@ -337,14 +360,14 @@ class DatasetReplayService:
                 if isinstance(sample_ts, bool) or not isinstance(sample_ts, (int, float)) or not math.isfinite(sample_ts) or sample_ts <= 0:
                     sample_ts = None
                 sample_age = checked_at_ms - sample_ts if sample_ts is not None else None
-                exceeded = errors[channel_index] > MAX_ERROR[channel_index]
-                waiting = bool(reason) and errors[channel_index] > MAX_ERROR[channel_index] / 2
+                exceeded = errors[channel_index] > self._max_error[channel_index]
+                waiting = bool(reason) and errors[channel_index] > self._max_error[channel_index] / 2
                 channel = {
                     "index": channel_index, "operatorSide": operator_side, "hardwareSide": hardware_side,
                     "axis": "gripper" if axis == 6 else AXES[axis], "unit": unit,
                     "target": previous[channel_index] / scale, "observed": observed[channel_index] / scale,
-                    "error": errors[channel_index] / scale, "limit": MAX_ERROR[channel_index] / scale,
-                    "exceeded": exceeded, "waiting": waiting, "followLimit": MAX_ERROR[channel_index] / scale / 2,
+                    "error": errors[channel_index] / scale, "limit": self._max_error[channel_index] / scale,
+                    "exceeded": exceeded, "waiting": waiting, "followLimit": self._max_error[channel_index] / scale / 2,
                     "sampleTs": sample_ts, "sampleAgeMs": sample_age,
                     "sampleTimeSource": "gripper.positionSampleTs" if axis == 6 else "hal.motion.timestamp_ms",
                 }
@@ -402,7 +425,7 @@ class DatasetReplayService:
             self._update_progress()
             if time.monotonic() >= deadline:
                 errors = self._check_tracking(data, index + 1, target, observed, sent_at_ms, read_started, checked)
-                waiting = [i for i, (error, limit) in enumerate(zip(errors, MAX_ERROR)) if i % 7 != 6 and error > limit / 2]
+                waiting = [i for i, (error, limit) in enumerate(zip(errors, self._max_error)) if i % 7 != 6 and error > limit / 2]
                 if not waiting:
                     self._status.update(phase='running', waitingChannels=[])
                     return
@@ -459,6 +482,7 @@ class DatasetReplayService:
             self._check(token)
         self._controlled_stop_available = supports_controlled_stop and not self._participation["grippers"]
         self._stop_decel_s = float(replay_motion_profile(config)["decTimeSec"])
+        self._max_error = replay_tracking_limits(config)
         self._status.update(phase="aligning", totalFrames=len(data["rows"]))
         await self._settle(initial, config, token)
         self._status["phase"] = "running"
