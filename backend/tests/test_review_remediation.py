@@ -23,6 +23,7 @@ def test_expired_open_socket_does_not_block_new_owner_or_revoke_it_later():
         old = await confirm_mock_browser_lease(watchdog)
         watchdog.trip("HAL control lease renewal failed")
         assert not watchdog.clients
+        await watchdog._stop_task
         new = await confirm_mock_browser_lease(watchdog)
         watchdog.remove(old)
         assert old not in watchdog.clients
@@ -174,15 +175,20 @@ def test_record_interruption_keeps_queued_jobs_and_never_clears_episode():
     asyncio.run(exercise())
 
 
-def test_recovered_lease_does_not_allow_ack_after_stop_failure():
+def test_reconnected_browser_cannot_renew_or_ack_after_stop_failure():
     async def exercise():
-        watchdog, _now, _hal, _invalidate, stop = make_watchdog()
+        watchdog, _now, hal, _invalidate, stop = make_watchdog()
         await confirm_mock_browser_lease(watchdog)
         stop.side_effect = RuntimeError("stop not confirmed")
         watchdog.trip("connection lost")
-        await confirm_mock_browser_lease(watchdog)
-        watchdog.require_ready()
-        with pytest.raises(ControlLeaseUnavailable, match="stop is still pending"):
+        await watchdog._stop_task
+        stop.assert_awaited()
+        watchdog.register(AsyncMock())
+        await watchdog.cycle()
+        hal.command.assert_awaited_once()
+        with pytest.raises(ControlLeaseUnavailable):
+            watchdog.require_ready()
+        with pytest.raises(ControlLeaseUnavailable):
             watchdog.require_ack_ready()
         await watchdog.close()
     asyncio.run(exercise())

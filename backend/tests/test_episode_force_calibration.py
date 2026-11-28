@@ -54,7 +54,7 @@ def test_resumed_dataset_keeps_each_episode_force_calibration(
             hal,
             SimpleNamespace(recording=False, episode_count=0, frame_count=0),
             SimpleNamespace(info=lambda *_args: None, warning=lambda *_args: None, error=lambda *_args: None),
-            SimpleNamespace(start=AsyncMock(), stop=AsyncMock(), status=lambda: {}),
+            SimpleNamespace(start=AsyncMock(), release_recording=AsyncMock(), stop=AsyncMock(), status=lambda: {}),
         )
         dataset_dir = tmp_path / "unit"
         (dataset_dir / "meta").mkdir(parents=True)
