@@ -91,6 +91,29 @@ describe('共享遥测入口的故障隔离', () => {
     expect(store.getState().logs.at(-1)?.msg).toBe('正常消息')
   })
 
+  it.each([true, false])('控制页在配置和租约均就绪后只探测一次，配置先到=%s', async (configFirst) => {
+    store.getState().startBackend()
+    const config = requests.find(item => item.path === '/api/settings')!
+    const load = () => config.resolve(new Response(JSON.stringify(defaultConfig)))
+    const grant = () => Socket.instances.at(-1)!.emit('control_lease', { sessionId: 's1', status: 'active', renewalOwner: 'backend' })
+    const probes = () => requests.filter(item => item.path === '/api/pico/network/auto-configure')
+    if (configFirst) load(); else grant()
+    await settle()
+    expect(probes()).toHaveLength(0)
+    if (configFirst) grant(); else load()
+    await settle()
+    grant()
+    expect(probes()).toHaveLength(1)
+  })
+
+  it('观察页加载配置和手动调用均不会发送 PICO 写请求', async () => {
+    store.getState().setObserverMode(true)
+    requests.find(item => item.path === '/api/settings')!.resolve(new Response(JSON.stringify(defaultConfig)))
+    await settle()
+    await expect(store.getState().autoConfigurePicoNetwork()).rejects.toThrow('观察模式')
+    expect(requests.some(item => item.path === '/api/pico/network/auto-configure')).toBe(false)
+  })
+
   it('连接停止后的旧配置响应不覆盖状态，也不续发 PICO 配置请求', async () => {
     store.getState().startBackend()
     const request = requests.find(item => item.path === '/api/settings')!

@@ -2294,6 +2294,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
     async def pico_network_auto_configure(
         payload: Annotated[dict[str, Any] | None, Body()] = None,
     ) -> ApiEnvelope:
+        control_watchdog.require_ready()
         pico = (await get_config_async())["picoVision"]
         target_ip = str((payload or {}).get("picoIp", "")).strip() or pico["ip"]
         while True:
@@ -2318,6 +2319,7 @@ def create_app(runtime_dir: Path | None = None) -> FastAPI:
                 if gateway:
                     fields["gateway"] = gateway
                 changed = any(current.get(key) != value for key, value in fields.items())
+                control_watchdog.require_ready()
                 if changed:
                     current.update(fields)
                     saved = await asyncio.to_thread(settings.save_config, saved, source="pico-network-auto")

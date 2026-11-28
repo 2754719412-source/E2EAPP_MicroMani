@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.tests.test_app import _attach_mock_control_lease
 from backend.app import create_app, emit_omega_device_logs
 from backend.core.defaults import default_config
 from backend.core.logging import LogService, PollingErrorLog
@@ -117,6 +118,7 @@ def test_unchanged_pico_network_probe_is_debug(tmp_path, monkeypatch) -> None:
         "interfaceAlias": "test", "prefixLength": 17, "selection": "related-address",
     })
     client = TestClient(create_app(tmp_path))
+    _attach_mock_control_lease(client)
     try:
         assert client.post("/api/pico/network/auto-configure").status_code == 200
         assert client.post("/api/pico/network/auto-configure").status_code == 200

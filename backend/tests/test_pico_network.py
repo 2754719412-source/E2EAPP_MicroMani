@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from pytest import MonkeyPatch
 
+from backend.tests.test_app import _attach_mock_control_lease
 from backend.app import create_app
 from backend.services.pico_network import IPv4Adapter, IPv4Route, select_pico_network
 
@@ -64,6 +65,13 @@ def test_pico_network_endpoint_preserves_operator_ip_and_persists_detected_pc_fi
 
     monkeypatch.setattr("backend.app.detect_pico_network", fake_detect)
 
+    before = client.get("/api/settings").json()
+    for headers in ({}, {"X-Control-Session": "observer"}):
+        rejected = client.post("/api/pico/network/auto-configure", headers=headers)
+        assert rejected.status_code == 409
+    assert detected_ips == []
+    assert client.get("/api/settings").json() == before
+    _attach_mock_control_lease(client)
     response = client.post("/api/pico/network/auto-configure", json={"picoIp": "10.90.140.22"})
 
     assert response.status_code == 200
@@ -79,3 +87,16 @@ def test_pico_network_endpoint_preserves_operator_ip_and_persists_detected_pc_fi
     assert persisted["ifIndex"] == 13
     assert client.post("/api/pico/network/auto-configure").status_code == 200
     assert detected_ips == ["10.90.140.22", "10.90.140.22"]
+
+    # 探测可能耗时；请求开始后失去租约也不能提交迟到的配置。
+    watchdog = client.app.state.control_watchdog
+    def expire_during_detection(ip: str, *, preferred_gateway: str) -> dict[str, object]:
+        network = fake_detect(ip, preferred_gateway=preferred_gateway)
+        monkeypatch.setattr(watchdog, "clock", lambda: float("inf"))
+        return network
+
+    monkeypatch.setattr("backend.app.detect_pico_network", expire_during_detection)
+    rejected = client.post("/api/pico/network/auto-configure", json={"picoIp": "192.0.2.99"})
+    assert rejected.status_code == 409
+    assert detected_ips[-1] == "192.0.2.99"
+    assert client.get("/api/settings").json()["picoVision"] == persisted

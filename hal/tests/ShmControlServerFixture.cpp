@@ -3,6 +3,7 @@
 #error Shared-memory fixture must not enable device SDKs
 #endif
 #include "OfflineMotion.h"
+#include "MotionControlThread.h"
 #include "HalDdsControlServer.h"
 #include <cstdlib>
 #include <iostream>
@@ -17,6 +18,8 @@ int main(int argc, char** argv) {
     const auto started = std::chrono::steady_clock::now();
     LTDMCDriver motion;
     MotionExecutorTestAccess::initialize(motion);
+    MotionControlThread polling(motion);
+    polling.start(100);
     MotionExecutor executor(motion);
     Omega7Driver omega;
     JodellGripperDriver gripper;

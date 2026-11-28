@@ -1827,17 +1827,25 @@ startBackend: () => {
       window.clearTimeout(reconnectTimer)
       set({ backendReconnectTimer: null })
     }
+    let configLoaded = false
+    let picoProbeStarted = false
+    const configurePicoWhenReady = () => {
+      if (!configLoaded || picoProbeStarted || get().observerMode || get().controlLease.status !== 'active') return
+      picoProbeStarted = true
+      void get().autoConfigurePicoNetwork().catch((error) => {
+        if (!connectionIsCurrent()) return
+        set((state) => ({
+          logs: appendLog(state.logs, makeLog('WARNING', `PICO network detection failed: ${String(error)}`, '[CAMERA]')),
+        }))
+      })
+    }
     // 网页套接字建立前先拉一次静态配置和硬件概况，首屏不会等到下一帧遥测才有数据。
     void fetchConfig()
       .then((config) => {
         if (!connectionIsCurrent()) return
         set({ config: normalizeConfig(config) })
-        void get().autoConfigurePicoNetwork().catch((error) => {
-          if (!connectionIsCurrent()) return
-          set((state) => ({
-            logs: appendLog(state.logs, makeLog('WARNING', `PICO network detection failed: ${String(error)}`, '[CAMERA]')),
-          }))
-        })
+        configLoaded = true
+        configurePicoWhenReady()
       })
       .catch((error) => {
         if (!connectionIsCurrent()) return
@@ -1904,6 +1912,7 @@ startBackend: () => {
           ...(invalidated ? { controlSafety: interruptedControlSafety(state.controlSafety), autoRunning: false,
             clutchActive: false, manualControl: { ...state.manualControl, replayingMemoryId: null, recording: false } } : {}),
         }))
+        configurePicoWhenReady()
         if (invalidated) motionCommands.invalidate('执行侧安全租约失效，未获得执行确认')
       },
     })
@@ -2890,6 +2899,7 @@ sendBackendCommandLog: (level, msg, channel) => {
 
 /** Detect the active PC network path and accept the config already persisted by the backend. */
 autoConfigurePicoNetwork: async (picoIp) => {
+    if (get().observerMode) throw new Error('观察模式不能修改 PICO 网络配置')
     const connectionGeneration = backendConnectionGeneration
     const requestedPicoConfig = get().config.picoVision
     const response = await autoConfigurePicoNetworkApi(picoIp)
